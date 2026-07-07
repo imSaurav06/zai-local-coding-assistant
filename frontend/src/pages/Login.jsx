@@ -81,7 +81,7 @@ export default function Login() {
                   id="loginEmail"
                   type="email"
                   required
-                  placeholder="e.g. demo@zai.dev"
+                  placeholder="e.g. developer@zai.dev"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="block w-full pl-9 pr-3 py-2 bg-slate-900 border border-dark-border rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-brand-500 text-xs font-semibold"
@@ -135,15 +135,6 @@ export default function Login() {
               Sign Up
             </Link>
           </p>
-        </div>
-
-        {/* Credentials Note */}
-        <div className="bg-dark-card border border-dark-border rounded-xl p-3.5 text-center text-[10px] text-dark-muted leading-relaxed font-mono border-t-2 border-t-brand-500/40">
-          <span>Demo Email: </span>
-          <span className="text-white bg-dark-bg px-1 py-0.5 rounded">demo@zai.dev</span>
-          <span className="mx-1">|</span>
-          <span>Password: </span>
-          <span className="text-white bg-dark-bg px-1 py-0.5 rounded">password123</span>
         </div>
       </div>
     </div>

@@ -1,79 +1,27 @@
-/**
- * Simulated authentication service for Z.ai Local Coding Assistant.
- * Uses localStorage to simulate user storage.
- */
+import api from './api';
+
 export const authService = {
   login: async ({ email, password }) => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (email === 'demo@zai.dev' && password === 'password123') {
-          const user = {
-            id: 'mock-user-id',
-            name: 'Demo Developer',
-            email: 'demo@zai.dev',
-            createdAt: new Date().toISOString()
-          };
-          resolve({
-            user,
-            token: 'mock-jwt-token-xyz-12345'
-          });
-        } else {
-          reject(new Error('Invalid email or password. Use demo@zai.dev / password123.'));
-        }
-      }, 800);
-    });
+    const response = await api.post('/auth/login', { email, password });
+    return response.data; // Expected response: { success: true, token: "...", user: { id, name, email } }
   },
 
   register: async ({ name, email, password }) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const user = {
-          id: 'mock-user-' + Math.random().toString(36).substr(2, 9),
-          name: name || 'New Developer',
-          email: email,
-          createdAt: new Date().toISOString()
-        };
-        resolve({
-          user,
-          token: 'mock-jwt-token-new-' + Math.random().toString(36).substr(2, 9)
-        });
-      }, 800);
-    });
+    const response = await api.post('/auth/register', { name, email, password });
+    return response.data; // Expected response: { success: true, token: "...", user: { id, name, email } }
   },
 
   getProfile: async () => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const storedUser = localStorage.getItem('zai_mock_user');
-        if (storedUser) {
-          resolve(JSON.parse(storedUser));
-        } else {
-          reject(new Error('Unauthorized'));
-        }
-      }, 300);
-    });
+    const response = await api.get('/auth/profile');
+    return response.data.user; // Expected response: { id, name, email, createdAt }
   },
 
   logout: async () => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({ message: 'Logged out successfully' });
-      }, 200);
-    });
+    return { message: 'Logged out successfully' };
   },
 
   updateProfile: async ({ name }) => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const storedUser = localStorage.getItem('zai_mock_user');
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          user.name = name;
-          resolve(user);
-        } else {
-          reject(new Error('User session not found'));
-        }
-      }, 500);
-    });
+    const response = await api.put('/auth/profile', { name });
+    return response.data.user; // Expected response: { id, name, email, createdAt }
   }
 };

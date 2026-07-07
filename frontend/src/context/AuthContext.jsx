@@ -10,18 +10,18 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const storedUser = localStorage.getItem('zai_mock_user');
-        const storedToken = localStorage.getItem('zai_mock_token');
+        const storedUser = localStorage.getItem('zai_user');
+        const storedToken = localStorage.getItem('zai_token');
         
         if (storedUser && storedToken) {
-          // Verify with mock profile check
+          // Verify profile check
           const profile = await authService.getProfile();
           setUser(profile);
         }
       } catch (err) {
         // Clear broken session
-        localStorage.removeItem('zai_mock_user');
-        localStorage.removeItem('zai_mock_token');
+        localStorage.removeItem('zai_user');
+        localStorage.removeItem('zai_token');
       } finally {
         setLoading(false);
       }
@@ -33,8 +33,8 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const response = await authService.login({ email, password });
-      localStorage.setItem('zai_mock_user', JSON.stringify(response.user));
-      localStorage.setItem('zai_mock_token', response.token);
+      localStorage.setItem('zai_user', JSON.stringify(response.user));
+      localStorage.setItem('zai_token', response.token);
       setUser(response.user);
       return response.user;
     } catch (err) {
@@ -48,8 +48,8 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const response = await authService.register({ name, email, password });
-      localStorage.setItem('zai_mock_user', JSON.stringify(response.user));
-      localStorage.setItem('zai_mock_token', response.token);
+      localStorage.setItem('zai_user', JSON.stringify(response.user));
+      localStorage.setItem('zai_token', response.token);
       setUser(response.user);
       return response.user;
     } catch (err) {
@@ -66,8 +66,8 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       // Still log out on UI side
     } finally {
-      localStorage.removeItem('zai_mock_user');
-      localStorage.removeItem('zai_mock_token');
+      localStorage.removeItem('zai_user');
+      localStorage.removeItem('zai_token');
       setUser(null);
       setLoading(false);
     }
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const updatedUser = await authService.updateProfile({ name });
-      localStorage.setItem('zai_mock_user', JSON.stringify(updatedUser));
+      localStorage.setItem('zai_user', JSON.stringify(updatedUser));
       setUser(updatedUser);
       return updatedUser;
     } catch (err) {
