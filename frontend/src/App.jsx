@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -8,9 +8,11 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Workspace from './pages/Workspace';
-import History from './pages/History';
-import HistoryDetails from './pages/HistoryDetails';
-import Profile from './pages/Profile';
+
+function HistoryRedirect() {
+  const { id } = useParams();
+  return <Navigate to="/app" state={{ historyId: id }} replace />;
+}
 
 export default function App() {
   return (
@@ -33,9 +35,9 @@ export default function App() {
             {/* Redirect / to /app */}
             <Route index element={<Navigate to="/app" replace />} />
             <Route path="app" element={<Workspace />} />
-            <Route path="history" element={<History />} />
-            <Route path="history/:id" element={<HistoryDetails />} />
-            <Route path="profile" element={<Profile />} />
+            <Route path="history" element={<Navigate to="/app" state={{ openHistory: true }} replace />} />
+            <Route path="history/:id" element={<HistoryRedirect />} />
+            <Route path="profile" element={<Navigate to="/app" state={{ openProfile: true }} replace />} />
           </Route>
 
           {/* Fallback Catch-All */}
@@ -45,3 +47,4 @@ export default function App() {
     </Router>
   );
 }
+

@@ -9,25 +9,27 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1', // primary accent
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          50: '#f0fdf4',
+          105: '#dcfce7',
+          200: '#bbf7d0',
+          300: '#86efac',
+          400: '#4ade80',
+          500: '#10b981', // Muted Emerald primary accent
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
+          950: '#022c22',
         },
         dark: {
-          bg: '#0A0E1A',      // ultra dark navy
-          card: '#121826',    // slightly lighter navy card
-          border: '#1E293B',  // slate-800
-          text: '#F8FAFC',    // slate-50
-          muted: '#94A3B8',   // slate-400
-          hover: '#1E2942'    // card hover accent
+          bg: '#141416',       // very dark charcoal graphite main bg
+          sidebar: '#0d0d0e',  // slightly darker sidebar bg
+          card: '#1e1e20',     // conversation surface/bubbles dark gray
+          border: '#2a2a2d',   // soft low-contrast border
+          text: '#f3f4f6',     // off-white text
+          muted: '#8e9196',    // muted gray secondary text
+          hover: '#252528',    // subtle hover gray
+          composer: '#1c1c1e'  // slightly elevated composer surface
         }
       },
       fontFamily: {
