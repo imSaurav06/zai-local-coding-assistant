@@ -1,12 +1,9 @@
 import React, { useState } from 'react';
 import { 
   FiSend, 
-  FiSettings, 
   FiCpu, 
-  FiSliders,
   FiTerminal
 } from 'react-icons/fi';
-import BuildOptions from './BuildOptions';
 import ToolSelector from './ToolSelector';
 
 export default function PromptComposer({ 
@@ -15,12 +12,9 @@ export default function PromptComposer({
   onSend, 
   loading, 
   activeMode,
-  buildOptions,
-  setBuildOptions,
   selectedTool,
   setSelectedTool
 }) {
-  const [showBuildOptions, setShowBuildOptions] = useState(false);
   const [showToolSelector, setShowToolSelector] = useState(false);
 
   const handleKeyDown = (e) => {
@@ -47,16 +41,6 @@ export default function PromptComposer({
   return (
     <div className="relative w-full max-w-4xl mx-auto space-y-2 select-none">
       {/* Configuration Panels (Expand above the composer textbox) */}
-      
-      {activeMode === 'build' && showBuildOptions && (
-        <div className="absolute bottom-full mb-2 left-0 right-0 z-20">
-          <BuildOptions 
-            options={buildOptions} 
-            setOptions={setBuildOptions} 
-            onClose={() => setShowBuildOptions(false)} 
-          />
-        </div>
-      )}
 
       {activeMode === 'tools' && showToolSelector && (
         <div className="absolute bottom-full mb-2 left-0 z-20">
@@ -72,24 +56,8 @@ export default function PromptComposer({
       <div className="relative bg-dark-composer border border-dark-border rounded-2xl focus-within:border-brand-500/80 transition-all p-2 flex items-end shadow-lg shadow-black/20">
         
         {/* Left Option Triggers */}
-        <div className="flex gap-1.5 pb-1 pl-1">
-          {activeMode === 'build' && (
-            <button
-              type="button"
-              onClick={() => setShowBuildOptions(!showBuildOptions)}
-              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-                showBuildOptions 
-                  ? 'bg-brand-500/10 text-brand-500 border-brand-500/25' 
-                  : 'bg-dark-hover text-dark-muted hover:text-white border-dark-border'
-              }`}
-              title="Configure build parameters"
-              aria-label="Build options settings"
-            >
-              <FiSliders className="w-4 h-4" />
-            </button>
-          )}
-
-          {activeMode === 'tools' && (
+        {activeMode === 'tools' && (
+          <div className="flex gap-1.5 pb-1 pl-1">
             <button
               type="button"
               onClick={() => setShowToolSelector(!showToolSelector)}
@@ -104,8 +72,8 @@ export default function PromptComposer({
               <FiTerminal className="w-4 h-4" />
               <span className="hidden sm:inline">{selectedTool ? selectedTool.label : 'Select Tool'}</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Composer Textarea */}
         <textarea

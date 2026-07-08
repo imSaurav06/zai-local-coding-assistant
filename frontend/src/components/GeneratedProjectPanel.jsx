@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import { 
@@ -13,16 +13,13 @@ import {
   FiLayout,
   FiShoppingBag,
   FiGrid,
-  FiActivity
+  FiBookOpen,
+  FiCopy,
+  FiCheck
 } from 'react-icons/fi';
 import api from '../services/api';
 
 export default function GeneratedProjectPanel({ generatedProject }) {
-  const [activeTab, setActiveTab] = useState('plan'); // 'plan' | 'code' | 'preview'
-  const [activeCodeFile, setActiveCodeFile] = useState('App.jsx');
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState('');
-
   const {
     projectName = 'MyProject',
     projectType = 'Web Application',
@@ -34,8 +31,26 @@ export default function GeneratedProjectPanel({ generatedProject }) {
     projectId = null, // Backend projectId
     authRequired = 'Yes',
     adminRequired = 'No',
-    designPreference = 'Dark Navy Professional'
+    designPreference = 'Dark Navy Professional',
+    files = [],
+    runInstructions = null
   } = generatedProject;
+
+  const [activeTab, setActiveTab] = useState('plan'); // 'plan' | 'code' | 'preview'
+  const [activeCodeFile, setActiveCodeFile] = useState('README.md');
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState('');
+
+  // Update active file dynamically when files change
+  useEffect(() => {
+    if (files && files.length > 0) {
+      // Prefer README.md if available
+      const hasReadme = files.some(f => f.name.toLowerCase() === 'readme.md');
+      setActiveCodeFile(hasReadme ? 'README.md' : files[0].name);
+    }
+  }, [files]);
 
   const handleDownload = async () => {
     if (!projectId) {
@@ -48,20 +63,17 @@ export default function GeneratedProjectPanel({ generatedProject }) {
     setDownloadError('');
 
     try {
-      // Trigger request to GET /api/project/:projectId/download
       const response = await api.get(`/project/${projectId}/download`, {
         responseType: 'blob'
       });
 
-      // Trigger browser file download
       const blob = new Blob([response.data], { type: 'application/zip' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       
-      // Attempt to extract filename from headers
       const contentDisposition = response.headers['content-disposition'];
-      let filename = `${projectName.toLowerCase() || 'project'}.zip`;
+      let filename = `${projectName.toLowerCase().replace(/\s+/g, '_') || 'project'}.zip`;
       if (contentDisposition) {
         const matches = /filename="?([^";]+)"?/i.exec(contentDisposition);
         if (matches && matches[1]) {
@@ -83,25 +95,17 @@ export default function GeneratedProjectPanel({ generatedProject }) {
     }
   };
 
-  // Safe file code extraction helper
   const getStarterCode = (filename) => {
-    switch (filename) {
-      case 'App.jsx':
-        return `import React from 'react';\nimport Header from './components/Header';\nimport Dashboard from './pages/Dashboard';\n\nexport default function App() {\n  return (\n    <div className="min-h-screen bg-[#141416] text-white flex flex-col font-sans">\n      <Header projectName="${projectName}" />\n      <main className="flex-grow max-w-7xl mx-auto p-6 w-full">\n        <Dashboard />\n      </main>\n    </div>\n  );\n}`;
-      case 'Component.jsx':
-        return `import React from 'react';\n\nexport default function Header({ projectName }) {\n  return (\n    <header className="bg-[#1e1e20] border-b border-dark-border px-6 py-4 flex justify-between items-center">\n      <h1 className="text-lg font-bold text-white">{projectName}</h1>\n      <span className="text-xs px-2.5 py-1 bg-brand-500/10 text-brand-500 rounded-full border border-brand-500/20 font-medium">\n        Frontend: ${frontendFramework}\n      </span>\n    </header>\n  );\n}`;
-      case 'server.js':
-        return `const express = require('express');\nconst app = express();\n\napp.use(express.json());\n\napp.get('/api/health', (req, res) => {\n  res.json({ status: 'healthy', database: '${database}', framework: '${backendFramework}' });\n});\n\nconst PORT = process.env.PORT || 5000;\napp.listen(PORT, () => console.log('Server active on port ' + PORT));`;
-      case 'routes.js':
-        return `const express = require('express');\nconst router = express.Router();\n\nrouter.get('/items', (req, res) => {\n  res.status(200).json({\n    success: true,\n    message: 'Scaffolded routing route endpoints.',\n    auth: '${authRequired}'\n  });\n});\n\nmodule.exports = router;`;
-      case 'schema.js':
-        return `const mongoose = require('mongoose');\n\nconst ItemSchema = new mongoose.Schema({\n  title: { type: String, required: true },\n  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }\n}, { timestamps: true });\n\nmodule.exports = mongoose.model('Item', ItemSchema);`;
-      default:
-        return '';
-    }
+    const matched = files.find(f => f.name === filename);
+    return matched ? matched.content : '';
   };
 
-  // Previews mock visual representations
+  const handleCopyCommand = (cmd) => {
+    navigator.clipboard.writeText(cmd);
+    setCopiedCommand(cmd);
+    setTimeout(() => setCopiedCommand(''), 2000);
+  };
+
   const renderPreview = () => {
     const isDark = designPreference.toLowerCase().includes('dark');
     const colorThemeClass = isDark ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900';
@@ -111,7 +115,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       return (
         <div className={`p-5 rounded-xl border max-w-lg mx-auto space-y-3 shadow-md ${colorThemeClass} ${cardBgClass}`}>
           <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <h4 className="font-bold flex items-center gap-1 text-xs uppercase tracking-wider">
+            <h4 className="font-bold flex items-center gap-1 text-xs uppercase tracking-wider text-white">
               <FiShoppingBag className="text-brand-500" />
               <span>{projectName || 'E-Shop'}</span>
             </h4>
@@ -119,14 +123,14 @@ export default function GeneratedProjectPanel({ generatedProject }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className={`p-3 border rounded-lg ${cardBgClass} flex flex-col justify-between`}>
-              <h5 className="text-[11px] font-bold">Mechanical Keyboard</h5>
+              <h5 className="text-[11px] font-bold text-white">Mechanical Keyboard</h5>
               <div className="flex justify-between items-center mt-2.5">
                 <span className="text-xs font-semibold text-brand-500">$89</span>
                 <span className="px-1.5 py-0.5 bg-brand-500 text-white rounded text-[8px] font-bold">Add</span>
               </div>
             </div>
             <div className={`p-3 border rounded-lg ${cardBgClass} flex flex-col justify-between`}>
-              <h5 className="text-[11px] font-bold">Wireless Mouse</h5>
+              <h5 className="text-[11px] font-bold text-white">Wireless Mouse</h5>
               <div className="flex justify-between items-center mt-2.5">
                 <span className="text-xs font-semibold text-brand-500">$45</span>
                 <span className="px-1.5 py-0.5 bg-brand-500 text-white rounded text-[8px] font-bold">Add</span>
@@ -141,7 +145,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       return (
         <div className={`p-5 rounded-xl border max-w-lg mx-auto space-y-3 shadow-md ${colorThemeClass} ${cardBgClass}`}>
           <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <h4 className="font-bold flex items-center gap-1 text-xs uppercase tracking-wider">
+            <h4 className="font-bold flex items-center gap-1 text-xs uppercase tracking-wider text-white">
               <FiGrid className="text-brand-500" />
               <span>{projectName || 'Console'}</span>
             </h4>
@@ -165,12 +169,11 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       );
     }
 
-    // Default Preview
     return (
       <div className={`p-5 rounded-xl border max-w-lg mx-auto text-center space-y-3 shadow-md ${colorThemeClass} ${cardBgClass}`}>
         <h4 className="text-sm font-bold text-white">{projectName}</h4>
-        <p className="text-xs text-slate-400">
-          A customized {projectType} layout compiled inside a safe frontend preview sandbox.
+        <p className="text-xs text-slate-400 leading-relaxed">
+          A customized {projectType} layout compiled inside a safe preview sandbox.
         </p>
         <div className="text-[9px] text-slate-500 border-t border-slate-800/40 pt-2 flex justify-center gap-4">
           <span>Frontend: {frontendFramework}</span>
@@ -197,7 +200,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
           )}
         </div>
 
-        {/* Download Project Button - Only show if projectId is available */}
+        {/* Download Project Button */}
         {projectId && (
           <button
             onClick={handleDownload}
@@ -213,6 +216,124 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       {downloadError && (
         <div className="px-4 py-2 border-b border-red-500/20 bg-red-950/10 text-[10px] text-red-400 font-semibold select-none">
           {downloadError}
+        </div>
+      )}
+
+      {/* Collapsible Local Setup Instructions Guide */}
+      {runInstructions && (
+        <div className="border-b border-dark-border bg-[#19191d]">
+          <button
+            onClick={() => setGuideOpen(!guideOpen)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-left text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer select-none"
+          >
+            <span className="flex items-center gap-2">
+              <FiBookOpen className="text-brand-500 w-4 h-4" />
+              <span>How to Run Locally</span>
+            </span>
+            <span className="text-[9px] px-2 py-0.5 bg-slate-900 border border-dark-border text-dark-muted rounded-full">
+              {guideOpen ? 'Hide Guide' : 'Show Guide'}
+            </span>
+          </button>
+
+          {guideOpen && (
+            <div className="p-4 text-xs text-dark-text border-t border-dark-border/40 bg-dark-bg/10 space-y-3 font-sans">
+              <div className="bg-slate-900/60 border border-dark-border/50 rounded-xl p-3.5 space-y-3">
+                {/* Prerequisites */}
+                {runInstructions.prerequisites && runInstructions.prerequisites.length > 0 && (
+                  <div>
+                    <h5 className="font-bold text-white mb-1.5 uppercase text-[9px] tracking-wider text-brand-400 font-mono">Prerequisites</h5>
+                    <ul className="list-disc list-inside text-slate-400 space-y-0.5 pl-1 leading-relaxed">
+                      {runInstructions.prerequisites.map((p, i) => (
+                        <li key={i}>{p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Steps */}
+                {runInstructions.steps && runInstructions.steps.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-white mb-2 uppercase text-[9px] tracking-wider text-brand-400 font-mono">Setup & Execution Steps</h5>
+                    <ol className="list-decimal list-inside text-slate-400 space-y-3.5 pl-1">
+                      {runInstructions.steps.map((step, i) => {
+                        const cmdRegex = /`([^`]+)`/g;
+                        const hasCommand = cmdRegex.test(step);
+                        
+                        if (hasCommand) {
+                          cmdRegex.lastIndex = 0;
+                          const commands = [];
+                          let match;
+                          while ((match = cmdRegex.exec(step)) !== null) {
+                            commands.push(match[1]);
+                          }
+
+                          return (
+                            <li key={i} className="leading-relaxed">
+                              <span>{step.replace(/`([^`]+)`/g, '"$1"')}</span>
+                              <div className="mt-1.5 flex flex-wrap gap-2 pl-4">
+                                {commands.map((cmd, idx) => {
+                                  const isCopied = copiedCommand === cmd;
+                                  return (
+                                    <button
+                                      key={idx}
+                                      onClick={() => handleCopyCommand(cmd)}
+                                      className="px-2 py-1 bg-[#141416] border border-dark-border text-[9px] font-mono text-brand-400 hover:text-white rounded hover:bg-dark-hover active:bg-dark-bg transition-all flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      {isCopied ? <FiCheck className="text-emerald-500" /> : <FiCopy />}
+                                      <span>Copy:</span>
+                                      <code className="text-white bg-black px-1.5 py-0.5 rounded text-[8px] font-bold">{cmd}</code>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </li>
+                          );
+                        }
+
+                        return (
+                          <li key={i} className="leading-relaxed">
+                            {step}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Expected Localhost URLs */}
+                {(runInstructions.frontendUrl || runInstructions.backendUrl) && (
+                  <div className="border-t border-dark-border/40 pt-3 flex flex-wrap gap-6 text-[10px]">
+                    {runInstructions.frontendUrl && (
+                      <div>
+                        <span className="text-dark-muted uppercase font-bold text-[8px] tracking-wider block mb-0.5">Frontend Dev URL</span>
+                        <a
+                          href={runInstructions.frontendUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-brand-400 hover:underline font-mono font-bold"
+                        >
+                          {runInstructions.frontendUrl}
+                        </a>
+                      </div>
+                    )}
+                    {runInstructions.backendUrl && (
+                      <div>
+                        <span className="text-dark-muted uppercase font-bold text-[8px] tracking-wider block mb-0.5">Backend API URL</span>
+                        <a
+                          href={runInstructions.backendUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-brand-400 hover:underline font-mono font-bold"
+                        >
+                          {runInstructions.backendUrl}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -237,16 +358,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
               }`}
             >
               <FiCode className="w-3.5 h-3.5" />
-              <span>Files</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('preview')}
-              className={`px-3.5 py-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'preview' ? 'border-brand-500 text-white' : 'border-transparent text-dark-muted hover:text-white'
-              }`}
-            >
-              <FiEye className="w-3.5 h-3.5" />
-              <span>Preview</span>
+              <span>Files ({files.length})</span>
             </button>
           </div>
 
@@ -279,43 +391,44 @@ export default function GeneratedProjectPanel({ generatedProject }) {
             )}
 
             {/* Code explorer tab */}
-            {activeTab === 'code' && (
+            {activeTab === 'code' && files.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                <div className="md:col-span-3 flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0 select-none md:border-r border-dark-border pr-0 md:pr-2">
-                  {['App.jsx', 'Component.jsx', 'server.js', 'routes.js', 'schema.js'].map((filename) => (
+                <div className="md:col-span-3 flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-y-auto max-h-[300px] pb-2 md:pb-0 select-none md:border-r border-dark-border pr-0 md:pr-2 scrollbar-thin">
+                  {files.map((file) => (
                     <button
-                      key={filename}
-                      onClick={() => setActiveCodeFile(filename)}
+                      key={file.name}
+                      onClick={() => setActiveCodeFile(file.name)}
                       className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-all cursor-pointer flex items-center gap-1.5 flex-shrink-0 ${
-                        activeCodeFile === filename
+                        activeCodeFile === file.name
                           ? 'bg-brand-500/10 text-brand-500'
-                          : 'text-dark-muted hover:text-white bg-transparent'
+                          : 'text-slate-400 hover:text-white bg-transparent'
                       }`}
                     >
-                      {filename.endsWith('.jsx') ? (
-                        <FiLayout className="w-3 h-3 flex-shrink-0" />
-                      ) : filename.endsWith('.js') && filename !== 'schema.js' ? (
-                        <FiServer className="w-3 h-3 flex-shrink-0" />
+                      {file.name.endsWith('.jsx') ? (
+                        <FiLayout className="w-3.5 h-3.5 flex-shrink-0" />
+                      ) : file.name.endsWith('.js') && !file.name.toLowerCase().includes('schema') && !file.name.toLowerCase().includes('model') ? (
+                        <FiServer className="w-3.5 h-3.5 flex-shrink-0" />
+                      ) : file.name.toLowerCase().includes('schema') || file.name.toLowerCase().includes('model') ? (
+                        <FiDatabase className="w-3.5 h-3.5 flex-shrink-0" />
                       ) : (
-                        <FiDatabase className="w-3 h-3 flex-shrink-0" />
+                        <FiCode className="w-3.5 h-3.5 flex-shrink-0" />
                       )}
-                      <span>{filename}</span>
+                      <span className="truncate max-w-[120px] font-mono" title={file.name}>
+                        {file.name.split('/').pop()}
+                      </span>
                     </button>
                   ))}
                 </div>
                 <div className="md:col-span-9">
+                  <div className="text-[10px] text-dark-muted font-mono mb-2 bg-[#141416] px-3 py-1.5 rounded border border-dark-border/40 select-none flex justify-between items-center">
+                    <span>File: <strong className="text-slate-200">{activeCodeFile}</strong></span>
+                    <span className="text-[9px] uppercase tracking-wider text-slate-500">{activeCodeFile.split('.').pop()} source</span>
+                  </div>
                   <CodeBlock
                     code={getStarterCode(activeCodeFile)}
-                    language={activeCodeFile.endsWith('.jsx') ? 'jsx' : 'javascript'}
+                    language={activeCodeFile.endsWith('.jsx') ? 'jsx' : activeCodeFile.endsWith('.json') ? 'json' : 'javascript'}
                   />
                 </div>
-              </div>
-            )}
-
-            {/* Preview Tab */}
-            {activeTab === 'preview' && (
-              <div className="py-2">
-                {renderPreview()}
               </div>
             )}
           </div>

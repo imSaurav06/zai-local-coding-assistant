@@ -47,6 +47,15 @@ export default function Workspace() {
             setError('');
             setLoading(true);
             const historyItem = await historyService.getHistoryById(location.state.historyId);
+            if (historyItem.type === 'project' && historyItem.projectId) {
+              try {
+                const projectDetails = await projectService.getProjectById(historyItem.projectId);
+                historyItem.files = projectDetails.files;
+                historyItem.runInstructions = projectDetails.runInstructions;
+              } catch (e) {
+                console.error("Failed to load project details for history item:", e.message);
+              }
+            }
             handleSelectHistoryItem(historyItem);
           } catch (err) {
             setError('Could not retrieve history record.');
@@ -62,16 +71,6 @@ export default function Workspace() {
 
 
   // Mode settings configurations
-  const [buildOptions, setBuildOptions] = useState({
-    projectName: '',
-    projectType: 'Web Application',
-    frontendFramework: 'React.js (Vite)',
-    backendFramework: 'Express.js (Node)',
-    database: 'MongoDB (Mongoose)',
-    authRequired: 'Yes',
-    adminRequired: 'No',
-    designPreference: 'Dark Navy Professional'
-  });
 
   const [selectedTool, setSelectedTool] = useState({
     id: 'gen-react-component',
@@ -105,50 +104,24 @@ export default function Workspace() {
 
     try {
       if (activeMode === 'build') {
-        // Build Project Mode logic
+        // Stage 1: Requirement Analysis
         const payload = {
-          prompt: userText,
-          projectName: buildOptions.projectName,
-          projectType: buildOptions.projectType,
-          frontendFramework: buildOptions.frontendFramework,
-          backendFramework: buildOptions.backendFramework,
-          database: buildOptions.database,
-          authRequired: buildOptions.authRequired,
-          adminRequired: buildOptions.adminRequired,
-          designPreference: buildOptions.designPreference
+          prompt: userText
         };
 
-        const response = await projectService.generateProject(payload);
-
-        // Save history in background
-        const savedItem = await historyService.saveHistory({
-          prompt: `Build Project: ${payload.projectName || 'Dynamic Project'} - ${userText.substring(0, 40)}...`,
-          response: response.result,
-          type: 'project',
-          model: response.model
-        });
+        const response = await projectService.analyzeProject(payload);
 
         setMessages((prev) => [
           ...prev,
           {
             sender: 'assistant',
-            content: 'I have successfully scaffolded your project blueprints and starter directory files.',
+            type: 'project-spec',
+            originalPrompt: userText,
+            projectSpec: response.projectSpec,
             timestamp: new Date(),
-            model: response.model,
-            generatedProject: {
-              projectName: payload.projectName || 'Dynamic Project',
-              projectType: payload.projectType,
-              frontendFramework: payload.frontendFramework,
-              backendFramework: payload.backendFramework,
-              database: payload.database,
-              result: response.result,
-              model: response.model,
-              projectId: response.projectId,
-              files: response.files,
-              authRequired: payload.authRequired,
-              adminRequired: payload.adminRequired,
-              designPreference: payload.designPreference
-            }
+            model: 'glm-4.5-flash',
+            generating: false,
+            generationError: null
           }
         ]);
 
@@ -203,6 +176,76 @@ export default function Workspace() {
     }
   };
 
+  const handleGenerateProject = async (msgIndex, editedSpec) => {
+    // Set message generating state
+    setMessages((prev) => {
+      const updated = [...prev];
+      updated[msgIndex] = {
+        ...updated[msgIndex],
+        generating: true,
+        generationError: null
+      };
+      return updated;
+    });
+
+    try {
+      const msg = messages[msgIndex];
+      const response = await projectService.generateProject({
+        originalPrompt: msg.originalPrompt,
+        projectSpec: editedSpec
+      }, (progressData) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[msgIndex] = {
+            ...updated[msgIndex],
+            progressStage: progressData.stage,
+            progressText: progressData.text
+          };
+          return updated;
+        });
+      });
+
+      // Update message state with final files, instructions, plan etc.
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[msgIndex] = {
+          sender: 'assistant',
+          content: 'I have successfully scaffolded your project blueprints and starter directory files.',
+          timestamp: new Date(),
+          model: response.model,
+          generatedProject: {
+            projectName: editedSpec.projectName || 'Dynamic Project',
+            projectType: editedSpec.projectType,
+            frontendFramework: editedSpec.frontend,
+            backendFramework: editedSpec.backend,
+            database: editedSpec.database,
+            result: response.result,
+            model: response.model,
+            projectId: response.projectId,
+            files: response.files,
+            runInstructions: response.runInstructions,
+            authRequired: editedSpec.authentication,
+          },
+          generating: false,
+          generationError: null
+        };
+        return updated;
+      });
+
+    } catch (err) {
+      console.error("GENERATION COMPONENT FAILURE:", err);
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[msgIndex] = {
+          ...updated[msgIndex],
+          generating: false,
+          generationError: err.response?.data?.error || err.message || 'Generation and validation failed.'
+        };
+        return updated;
+      });
+    }
+  };
+
   const handleSelectHistoryItem = (historyItem) => {
     const userMsg = { sender: 'user', content: historyItem.prompt, timestamp: new Date(historyItem.createdAt) };
     
@@ -216,7 +259,9 @@ export default function Workspace() {
         projectName: historyItem.prompt.replace('Build Project: ', '').split(' - ')[0] || 'ScaffoldedProject',
         result: historyItem.response,
         model: historyItem.model,
-        projectId: historyItem.projectId || null
+        projectId: historyItem.projectId || null,
+        files: historyItem.files || [],
+        runInstructions: historyItem.runInstructions || null
       } : null
     };
 
@@ -330,7 +375,12 @@ export default function Workspace() {
           ) : (
             <div className="space-y-6 w-full animate-fadeIn pb-12">
               {messages.map((msg, index) => (
-                <MessageBubble key={index} msg={msg} />
+                <MessageBubble 
+                  key={index} 
+                  msg={msg} 
+                  msgIndex={index}
+                  onGenerateProject={handleGenerateProject}
+                />
               ))}
             </div>
           )}
@@ -346,8 +396,6 @@ export default function Workspace() {
             onSend={handleSend} 
             loading={loading}
             activeMode={activeMode}
-            buildOptions={buildOptions}
-            setBuildOptions={setBuildOptions}
             selectedTool={selectedTool}
             setSelectedTool={setSelectedTool}
           />

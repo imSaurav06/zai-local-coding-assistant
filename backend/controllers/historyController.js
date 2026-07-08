@@ -9,7 +9,7 @@ const MAX_HISTORY_RECORDS = 50;
 // @access  Private
 const createHistory = async (req, res) => {
     try {
-        const { prompt, response, type, model } = req.body;
+        const { prompt, response, type, model, projectId, originalPrompt, projectSpec, generationStatus, summary } = req.body;
 
         if (!prompt || !response || !type || !model) {
             return res.status(400).json({
@@ -33,6 +33,11 @@ const createHistory = async (req, res) => {
             response,
             type,
             model,
+            projectId,
+            originalPrompt,
+            projectSpec,
+            generationStatus,
+            summary
         });
 
         // Automatically delete oldest records if total count exceeds the limit of 50

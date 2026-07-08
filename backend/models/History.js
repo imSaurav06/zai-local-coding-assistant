@@ -24,6 +24,22 @@ const historySchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        projectId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Project",
+        },
+        originalPrompt: {
+            type: String,
+        },
+        projectSpec: {
+            type: mongoose.Schema.Types.Mixed,
+        },
+        generationStatus: {
+            type: String,
+        },
+        summary: {
+            type: String,
+        },
     },
     {
         timestamps: true,
