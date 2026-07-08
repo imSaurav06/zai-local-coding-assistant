@@ -48,6 +48,9 @@ const analyze = async (req, res) => {
 const generate = async (req, res) => {
     console.log("REQUEST:", req.method, req.url);
 
+    let progressEmitter = null;
+    let cancelled = false;
+    let completed = false;
     try {
         const { originalPrompt, projectSpec } = req.body;
 
@@ -66,10 +69,8 @@ const generate = async (req, res) => {
         }
 
         // Initialize progress emitter (SSE)
-        const progressEmitter = createProgressEmitter(res);
+        progressEmitter = createProgressEmitter(res);
 
-        let cancelled = false;
-        let completed = false;
         const controller = new AbortController();
 
         req.on("close", () => {

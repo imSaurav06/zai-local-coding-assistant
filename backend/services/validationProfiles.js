@@ -20,8 +20,9 @@ const validateRelativeImports = (files) => {
 
         // Check relative imports for JS/JSX/TS/TSX
         if (filePath.endsWith(".js") || filePath.endsWith(".jsx") || filePath.endsWith(".ts") || filePath.endsWith(".tsx")) {
-            // Match relative imports or requires e.g. import x from './y' or require('../z')
-            const importRegex = /(?:import|export)\s+[\s\S]*?\s+from\s+['"](\.\.?\/[^'"]+)['"]/g;
+            // Match relative imports or requires e.g. import x from './y', import './styles.css' or require('../z')
+            const importFromRegex = /(?:import|export)\s+[\s\S]*?\s+from\s+['"](\.\.?\/[^'"]+)['"]/g;
+            const importDirectRegex = /import\s+['"](\.\.?\/[^'"]+)['"]/g;
             const requireRegex = /require\s*\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g;
 
             let match;
@@ -39,7 +40,10 @@ const validateRelativeImports = (files) => {
                 }
             };
 
-            while ((match = importRegex.exec(content)) !== null) {
+            while ((match = importFromRegex.exec(content)) !== null) {
+                checkImport(match[1]);
+            }
+            while ((match = importDirectRegex.exec(content)) !== null) {
                 checkImport(match[1]);
             }
             while ((match = requireRegex.exec(content)) !== null) {

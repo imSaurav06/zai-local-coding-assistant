@@ -181,7 +181,8 @@ const generateUnitCode = async (unit, projectSpec, contracts, options = {}) => {
 Rules:
 1. Provide only the file paths and complete code files requested.
 2. Never output verbose explanations, markdown commentary, or design footnotes.
-3. The files block must be enclosed exactly within:
+3. You must strictly only import relative/local modules that correspond to paths in the SHARED CONTRACTS folderStructure. Never introduce new relative imports that are not declared in the contracts folderStructure.
+4. The files block must be enclosed exactly within:
 --- START_FILES ---
 
 For each file, use this exact separator structure (including the dashes):

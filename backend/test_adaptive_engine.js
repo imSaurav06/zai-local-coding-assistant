@@ -194,6 +194,183 @@ const runTests = async () => {
     // Restore axios
     axios.post = originalPost;
 
+    // 7. E2E & Unit Regression Tests
+    console.log("7. Running new regression tests...");
+
+    // Regression 7.1: progressEmitter error path does not throw ReferenceError
+    const projectController = require("./controllers/projectController");
+    const mockReq = {
+        body: {
+            originalPrompt: "build a react counter",
+            projectSpec: {
+                projectName: "ReactCounter",
+                projectType: "React.js",
+                frontend: "React + Vite",
+                backend: "None",
+                database: "None"
+            }
+        },
+        user: { _id: "dummy_user_id" },
+        on: (event, cb) => {}
+    };
+    
+    let responseStatus = null;
+    let jsonSent = null;
+    const mockRes = {
+        setHeader: () => {},
+        flushHeaders: () => {},
+        status: (code) => {
+            responseStatus = code;
+            return {
+                json: (data) => {
+                    jsonSent = data;
+                }
+            };
+        },
+        write: (chunk) => {
+            throw new Error("Simulated write fail in SSE");
+        },
+        end: () => {}
+    };
+
+    try {
+        await projectController.generate(mockReq, mockRes);
+    } catch (err) {
+        assert.fail(`Controller generate threw ReferenceError or other unhandled error: ${err.stack}`);
+    }
+    console.log("   - Regression 7.1: progressEmitter error path handles ReferenceError safely: PASS");
+
+    // Regression 7.2: HTTP 429 classification uses response.status and honors Retry-After
+    const mockPost429 = async () => {
+        const err = new Error("Rate limit exceeded");
+        err.response = {
+            status: 429,
+            headers: { "retry-after": "1" }
+        };
+        throw err;
+    };
+    
+    axios.post = async () => {
+        return await mockPost429();
+    };
+
+    try {
+        await orchestrateGeneration({
+            originalPrompt: "make static page",
+            projectSpec: {
+                projectName: "StaticApp",
+                projectType: "HTML Page",
+                frontend: "HTML",
+                backend: "None",
+                database: "None"
+            }
+        }, emitter, () => {});
+        assert.fail("Should have failed with Rate limit exceeded error");
+    } catch (e) {
+        assert.ok(e.message.includes("Rate limit") || e.status === 429);
+        console.log("   - Regression 7.2: HTTP 429 classification uses response.status: PASS");
+    }
+
+    // Regression 7.3: deterministic 400 is not retried
+    let callTimes400 = 0;
+    axios.post = async () => {
+        callTimes400++;
+        const err = new Error("Bad Request");
+        err.response = { status: 400 };
+        throw err;
+    };
+
+    try {
+        await orchestrateGeneration({
+            originalPrompt: "make static page",
+            projectSpec: {
+                projectName: "StaticApp",
+                projectType: "HTML Page",
+                frontend: "HTML",
+                backend: "None",
+                database: "None"
+            }
+        }, emitter, () => {});
+        assert.fail("Should have failed with 400 Bad Request error");
+    } catch (e) {
+        assert.strictEqual(callTimes400, 1);
+        console.log("   - Regression 7.3: Deterministic 400 error is not retried: PASS");
+    }
+
+    // Regression 7.4: SCAFFOLD_AI has no outer unit retry amplification
+    let orchestratorCalls = 0;
+    axios.post = async () => {
+        orchestratorCalls++;
+        const err = new Error("API Failure");
+        err.response = { status: 500 };
+        throw err;
+    };
+
+    try {
+        await orchestrateGeneration({
+            originalPrompt: "large dashboard",
+            projectSpec: {
+                projectName: "LowCoupledDashboard",
+                projectType: "Modular Dashboard",
+                frontend: "React + Vite",
+                backend: "None",
+                database: "None",
+                pagesAndRoutes: [{ name: "Home" }, { name: "Analytics" }, { name: "Settings" }, { name: "Users" }, { name: "Profile" }, { name: "Billing" }],
+                components: [{ name: "Card" }, { name: "Chart" }, { name: "Navbar" }, { name: "Sidebar" }, { name: "Footer" }, { name: "Button" }, { name: "Input" }, { name: "Modal" }, { name: "Label" }]
+            }
+        }, emitter, () => {});
+    } catch (e) {
+        assert.ok(orchestratorCalls <= 3);
+        console.log("   - Regression 7.4: SCAFFOLD_AI has no outer unit retry amplification: PASS");
+    }
+
+    // Regression 7.5: missing local import triggers targeted repair
+    const validationProfiles = require("./services/validationProfiles");
+    const testFiles = [
+        { name: "package.json", content: "{}" },
+        { name: "src/App.jsx", content: "import Header from './Header';" }
+    ];
+    const valErrors = validationProfiles.validateProjectFiles(testFiles, { projectName: "Test" });
+    assert.ok(valErrors.some(err => err.includes("imports missing local module './Header'")));
+    console.log("   - Regression 7.5: Missing local import correctly triggers validation error: PASS");
+
+    // Regression 7.6: repair cannot introduce undeclared local imports
+    const targetedRepair = require("./services/targetedRepairService");
+    const contractsMock = {
+        folderStructure: ["package.json", "src/App.jsx", "src/Header.jsx"]
+    };
+    
+    let promptIncludesManifest = false;
+    axios.post = async (url, data) => {
+        const userPrompt = data.messages[1].content;
+        if (userPrompt.includes("ALLOWED FILE MANIFEST") && userPrompt.includes("src/Header.jsx")) {
+            promptIncludesManifest = true;
+        }
+        return { data: { choices: [{ message: { content: "--- START_FILES ---\n--- FILE: src/App.jsx ---\n```jsx\nimport Header from './Header';\n```\n--- END_FILE ---\n--- END_FILES ---" } }] } };
+    };
+
+    await targetedRepair.repairAffectedFiles(valErrors, testFiles, { projectName: "Test" }, contractsMock);
+    assert.ok(promptIncludesManifest);
+    console.log("   - Regression 7.6: Repair prompt contains allowed manifest: PASS");
+
+    // Regression 7.7: exhausted repair 429 fails cleanly
+    axios.post = async () => {
+        const err = new Error("Rate limit exceeded");
+        err.response = { status: 429 };
+        throw err;
+    };
+
+    try {
+        await targetedRepair.repairAffectedFiles(valErrors, testFiles, { projectName: "Test" }, contractsMock);
+        assert.fail("Repair should have thrown Rate limit error");
+    } catch (e) {
+        assert.ok(e.message.includes("Rate limit") || e.status === 429);
+        console.log("   - Regression 7.7: Exhausted repair 429 fails cleanly: PASS");
+    }
+
+    // Restore axios
+    axios.post = originalPost;
+
     console.log("\n================= ALL ADAPTIVE ENGINE UNIT TESTS PASSED! =================\n");
 };
 

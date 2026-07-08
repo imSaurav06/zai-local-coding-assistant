@@ -16,7 +16,7 @@ const mapErrorsToFiles = (errors, files) => {
     return Array.from(affected);
 };
 
-const repairAffectedFiles = async (errors, files, projectSpec, contracts) => {
+const repairAffectedFiles = async (errors, files, projectSpec, contracts, options = {}) => {
     const affectedNames = mapErrorsToFiles(errors, files);
     const affectedFiles = files.filter(f => affectedNames.includes(f.name));
 
@@ -24,7 +24,8 @@ const repairAffectedFiles = async (errors, files, projectSpec, contracts) => {
 Rules:
 1. Fix all validation errors listed below.
 2. Return only the complete corrected content of the affected files. Do not modify unaffected files.
-3. The corrected files block must be enclosed exactly within:
+3. You must strictly only import relative/local modules that correspond to paths in the ALLOWED FILE MANIFEST. Never introduce new relative imports that are not declared in the manifest.
+4. The corrected files block must be enclosed exactly within:
 --- START_FILES ---
 
 For each file, use this exact separator structure (including the dashes):
@@ -37,6 +38,9 @@ For each file, use this exact separator structure (including the dashes):
 --- END_FILES ---`;
 
     const userPrompt = `PROJECT: ${projectSpec.projectName}
+ALLOWED FILE MANIFEST (EXACT ALLOWED LOCAL MODULE PATHS):
+${JSON.stringify(contracts.folderStructure || [], null, 2)}
+
 SHARED CONTRACTS:
 ${JSON.stringify(contracts, null, 2)}
 
@@ -49,7 +53,7 @@ ${affectedFiles.map(f => `--- FILE: ${f.name} ---\n${f.content}\n--- END_FILE --
 Please output the corrected version of these affected files. Ensure that local paths match the contracts folder structure.`;
 
     console.warn(`REPAIR SERVICE: Repairing ${affectedNames.length} affected files: ${affectedNames.join(", ")}`);
-    const rawOutput = await executeAiRequest(systemPrompt, userPrompt);
+    const rawOutput = await executeAiRequest(systemPrompt, userPrompt, options);
     const repairedFiles = parseGeneratedFiles(rawOutput);
 
     // Merge repaired files back into the original file array

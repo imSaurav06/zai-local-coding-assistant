@@ -172,51 +172,35 @@ ${JSON.stringify(projectSpec, null, 2)}`;
             
             progressEmitter.emit("Generating Modules", `Generating modules group (${completedUnits}/${totalUnits})...`);
             
-            const promises = group.map(async (unit) => {
-                const rawOutput = await generateUnitCode(unit, projectSpec, contracts, {
-                    cancelSignal: options.cancelSignal,
-                    callMetricsCollector,
-                    callIndex: callIndex++,
-                    strategy: plan.strategy
-                });
-                return parseGeneratedFiles(rawOutput);
-            });
-
             // Conservatively process concurrent requests up to limit of 3
             const limit = 3;
-            for (let i = 0; i < promises.length; i += limit) {
+            for (let i = 0; i < group.length; i += limit) {
                 verifyCancellation();
-                const chunk = promises.slice(i, i + limit);
-                const results = await Promise.allSettled(chunk);
+                const chunk = group.slice(i, i + limit);
+                
+                const promises = chunk.map(async (unit) => {
+                    const rawOutput = await generateUnitCode(unit, projectSpec, contracts, {
+                        cancelSignal: options.cancelSignal,
+                        callMetricsCollector,
+                        callIndex: callIndex++,
+                        strategy: plan.strategy
+                    });
+                    return parseGeneratedFiles(rawOutput);
+                });
+
+                const results = await Promise.allSettled(promises);
                 
                 for (let idx = 0; idx < results.length; idx++) {
                     const res = results[idx];
-                    const unit = group[i + idx];
+                    const unit = chunk[idx];
                     
                     if (res.status === "fulfilled") {
                         aiGeneratedFiles.push(...res.value);
                     } else {
-                        // Retry only failed unit
                         verifyCancellation();
-                        console.warn(`UNIT GENERATION FAILED FOR ${unit.id}: ${res.reason ? res.reason.message : "unknown error"}. Retrying unit...`);
-                        let success = false;
-                        let retryAttempt = 0;
-                        while (!success && retryAttempt < 2) {
-                            verifyCancellation();
-                            retryAttempt++;
-                            try {
-                                const files = await generateUnitCode(unit, projectSpec, contracts, {
-                                    cancelSignal: options.cancelSignal,
-                                    callMetricsCollector,
-                                    callIndex: callIndex++,
-                                    strategy: plan.strategy
-                                });
-                                aiGeneratedFiles.push(...parseGeneratedFiles(files));
-                                success = true;
-                                console.log(`UNIT GENERATION RETRY SUCCESSFUL FOR ${unit.id} on attempt #${retryAttempt}`);
-                            } catch (retryErr) {
-                                console.error(`UNIT GENERATION RETRY FAILED FOR ${unit.id} on attempt #${retryAttempt}: ${retryErr.message}`);
-                            }
+                        console.error(`UNIT GENERATION FAILED FOR ${unit.id}: ${res.reason ? res.reason.message : "unknown error"}. Unit will not be retried by the orchestrator.`);
+                        if (res.reason && (res.reason.status === 429 || res.reason.message.includes("Rate limit"))) {
+                            throw res.reason;
                         }
                     }
                 }
@@ -257,10 +241,18 @@ ${JSON.stringify(projectSpec, null, 2)}`;
         progressEmitter.emit("Repairing Code", `Running targeted validation repairs (Attempt ${attempt}/${plan.repairPolicy.maxAttempts})...`);
         const repStart = Date.now();
         try {
-            finalFiles = await repairAffectedFiles(validationErrors, finalFiles, projectSpec, contracts);
+            finalFiles = await repairAffectedFiles(validationErrors, finalFiles, projectSpec, contracts, {
+                cancelSignal: options.cancelSignal,
+                callMetricsCollector,
+                callIndex: callIndex++,
+                strategy: plan.strategy
+            });
             validationErrors = validateProjectFiles(finalFiles, projectSpec);
         } catch (repairErr) {
             console.error("TARGETED REPAIR FAILED:", repairErr.message);
+            if (repairErr.status === 429 || repairErr.message.includes("Rate limit")) {
+                throw new Error("Rate limit (HTTP 429) exceeded during targeted repair phase.");
+            }
         }
         repairMs += (Date.now() - repStart);
     }
