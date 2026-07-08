@@ -1,4 +1,5 @@
 const axios = require("axios");
+const providerRouter = require("./aiProviders/providerRouter");
 
 // Adaptive timeout calculator based on strategy and token budget
 const calculateAdaptiveTimeout = (strategy, tokenBudget) => {
@@ -94,72 +95,117 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
     const unitId = options.unitId || "all_source_files";
     const tokenBudget = options.tokenBudget || 2000;
     
-    // Determine timeout
-    const configuredTimeout = options.timeout || calculateAdaptiveTimeout(strategy, tokenBudget);
-
-    const apiCall = () => {
-        const config = {
-            headers: {
-                Authorization: `Bearer ${process.env.ZAI_API_KEY}`,
-                "Content-Type": "application/json",
-            },
-            timeout: configuredTimeout
-        };
-        if (options.cancelSignal) {
-            config.signal = options.cancelSignal;
-        }
-
-        return axios.post(
-            `${process.env.ZAI_BASE_URL}/chat/completions`,
-            {
-                model: process.env.ZAI_MODEL,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt }
-                ],
-                stream: false
-            },
-            config
-        );
-    };
-
-    // Tracking stats for this call
+    const primaryProvider = providerRouter.getPrimaryProvider();
+    const fallbackProvider = providerRouter.getFallbackProvider();
+    
     const stats = {
         callIndex,
         strategy,
         unitId,
         requestedTokenBudget: tokenBudget,
-        configuredTimeout,
+        configuredTimeout: 0,
         callDuration: 0,
         success: true,
         errorCode: "",
         retries: 0,
         retryWaitMs: 0,
         timeoutCount: 0,
-        networkErrorCount: 0
+        networkErrorCount: 0,
+        primaryProvider,
+        finalProvider: primaryProvider,
+        providerAttempts: 1,
+        fallbackUsed: false,
+        fallbackReason: ""
     };
 
     const startTime = Date.now();
+
+    const runForProvider = async (provider) => {
+        stats.finalProvider = provider;
+        const configuredTimeout = options.timeout || calculateAdaptiveTimeout(strategy, tokenBudget);
+        stats.configuredTimeout = configuredTimeout;
+        
+        const apiCall = () => {
+            const config = {};
+            if (options.cancelSignal) {
+                config.signal = options.cancelSignal;
+            }
+            config.timeout = configuredTimeout;
+
+            const messages = [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ];
+
+            return providerRouter.sendChatCompletionDirect(provider, messages, config, options);
+        };
+
+        return await executeWithBackoff(apiCall, 2, 1000, options, stats);
+    };
+
     try {
-        const response = await executeWithBackoff(apiCall, 2, 1000, options, stats);
+        const response = await runForProvider(primaryProvider);
         stats.callDuration = Date.now() - startTime;
         
         if (options.callMetricsCollector) {
             options.callMetricsCollector.push(stats);
         }
 
-        // Print Call Metrics Logging
-        console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
+        console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
 
-        return response.data.choices[0].message.content.trim();
-    } catch (err) {
-        stats.callDuration = Date.now() - startTime;
-        if (options.callMetricsCollector) {
-            options.callMetricsCollector.push(stats);
+        return response.content.trim();
+    } catch (primaryErr) {
+        const status = primaryErr.response ? primaryErr.response.status : null;
+        const code = primaryErr.code || "";
+        
+        const isRateLimit = status === 429 || primaryErr.message.includes("429");
+        const isTimeout = code === "ECONNABORTED" || (primaryErr.message && primaryErr.message.toLowerCase().includes("timeout"));
+        const isNetwork = ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"].includes(code);
+        const isTransient5xx = status >= 500 && status <= 599;
+        const isFallbackEligible = isRateLimit || isTimeout || isNetwork || isTransient5xx;
+
+        if (isFallbackEligible && fallbackProvider && fallbackProvider !== primaryProvider) {
+            console.warn(`[AI Failover] Primary provider ${primaryProvider} failed. Triggering fallback ${fallbackProvider}... Reason: ${primaryErr.message}`);
+            stats.fallbackUsed = true;
+            stats.providerAttempts = 2;
+            stats.fallbackReason = primaryErr.message;
+            
+            try {
+                // Execute fallback provider with its own retry/backoff policy
+                const response = await runForProvider(fallbackProvider);
+                stats.callDuration = Date.now() - startTime;
+                
+                if (options.callMetricsCollector) {
+                    options.callMetricsCollector.push(stats);
+                }
+
+                console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} (fallback) unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
+
+                return response.content.trim();
+            } catch (fallbackErr) {
+                stats.callDuration = Date.now() - startTime;
+                stats.success = false;
+                stats.errorCode = fallbackErr.code || (fallbackErr.response?.status ? `HTTP_${fallbackErr.response.status}` : "ERROR");
+                
+                if (options.callMetricsCollector) {
+                    options.callMetricsCollector.push(stats);
+                }
+
+                console.error(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} (fallback) unit=${stats.unitId} duration=${stats.callDuration}ms success=false error=${stats.errorCode} retries=${stats.retries}`);
+                throw fallbackErr;
+            }
+        } else {
+            stats.callDuration = Date.now() - startTime;
+            stats.success = false;
+            stats.errorCode = primaryErr.code || (primaryErr.response?.status ? `HTTP_${primaryErr.response.status}` : "ERROR");
+
+            if (options.callMetricsCollector) {
+                options.callMetricsCollector.push(stats);
+            }
+
+            console.error(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} unit=${stats.unitId} duration=${stats.callDuration}ms success=false error=${stats.errorCode} retries=${stats.retries}`);
+            throw primaryErr;
         }
-
-        console.error(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} unit=${stats.unitId} duration=${stats.callDuration}ms success=false error=${stats.errorCode} retries=${stats.retries}`);
-        throw err;
     }
 };
 

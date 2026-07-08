@@ -1,44 +1,33 @@
-const axios = require("axios");
+const providerRouter = require("./aiProviders/providerRouter");
 
 const generateAIResponse = async (prompt) => {
     try {
-        console.log("1. AI SERVICE STARTED");
+        console.log("1. AI SERVICE STARTED VIA PROVIDER ROUTER");
 
-        const response = await axios.post(
-            `${process.env.ZAI_BASE_URL}/chat/completions`,
+        const messages = [
             {
-                model: process.env.ZAI_MODEL,
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are an expert AI coding assistant. Generate clean code and explain it clearly.",
-                    },
-                    {
-                        role: "user",
-                        content: prompt,
-                    },
-                ],
+                role: "system",
+                content: "You are an expert AI coding assistant. Generate clean code and explain it clearly.",
             },
             {
-                headers: {
-                    Authorization: `Bearer ${process.env.ZAI_API_KEY}`,
-                    "Content-Type": "application/json",
-                },
-                timeout: 120000,
-            }
-        );
+                role: "user",
+                content: prompt,
+            },
+        ];
 
-        console.log("2. ZAI RESPONSE RECEIVED");
+        const data = await providerRouter.sendChatCompletion(messages, {
+            timeout: 120000,
+        });
+
+        console.log("2. AI RESPONSE RECEIVED VIA PROVIDER ROUTER");
 
         return {
-            result: response.data.choices[0].message.content,
-            model: process.env.ZAI_MODEL,
+            result: data.content,
+            model: data.model,
+            provider: data.provider
         };
     } catch (error) {
-        console.error("ZAI ERROR STATUS:", error.response?.status);
-        console.error("ZAI ERROR DATA:", error.response?.data);
-        console.error("ZAI ERROR MESSAGE:", error.message);
-
+        console.error("AI SERVICE ERROR:", error.message);
         throw error;
     }
 };

@@ -9,6 +9,10 @@ const { orchestrateGeneration } = require("./services/generationOrchestrator");
 const { calculateAdaptiveTimeout } = require("./services/aiGenerationExecutor");
 
 const runTests = async () => {
+    // Stub keys for provider tests to proceed to mocked axios.post calls
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    process.env.ZAI_API_KEY = "test-zai-key";
+
     console.log("================= STARTING ADAPTIVE ENGINE UNIT TESTS =================\n");
 
     // 1. Test strategy selections in planner
@@ -161,9 +165,9 @@ const runTests = async () => {
         }, emitter, () => {});
         assert.fail("Generation should have failed on network timeout limits");
     } catch (e) {
-        // Initial call + 2 retries = 3 total post calls
-        assert.strictEqual(postCalls, 3);
-        console.log("   - Bounded retries limit strictly respected: PASS");
+        // Primary (1 + 2 retries) + Fallback (1 + 2 retries) = 6 total post calls
+        assert.strictEqual(postCalls, 6);
+        console.log("   - Bounded retries and failover limit strictly respected: PASS");
     }
 
     // 6. Test Client Cancellation Abort
@@ -370,6 +374,82 @@ const runTests = async () => {
 
     // Restore axios
     axios.post = originalPost;
+
+    // 8. Test Provider Router & Preview Sandbox Capabilities
+    console.log("8. Testing Provider Router & Fallback Rules...");
+    const providerRouter = require("./services/aiProviders/providerRouter");
+    const previewService = require("./services/previewService");
+    const fs = require("fs");
+    const path = require("path");
+
+    // Test Provider routing interfaces
+    assert.strictEqual(typeof providerRouter.getPrimaryProvider, "function");
+    assert.strictEqual(typeof providerRouter.getFallbackProvider, "function");
+    console.log("   - Provider router getter helper functions: PASS");
+
+    // Test Path safety checks in previewService
+    console.log("   - Testing path traversal rejection in preview sandbox...");
+    const tempDir = path.resolve(__dirname, "temp_previews/test_traversal");
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const mockUser = { _id: "user123" };
+    const mockProject = {
+        userId: "user123",
+        files: [
+            { name: "package.json", content: "{}" },
+            { name: "../traversal.txt", content: "malicious" }
+        ]
+    };
+
+    // Mock Project.findById
+    const Project = require("./models/Project");
+    const originalFindById = Project.findById;
+    Project.findById = async () => mockProject;
+
+    try {
+        await previewService.startPreview("project123", "user123");
+        assert.fail("Should have thrown path traversal escape error");
+    } catch (e) {
+        assert.ok(e.message.includes("Path traversal") || e.message.includes("escape") || e.message.includes("traversal"));
+        console.log("   - Path traversal attempt throws correctly: PASS");
+    }
+
+    // Test Ownership check
+    console.log("   - Testing preview project ownership validation...");
+    try {
+        await previewService.startPreview("project123", "different_user");
+        assert.fail("Should have thrown Forbidden error");
+    } catch (e) {
+        assert.strictEqual(e.status, 403);
+        console.log("   - Different owner throws 403 Forbidden: PASS");
+    }
+
+    // Test Duplicate startup prevention
+    console.log("   - Testing preview duplicate-start protection...");
+    mockProject.files = [{ name: "package.json", content: "{}" }];
+    
+    // Stub activePreviews
+    previewService.activePreviews.clear();
+    const mockSession = {
+        projectId: "project123",
+        status: "ready",
+        port: 9999,
+        url: "http://localhost:9999",
+        errors: [],
+        lastActive: Date.now()
+    };
+    previewService.activePreviews.set("project123", mockSession);
+
+    const dupRes = await previewService.startPreview("project123", "user123");
+    assert.strictEqual(dupRes.status, "ready");
+    assert.strictEqual(dupRes.port, 9999);
+    console.log("   - Duplicate start returns active session status: PASS");
+
+    // Restore Project stub
+    Project.findById = originalFindById;
+    previewService.activePreviews.clear();
 
     console.log("\n================= ALL ADAPTIVE ENGINE UNIT TESTS PASSED! =================\n");
 };

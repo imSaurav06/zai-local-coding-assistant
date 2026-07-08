@@ -4,6 +4,7 @@ const History = require("../models/History");
 const AdmZip = require("adm-zip");
 const { orchestrateGeneration } = require("../services/generationOrchestrator");
 const { createProgressEmitter } = require("../services/progressEmitter");
+const previewService = require("../services/previewService");
 
 /**
  * Stage 1: Requirement Analysis
@@ -219,9 +220,54 @@ const getProjectById = async (req, res) => {
     }
 };
 
+const startPreview = async (req, res) => {
+    try {
+        const metadata = await previewService.startPreview(req.params.projectId, req.user._id);
+        res.status(200).json({ success: true, ...metadata });
+    } catch (error) {
+        console.error("Start preview error:", error.message);
+        const status = error.status || 500;
+        res.status(status).json({
+            success: false,
+            message: error.message || "Failed to start preview"
+        });
+    }
+};
+
+const getPreviewStatus = async (req, res) => {
+    try {
+        const metadata = await previewService.getPreviewStatus(req.params.projectId, req.user._id);
+        res.status(200).json({ success: true, ...metadata });
+    } catch (error) {
+        console.error("Get preview status error:", error.message);
+        const status = error.status || 500;
+        res.status(status).json({
+            success: false,
+            message: error.message || "Failed to get preview status"
+        });
+    }
+};
+
+const stopPreview = async (req, res) => {
+    try {
+        const metadata = await previewService.stopPreview(req.params.projectId, req.user._id);
+        res.status(200).json({ success: true, ...metadata });
+    } catch (error) {
+        console.error("Stop preview error:", error.message);
+        const status = error.status || 500;
+        res.status(status).json({
+            success: false,
+            message: error.message || "Failed to stop preview"
+        });
+    }
+};
+
 module.exports = {
     analyze,
     generate,
     downloadProjectZip,
     getProjectById,
+    startPreview,
+    getPreviewStatus,
+    stopPreview
 };

@@ -1,5 +1,6 @@
 const axios = require("axios");
 const path = require("path");
+const providerRouter = require("./aiProviders/providerRouter");
 
 /**
  * Stage 1: Requirement Analysis using Z.ai
@@ -60,39 +61,72 @@ Ensure the technology selection represents the BEST fit for the request. Choose 
         const userPrompt = `USER REQUEST:
 "${prompt}"`;
 
-        console.log("PROJECT SERVICE: Analyzing requirements with Z.ai...");
+        console.log("PROJECT SERVICE: Analyzing requirements via providerRouter...");
 
-        const response = await axios.post(
-            `${process.env.ZAI_BASE_URL}/chat/completions`,
-            {
-                model: process.env.ZAI_MODEL,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt }
-                ],
-                stream: false
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.ZAI_API_KEY}`,
-                    "Content-Type": "application/json",
-                },
-                timeout: 60000
+        const messages = [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+        ];
+
+        const data = await providerRouter.sendChatCompletion(messages, {
+            timeout: 60000
+        });
+
+        let content = data.content.trim();
+        console.log("[analyze /api/project/analyze] Received analysis response", {
+            stage: "parseSpec",
+            provider: data.provider,
+            model: data.model,
+            contentLength: content.length
+        });
+
+        // ---- Robust bounded JSON extraction ----
+        // 1. Strip markdown JSON fences first: ```json ... ``` or ``` ... ```
+        content = content
+            .replace(/^```json[\r\n]*/i, "")
+            .replace(/^```[\r\n]*/i, "")
+            .replace(/[\r\n]```$/i, "")
+            .trim();
+
+        // 2. If the content still has prose before/after the JSON object, extract the
+        //    first outermost { ... } block using balanced brace counting.
+        const extractJsonBlock = (str) => {
+            const start = str.indexOf("{");
+            if (start === -1) return null;
+            let depth = 0;
+            let inString = false;
+            let escape = false;
+            for (let i = start; i < str.length; i++) {
+                const ch = str[i];
+                if (escape) { escape = false; continue; }
+                if (ch === "\\" && inString) { escape = true; continue; }
+                if (ch === "\"") { inString = !inString; continue; }
+                if (inString) continue;
+                if (ch === "{") depth++;
+                if (ch === "}") {
+                    depth--;
+                    if (depth === 0) return str.slice(start, i + 1);
+                }
             }
-        );
+            // If JSON is truncated, return everything from the first { and let JSON.parse report details
+            return str.slice(start);
+        };
 
-        let content = response.data.choices[0].message.content.trim();
-        console.log("PROJECT SERVICE: Received Z.ai analysis response");
-
-        // Clean up markdown block wraps if present
-        content = content.replace(/^```json\r?\n/i, "").replace(/^```\r?\n/i, "").replace(/\r?\n```$/, "").trim();
+        if (!content.startsWith("{")) {
+            const extracted = extractJsonBlock(content);
+            if (extracted) content = extracted;
+        }
 
         let spec;
         try {
             spec = JSON.parse(content);
         } catch (parseErr) {
-            console.error("FAILED TO PARSE Z.AI REQUIREMENTS RESPONSE JSON:\n", content);
-            throw new Error("Returned AI requirements specification was not valid JSON: " + parseErr.message);
+            console.error("[analyze /api/project/analyze] Failed to parse requirements JSON", {
+                stage: "parseSpec",
+                error: parseErr.message,
+                contentPreview: content.slice(0, 300)
+            });
+            throw new Error("AI provider returned a non-JSON or malformed specification: " + parseErr.message);
         }
 
         // Validate structure and fill defaults
@@ -118,8 +152,33 @@ Ensure the technology selection represents the BEST fit for the request. Choose 
         };
 
     } catch (error) {
-        console.error("PROJECT SERVICE REQUIREMENTS ANALYSIS ERROR:", error.message);
-        throw new Error("Failed to analyze requirements: " + (error.response?.data?.error || error.message));
+        const providerUsed = process.env.AI_PRIMARY_PROVIDER || "openrouter";
+        const modelUsed = providerUsed === "openrouter"
+            ? (process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash")
+            : (process.env.ZAI_MODEL || "glm-4.5-flash");
+
+        // Extract clean error message — never log API keys, URIs, tokens, or .env values
+        const httpStatus = error.providerStatus ?? error.response?.status ?? null;
+        const errorCode = error.providerCode ?? error.code ?? null;
+        const rawData = error.response?.data;
+        let safeErrMsg = error.message;
+        if (rawData) {
+            if (rawData.error?.message) safeErrMsg = rawData.error.message;
+            else if (typeof rawData.message === "string") safeErrMsg = rawData.message;
+            else if (typeof rawData === "string") safeErrMsg = rawData;
+        }
+
+        console.error("[analyze /api/project/analyze] REQUIREMENTS ANALYSIS FAILED", {
+            stage: "analyzeRequirements",
+            provider: error.provider || providerUsed,
+            model: modelUsed,
+            httpStatus,
+            errorCode,
+            message: safeErrMsg.slice(0, 400)
+        });
+
+        // Propagate a clean message upstream — never expose raw error.response.data object
+        throw new Error("Failed to analyze requirements: " + safeErrMsg.slice(0, 400));
     }
 };
 

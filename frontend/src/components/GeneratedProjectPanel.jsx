@@ -43,6 +43,100 @@ export default function GeneratedProjectPanel({ generatedProject }) {
   const [guideOpen, setGuideOpen] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState('');
 
+  const [previewStatus, setPreviewStatus] = useState('idle');
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewErrors, setPreviewErrors] = useState([]);
+  const [polling, setPolling] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+
+  // Sync preview status on mount/projectId change
+  useEffect(() => {
+    setPreviewStatus('idle');
+    setPreviewUrl(null);
+    setPreviewErrors([]);
+    setPolling(false);
+    
+    if (projectId) {
+      api.get(`/project/${projectId}/preview/status`)
+        .then(res => {
+          if (res.data.success && res.data.status !== 'idle') {
+            setPreviewStatus(res.data.status);
+            setPreviewUrl(res.data.url);
+            setPreviewErrors(res.data.errors || []);
+            if (res.data.status !== 'ready' && res.data.status !== 'failed' && res.data.status !== 'stopped') {
+              setPolling(true);
+            }
+          }
+        })
+        .catch(err => console.error("Error loading preview status:", err));
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    let timer;
+    if (polling && projectId) {
+      const pollStatus = async () => {
+        try {
+          const res = await api.get(`/project/${projectId}/preview/status`);
+          if (res.data.success) {
+            setPreviewStatus(res.data.status);
+            setPreviewUrl(res.data.url);
+            setPreviewErrors(res.data.errors || []);
+            if (res.data.status === 'ready' || res.data.status === 'failed' || res.data.status === 'stopped') {
+              setPolling(false);
+            }
+          }
+        } catch (err) {
+          console.error("Polling preview failed:", err);
+          setPreviewStatus('failed');
+          setPreviewErrors([err.response?.data?.message || err.message]);
+          setPolling(false);
+        }
+      };
+      timer = setInterval(pollStatus, 1500);
+    }
+    return () => clearInterval(timer);
+  }, [polling, projectId]);
+
+  const handleStartPreview = async () => {
+    if (!projectId) return;
+    setPreviewStatus('starting');
+    setPreviewErrors([]);
+    try {
+      const res = await api.post(`/project/${projectId}/preview`);
+      if (res.data.success) {
+        setPreviewStatus(res.data.status);
+        setPreviewUrl(res.data.url);
+        setPreviewErrors(res.data.errors || []);
+        if (res.data.status !== 'ready' && res.data.status !== 'failed' && res.data.status !== 'stopped') {
+          setPolling(true);
+        }
+      }
+    } catch (err) {
+      console.error("Start preview failed:", err);
+      setPreviewStatus('failed');
+      setPreviewErrors([err.response?.data?.message || err.message]);
+    }
+  };
+
+  const handleStopPreview = async () => {
+    if (!projectId) return;
+    setPolling(false);
+    try {
+      const res = await api.delete(`/project/${projectId}/preview`);
+      if (res.data.success) {
+        setPreviewStatus(res.data.status);
+        setPreviewUrl(null);
+      }
+    } catch (err) {
+      console.error("Stop preview failed:", err);
+    }
+  };
+
+  const handleRefreshPreview = () => {
+    setIframeKey(prev => prev + 1);
+  };
+
   // Update active file dynamically when files change
   useEffect(() => {
     if (files && files.length > 0) {
@@ -110,77 +204,133 @@ export default function GeneratedProjectPanel({ generatedProject }) {
     const isDark = designPreference.toLowerCase().includes('dark');
     const colorThemeClass = isDark ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900';
     const cardBgClass = isDark ? 'bg-slate-900 border-slate-850' : 'bg-white border-slate-200';
-    
-    if (projectType.includes('E-commerce')) {
+
+    const hasPackageJson = files.some(f => f.name === 'package.json');
+    if (!hasPackageJson) {
       return (
-        <div className={`p-5 rounded-xl border max-w-lg mx-auto space-y-3 shadow-md ${colorThemeClass} ${cardBgClass}`}>
-          <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <h4 className="font-bold flex items-center gap-1 text-xs uppercase tracking-wider text-white">
-              <FiShoppingBag className="text-brand-500" />
-              <span>{projectName || 'E-Shop'}</span>
-            </h4>
-            <span className="text-[9px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1.5 py-0.5 rounded">Active Store</span>
+        <div className="text-center py-8 text-dark-muted text-xs font-mono select-none">
+          Preview is only supported for React/Vite-compatible projects (missing package.json).
+        </div>
+      );
+    }
+
+    if (previewStatus === 'idle' || previewStatus === 'stopped') {
+      return (
+        <div className="flex flex-col items-center justify-center p-8 text-center space-y-4 border border-dashed border-dark-border rounded-xl bg-slate-900/30 select-none">
+          <FiEye className="w-8 h-8 text-brand-500 animate-pulse" />
+          <div>
+            <h4 className="text-xs font-bold text-white mb-1">React/Vite Preview Sandbox</h4>
+            <p className="text-[11px] text-dark-muted leading-relaxed max-w-sm mx-auto">
+              Launch and interact with the compiled React application in an isolated sandbox.
+            </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className={`p-3 border rounded-lg ${cardBgClass} flex flex-col justify-between`}>
-              <h5 className="text-[11px] font-bold text-white">Mechanical Keyboard</h5>
-              <div className="flex justify-between items-center mt-2.5">
-                <span className="text-xs font-semibold text-brand-500">$89</span>
-                <span className="px-1.5 py-0.5 bg-brand-500 text-white rounded text-[8px] font-bold">Add</span>
-              </div>
-            </div>
-            <div className={`p-3 border rounded-lg ${cardBgClass} flex flex-col justify-between`}>
-              <h5 className="text-[11px] font-bold text-white">Wireless Mouse</h5>
-              <div className="flex justify-between items-center mt-2.5">
-                <span className="text-xs font-semibold text-brand-500">$45</span>
-                <span className="px-1.5 py-0.5 bg-brand-500 text-white rounded text-[8px] font-bold">Add</span>
-              </div>
-            </div>
+          <button
+            onClick={handleStartPreview}
+            className="px-4 py-2 bg-brand-500 hover:bg-brand-650 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all cursor-pointer shadow-lg"
+          >
+            Start Preview
+          </button>
+        </div>
+      );
+    }
+
+    if (previewStatus === 'starting' || previewStatus === 'preparing' || previewStatus === 'installing' || previewStatus === 'starting-server') {
+      let statusMessage = "Preparing sandbox workspace...";
+      if (previewStatus === 'installing') statusMessage = "Installing sandbox dependencies (npm install)...";
+      if (previewStatus === 'starting-server') statusMessage = "Starting local Vite development server...";
+
+      return (
+        <div className="flex flex-col items-center justify-center p-8 text-center space-y-4 border border-dark-border rounded-xl bg-slate-900/30 select-none">
+          <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="space-y-1">
+            <h4 className="text-[10px] font-mono font-bold text-slate-300">Preview Status: {previewStatus.toUpperCase()}</h4>
+            <p className="text-[10px] text-dark-muted font-mono">{statusMessage}</p>
+          </div>
+          <button
+            onClick={handleStopPreview}
+            className="px-3 py-1.5 bg-dark-card border border-dark-border text-dark-muted hover:text-white rounded text-[10px] font-bold uppercase transition-all cursor-pointer"
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    }
+
+    if (previewStatus === 'failed') {
+      return (
+        <div className="p-4 border border-red-500/30 bg-red-950/25 text-red-400 rounded-xl space-y-3 font-mono text-xs max-w-xl mx-auto">
+          <h4 className="font-bold text-red-500 flex items-center gap-1.5 select-none">
+            <span>Preview Setup Failed</span>
+          </h4>
+          <div className="bg-black/40 p-3 rounded-lg overflow-y-auto max-h-[150px] text-[10px] scrollbar-thin">
+            {previewErrors.length > 0 ? previewErrors.map((err, i) => (
+              <div key={i} className="whitespace-pre-wrap">{err}</div>
+            )) : <div>Unknown startup timeout or execution error.</div>}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleStartPreview}
+              className="px-3 py-1.5 bg-red-500 hover:bg-red-650 text-white rounded font-bold uppercase tracking-wider text-[10px] cursor-pointer transition-all"
+            >
+              Retry
+            </button>
+            <button
+              onClick={handleStopPreview}
+              className="px-3 py-1.5 bg-dark-card border border-dark-border text-dark-muted hover:text-slate-300 rounded font-bold uppercase tracking-wider text-[10px] cursor-pointer transition-all"
+            >
+              Stop
+            </button>
           </div>
         </div>
       );
     }
 
-    if (projectType.includes('SaaS') || projectType.includes('Dashboard')) {
+    if (previewStatus === 'ready') {
       return (
-        <div className={`p-5 rounded-xl border max-w-lg mx-auto space-y-3 shadow-md ${colorThemeClass} ${cardBgClass}`}>
-          <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <h4 className="font-bold flex items-center gap-1 text-xs uppercase tracking-wider text-white">
-              <FiGrid className="text-brand-500" />
-              <span>{projectName || 'Console'}</span>
-            </h4>
-            <span className="text-[9px] bg-brand-500/10 text-brand-500 border border-brand-500/20 px-1.5 py-0.5 rounded">Operational</span>
+        <div className="space-y-3">
+          {/* Toolbar */}
+          <div className="flex justify-between items-center bg-[#141416] px-3 py-2 rounded-lg border border-dark-border/40 select-none flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span className="text-[10px] font-mono font-bold text-slate-300">Live Preview: {previewUrl}</span>
+            </div>
+            <div className="flex gap-2 text-[9px] font-mono">
+              <button
+                onClick={handleRefreshPreview}
+                className="px-2.5 py-1 bg-dark-card border border-dark-border text-slate-400 hover:text-white rounded hover:bg-dark-hover cursor-pointer transition-all"
+              >
+                Refresh Preview
+              </button>
+              <button
+                onClick={() => window.open(previewUrl, '_blank')}
+                className="px-2.5 py-1 bg-dark-card border border-dark-border text-slate-400 hover:text-white rounded hover:bg-dark-hover cursor-pointer transition-all"
+              >
+                Open in New Tab
+              </button>
+              <button
+                onClick={handleStopPreview}
+                className="px-2.5 py-1 bg-red-500/10 border border-red-500/20 text-red-400 hover:text-white hover:bg-red-500 rounded cursor-pointer font-bold transition-all"
+              >
+                Stop Preview
+              </button>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className={`p-2 border rounded-lg text-center ${cardBgClass}`}>
-              <span className="block text-[8px] uppercase tracking-wider text-slate-400">Queries</span>
-              <span className="text-sm font-extrabold text-white">982 ms</span>
-            </div>
-            <div className={`p-2 border rounded-lg text-center ${cardBgClass}`}>
-              <span className="block text-[8px] uppercase tracking-wider text-slate-400">Users</span>
-              <span className="text-sm font-extrabold text-brand-500">189</span>
-            </div>
-            <div className={`p-2 border rounded-lg text-center ${cardBgClass}`}>
-              <span className="block text-[8px] uppercase tracking-wider text-slate-400">Requests</span>
-              <span className="text-sm font-extrabold text-white">12k</span>
-            </div>
+
+          {/* IFrame render */}
+          <div className="border border-dark-border rounded-xl bg-white overflow-hidden shadow-2xl h-[450px]">
+            <iframe
+              key={iframeKey}
+              src={`${previewUrl}?key=${iframeKey}`}
+              className="w-full h-full border-none bg-white"
+              title="React Live Preview Sandbox"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+            />
           </div>
         </div>
       );
     }
 
-    return (
-      <div className={`p-5 rounded-xl border max-w-lg mx-auto text-center space-y-3 shadow-md ${colorThemeClass} ${cardBgClass}`}>
-        <h4 className="text-sm font-bold text-white">{projectName}</h4>
-        <p className="text-xs text-slate-400 leading-relaxed">
-          A customized {projectType} layout compiled inside a safe preview sandbox.
-        </p>
-        <div className="text-[9px] text-slate-500 border-t border-slate-800/40 pt-2 flex justify-center gap-4">
-          <span>Frontend: {frontendFramework}</span>
-          <span>Database: {database}</span>
-        </div>
-      </div>
-    );
+    return null;
   };
 
   return (
@@ -360,6 +510,15 @@ export default function GeneratedProjectPanel({ generatedProject }) {
               <FiCode className="w-3.5 h-3.5" />
               <span>Files ({files.length})</span>
             </button>
+            <button
+              onClick={() => setActiveTab('preview')}
+              className={`px-3.5 py-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'preview' ? 'border-brand-500 text-white' : 'border-transparent text-dark-muted hover:text-white'
+              }`}
+            >
+              <FiEye className="w-3.5 h-3.5" />
+              <span>Preview</span>
+            </button>
           </div>
 
           {/* Contents */}
@@ -429,6 +588,13 @@ export default function GeneratedProjectPanel({ generatedProject }) {
                     language={activeCodeFile.endsWith('.jsx') ? 'jsx' : activeCodeFile.endsWith('.json') ? 'json' : 'javascript'}
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Preview tab */}
+            {activeTab === 'preview' && (
+              <div className="w-full">
+                {renderPreview()}
               </div>
             )}
           </div>
