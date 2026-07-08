@@ -139,6 +139,10 @@ const generate = async (req, res) => {
     } catch (error) {
         console.error("PROJECT GENERATION ERROR:", error.message);
         
+        if (progressEmitter && typeof progressEmitter.clear === "function") {
+            progressEmitter.clear();
+        }
+        
         if (cancelled) {
             console.log("ABORT COMPLETE: Preventing DB saves and response ends.");
             return;
