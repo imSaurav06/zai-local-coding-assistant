@@ -7,8 +7,11 @@ const providerRouter = require("./aiProviders/providerRouter");
  * Takes prompt and user preferences, and returns a structured specification JSON.
  */
 const analyzeRequirements = async ({ prompt }) => {
-    try {
-        const systemPrompt = `You are a professional software architect. Analyze the user's natural language project description and dynamically determine the requirements to build a complete minimum runnable project.
+    const MAX_ANALYZE_ATTEMPTS = 3;
+
+    for (let attempt = 1; attempt <= MAX_ANALYZE_ATTEMPTS; attempt++) {
+        try {
+            const systemPrompt = `You are a professional software architect. Analyze the user's natural language project description and dynamically determine the requirements to build a complete minimum runnable project.
 You must treat the user's prompt as the single source of project requirements. Explicit user requirements MUST override any AI assumptions or default choices. Do not replace explicit user requirements with defaults, and never silently force a fixed tech stack (e.g. React/Express/MongoDB/JWT) unless requested or suitable for the prompt.
 
 You MUST return a strict JSON object that conforms EXACTLY to the following structure. Do not return any other text, markdown formatting (outside of markdown codeblocks), or explanations.
@@ -58,127 +61,146 @@ JSON SCHEMA:
 
 Ensure the technology selection represents the BEST fit for the request. Choose mutually compatible technologies and dependencies. Avoid unnecessary packages and overengineering. Make minimal reasonable assumptions where requirements are missing and record them in the 'assumptions' array.`;
 
-        const userPrompt = `USER REQUEST:
+            const userPrompt = `USER REQUEST:
 "${prompt}"`;
 
-        console.log("PROJECT SERVICE: Analyzing requirements via providerRouter...");
+            console.log(`PROJECT SERVICE: Analyzing requirements via providerRouter (attempt ${attempt}/${MAX_ANALYZE_ATTEMPTS})...`);
 
-        const messages = [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-        ];
+            const messages = [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ];
 
-        const data = await providerRouter.sendChatCompletion(messages, {
-            timeout: 60000
-        });
-
-        let content = data.content.trim();
-        console.log("[analyze /api/project/analyze] Received analysis response", {
-            stage: "parseSpec",
-            provider: data.provider,
-            model: data.model,
-            contentLength: content.length
-        });
-
-        // ---- Robust bounded JSON extraction ----
-        // 1. Strip markdown JSON fences first: ```json ... ``` or ``` ... ```
-        content = content
-            .replace(/^```json[\r\n]*/i, "")
-            .replace(/^```[\r\n]*/i, "")
-            .replace(/[\r\n]```$/i, "")
-            .trim();
-
-        // 2. If the content still has prose before/after the JSON object, extract the
-        //    first outermost { ... } block using balanced brace counting.
-        const extractJsonBlock = (str) => {
-            const start = str.indexOf("{");
-            if (start === -1) return null;
-            let depth = 0;
-            let inString = false;
-            let escape = false;
-            for (let i = start; i < str.length; i++) {
-                const ch = str[i];
-                if (escape) { escape = false; continue; }
-                if (ch === "\\" && inString) { escape = true; continue; }
-                if (ch === "\"") { inString = !inString; continue; }
-                if (inString) continue;
-                if (ch === "{") depth++;
-                if (ch === "}") {
-                    depth--;
-                    if (depth === 0) return str.slice(start, i + 1);
-                }
-            }
-            // If JSON is truncated, return everything from the first { and let JSON.parse report details
-            return str.slice(start);
-        };
-
-        if (!content.startsWith("{")) {
-            const extracted = extractJsonBlock(content);
-            if (extracted) content = extracted;
-        }
-
-        let spec;
-        try {
-            spec = JSON.parse(content);
-        } catch (parseErr) {
-            console.error("[analyze /api/project/analyze] Failed to parse requirements JSON", {
-                stage: "parseSpec",
-                error: parseErr.message,
-                contentPreview: content.slice(0, 300)
+            const data = await providerRouter.sendChatCompletion(messages, {
+                timeout: 120000
             });
-            throw new Error("AI provider returned a non-JSON or malformed specification: " + parseErr.message);
+
+            let content = (data.content || "").trim();
+            console.log("[analyze /api/project/analyze] Received analysis response", {
+                stage: "parseSpec",
+                provider: data.provider,
+                model: data.model,
+                contentLength: content.length
+            });
+
+            // Guard against empty/null content from the provider
+            if (!content || content.length < 10) {
+                const emptyErr = new Error(`Provider returned empty or near-empty content (${content.length} chars) on attempt ${attempt}`);
+                emptyErr.isTransientAnalyzeFailure = true;
+                throw emptyErr;
+            }
+
+            // ---- Robust bounded JSON extraction ----
+            // 1. Strip markdown JSON fences first: ```json ... ``` or ``` ... ```
+            content = content
+                .replace(/^```json[\r\n]*/i, "")
+                .replace(/^```[\r\n]*/i, "")
+                .replace(/[\r\n]```$/i, "")
+                .trim();
+
+            // 2. If the content still has prose before/after the JSON object, extract the
+            //    first outermost { ... } block using balanced brace counting.
+            const extractJsonBlock = (str) => {
+                const start = str.indexOf("{");
+                if (start === -1) return null;
+                let depth = 0;
+                let inString = false;
+                let escape = false;
+                for (let i = start; i < str.length; i++) {
+                    const ch = str[i];
+                    if (escape) { escape = false; continue; }
+                    if (ch === "\\" && inString) { escape = true; continue; }
+                    if (ch === "\"") { inString = !inString; continue; }
+                    if (inString) continue;
+                    if (ch === "{") depth++;
+                    if (ch === "}") {
+                        depth--;
+                        if (depth === 0) return str.slice(start, i + 1);
+                    }
+                }
+                // If JSON is truncated, return everything from the first { and let JSON.parse report details
+                return str.slice(start);
+            };
+
+            if (!content.startsWith("{")) {
+                const extracted = extractJsonBlock(content);
+                if (extracted) content = extracted;
+            }
+
+            let spec;
+            try {
+                spec = JSON.parse(content);
+            } catch (parseErr) {
+                console.error("[analyze /api/project/analyze] Failed to parse requirements JSON", {
+                    stage: "parseSpec",
+                    error: parseErr.message,
+                    contentPreview: content.slice(0, 300)
+                });
+                // Mark as transient so the retry loop continues
+                const retryErr = new Error("AI provider returned a non-JSON or malformed specification: " + parseErr.message);
+                retryErr.isTransientAnalyzeFailure = true;
+                throw retryErr;
+            }
+
+            // Validate structure and fill defaults
+            return {
+                projectName: spec.projectName || "MyProject",
+                projectType: spec.projectType || "Web Application",
+                frontend: spec.frontend || "None",
+                backend: spec.backend || "None",
+                database: spec.database || "None",
+                authentication: spec.authentication || "None",
+                designRequirements: spec.designRequirements || "None",
+                pagesAndRoutes: Array.isArray(spec.pagesAndRoutes) ? spec.pagesAndRoutes : [],
+                components: Array.isArray(spec.components) ? spec.components : [],
+                backendApis: Array.isArray(spec.backendApis) ? spec.backendApis : [],
+                databaseModels: Array.isArray(spec.databaseModels) ? spec.databaseModels : [],
+                integrations: Array.isArray(spec.integrations) ? spec.integrations : [],
+                importantDependencies: Array.isArray(spec.importantDependencies) ? spec.importantDependencies : [],
+                environmentVariables: Array.isArray(spec.environmentVariables) ? spec.environmentVariables : [],
+                architectureConstraints: Array.isArray(spec.architectureConstraints) ? spec.architectureConstraints : [],
+                runBuildRequirements: spec.runBuildRequirements || { runScript: "npm run dev", buildScript: "" },
+                deploymentRequirements: spec.deploymentRequirements || "None",
+                assumptions: Array.isArray(spec.assumptions) ? spec.assumptions : []
+            };
+
+        } catch (error) {
+            // If transient and retries remain, wait and retry
+            if (error.isTransientAnalyzeFailure && attempt < MAX_ANALYZE_ATTEMPTS) {
+                const waitMs = 2000 * attempt;
+                console.warn(`[analyze] Transient failure on attempt ${attempt}/${MAX_ANALYZE_ATTEMPTS}. Retrying in ${waitMs}ms...`);
+                await new Promise(r => setTimeout(r, waitMs));
+                continue;
+            }
+
+            const providerUsed = process.env.AI_PRIMARY_PROVIDER || "openrouter";
+            const modelUsed = providerUsed === "openrouter"
+                ? (process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash")
+                : (process.env.ZAI_MODEL || "glm-4.5-flash");
+
+            // Extract clean error message — never log API keys, URIs, tokens, or .env values
+            const httpStatus = error.providerStatus ?? error.response?.status ?? null;
+            const errorCode = error.providerCode ?? error.code ?? null;
+            const rawData = error.response?.data;
+            let safeErrMsg = error.message;
+            if (rawData) {
+                if (rawData.error?.message) safeErrMsg = rawData.error.message;
+                else if (typeof rawData.message === "string") safeErrMsg = rawData.message;
+                else if (typeof rawData === "string") safeErrMsg = rawData;
+            }
+
+            console.error("[analyze /api/project/analyze] REQUIREMENTS ANALYSIS FAILED", {
+                stage: "analyzeRequirements",
+                provider: error.provider || providerUsed,
+                model: modelUsed,
+                httpStatus,
+                errorCode,
+                message: safeErrMsg.slice(0, 400)
+            });
+
+            // Propagate a clean message upstream — never expose raw error.response.data object
+            throw new Error(`Failed to analyze requirements: ${safeErrMsg.slice(0, 400)}`);
         }
-
-        // Validate structure and fill defaults
-        return {
-            projectName: spec.projectName || "MyProject",
-            projectType: spec.projectType || "Web Application",
-            frontend: spec.frontend || "None",
-            backend: spec.backend || "None",
-            database: spec.database || "None",
-            authentication: spec.authentication || "None",
-            designRequirements: spec.designRequirements || "None",
-            pagesAndRoutes: Array.isArray(spec.pagesAndRoutes) ? spec.pagesAndRoutes : [],
-            components: Array.isArray(spec.components) ? spec.components : [],
-            backendApis: Array.isArray(spec.backendApis) ? spec.backendApis : [],
-            databaseModels: Array.isArray(spec.databaseModels) ? spec.databaseModels : [],
-            integrations: Array.isArray(spec.integrations) ? spec.integrations : [],
-            importantDependencies: Array.isArray(spec.importantDependencies) ? spec.importantDependencies : [],
-            environmentVariables: Array.isArray(spec.environmentVariables) ? spec.environmentVariables : [],
-            architectureConstraints: Array.isArray(spec.architectureConstraints) ? spec.architectureConstraints : [],
-            runBuildRequirements: spec.runBuildRequirements || { runScript: "npm run dev", buildScript: "" },
-            deploymentRequirements: spec.deploymentRequirements || "None",
-            assumptions: Array.isArray(spec.assumptions) ? spec.assumptions : []
-        };
-
-    } catch (error) {
-        const providerUsed = process.env.AI_PRIMARY_PROVIDER || "openrouter";
-        const modelUsed = providerUsed === "openrouter"
-            ? (process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash")
-            : (process.env.ZAI_MODEL || "glm-4.5-flash");
-
-        // Extract clean error message — never log API keys, URIs, tokens, or .env values
-        const httpStatus = error.providerStatus ?? error.response?.status ?? null;
-        const errorCode = error.providerCode ?? error.code ?? null;
-        const rawData = error.response?.data;
-        let safeErrMsg = error.message;
-        if (rawData) {
-            if (rawData.error?.message) safeErrMsg = rawData.error.message;
-            else if (typeof rawData.message === "string") safeErrMsg = rawData.message;
-            else if (typeof rawData === "string") safeErrMsg = rawData;
-        }
-
-        console.error("[analyze /api/project/analyze] REQUIREMENTS ANALYSIS FAILED", {
-            stage: "analyzeRequirements",
-            provider: error.provider || providerUsed,
-            model: modelUsed,
-            httpStatus,
-            errorCode,
-            message: safeErrMsg.slice(0, 400)
-        });
-
-        // Propagate a clean message upstream — never expose raw error.response.data object
-        throw new Error("Failed to analyze requirements: " + safeErrMsg.slice(0, 400));
     }
 };
 
@@ -386,12 +408,12 @@ const validateProjectFiles = (files, projectSpec) => {
  */
 const parseGeneratedFiles = (resultContent) => {
     const files = [];
-    const fileRegex = /--- FILE:\s*([^\s]+)\s*---[\s]+([\s\S]*?)[\s]*--- END_FILE ---/g;
+    const fileRegex = /--- FILE:\s*([^\s]+)\s*---[\s]+([\s\S]*?)(?=--- FILE:|--- END_FILE ---|--- END_FILES ---)/g;
     let fileMatch;
     while ((fileMatch = fileRegex.exec(resultContent)) !== null) {
         const filePath = fileMatch[1].trim();
-        let content = fileMatch[2];
-        content = content.replace(/^```\w*\r?\n/, "").replace(/\r?\n```$/, "");
+        let content = fileMatch[2].trim();
+        content = content.replace(/^```\w*\r?\n/, "").replace(/```$/, "").trim();
         files.push({ name: filePath, content });
     }
     return files;

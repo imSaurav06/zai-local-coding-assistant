@@ -96,7 +96,7 @@ const planGeneration = (projectSpec) => {
 
     // Set token budget & adaptive timeouts base
     if (strategy === "DIRECT" || strategy === "SCAFFOLD_AI") {
-        tokenBudget = Math.min(Math.max(estimatedOutputTokens, 2000), 5000);
+        tokenBudget = Math.min(Math.max(Math.floor(estimatedOutputTokens * 1.8), 3000), 8000);
     } else {
         tokenBudget = 2500; // per-unit budget
     }

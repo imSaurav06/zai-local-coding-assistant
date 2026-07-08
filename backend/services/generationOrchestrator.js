@@ -198,10 +198,8 @@ ${JSON.stringify(projectSpec, null, 2)}`;
                         aiGeneratedFiles.push(...res.value);
                     } else {
                         verifyCancellation();
-                        console.error(`UNIT GENERATION FAILED FOR ${unit.id}: ${res.reason ? res.reason.message : "unknown error"}. Unit will not be retried by the orchestrator.`);
-                        if (res.reason && (res.reason.status === 429 || res.reason.message.includes("Rate limit"))) {
-                            throw res.reason;
-                        }
+                        console.error(`UNIT GENERATION FAILED FOR ${unit.id}: ${res.reason ? res.reason.message : "unknown error"}.`);
+                        throw res.reason || new Error(`Generation unit '${unit.id}' failed to execute.`);
                     }
                 }
                 completedUnits += chunk.length;

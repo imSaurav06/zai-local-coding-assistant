@@ -131,6 +131,7 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
                 config.signal = options.cancelSignal;
             }
             config.timeout = configuredTimeout;
+            config.tokenBudget = tokenBudget;
 
             const messages = [
                 { role: "system", content: systemPrompt },
@@ -153,16 +154,23 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
 
         console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
 
+        if (!response.content || typeof response.content !== "string") {
+            const nullContentErr = new Error(`Provider returned empty or null content. Model may have hit a context or content-policy limit.`);
+            nullContentErr.isNullContent = true;
+            throw nullContentErr;
+        }
         return response.content.trim();
     } catch (primaryErr) {
         const status = primaryErr.response ? primaryErr.response.status : null;
         const code = primaryErr.code || "";
         
         const isRateLimit = status === 429 || primaryErr.message.includes("429");
+        const isPaymentRequired = status === 402;
         const isTimeout = code === "ECONNABORTED" || (primaryErr.message && primaryErr.message.toLowerCase().includes("timeout"));
         const isNetwork = ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"].includes(code);
         const isTransient5xx = status >= 500 && status <= 599;
-        const isFallbackEligible = isRateLimit || isTimeout || isNetwork || isTransient5xx;
+        const isNullContent = primaryErr.isNullContent === true;
+        const isFallbackEligible = isRateLimit || isPaymentRequired || isTimeout || isNetwork || isTransient5xx || isNullContent;
 
         if (isFallbackEligible && fallbackProvider && fallbackProvider !== primaryProvider) {
             console.warn(`[AI Failover] Primary provider ${primaryProvider} failed. Triggering fallback ${fallbackProvider}... Reason: ${primaryErr.message}`);
@@ -181,6 +189,9 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
 
                 console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} (fallback) unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
 
+                if (!response.content || typeof response.content !== "string") {
+                    throw new Error(`Fallback provider returned empty or null content. Model may have hit a context or content-policy limit.`);
+                }
                 return response.content.trim();
             } catch (fallbackErr) {
                 stats.callDuration = Date.now() - startTime;
@@ -211,12 +222,15 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
 
 const parseGeneratedFiles = (resultContent) => {
     const files = [];
-    const fileRegex = /--- FILE:\s*([^\s]+)\s*---[\s]+([\s\S]*?)[\s]*--- END_FILE ---/g;
+    const fileRegex = /--- FILE:\s*([^\s]+)\s*---[\s]+([\s\S]*?)(?=--- FILE:|--- END_FILE ---|--- END_FILES ---)/g;
     let fileMatch;
     while ((fileMatch = fileRegex.exec(resultContent)) !== null) {
         const filePath = fileMatch[1].trim();
-        let content = fileMatch[2];
-        content = content.replace(/^```\w*\r?\n/, "").replace(/\r?\n```$/, "");
+        if (filePath.toLowerCase() === "path/to/filename" || filePath.includes("path/to/filename")) {
+            continue; // Skip instruction placeholder
+        }
+        let content = fileMatch[2].trim();
+        content = content.replace(/^```\w*\r?\n/, "").replace(/```$/, "").trim();
         files.push({ name: filePath, content });
     }
     return files;
@@ -238,6 +252,8 @@ For each file, use this exact separator structure (including the dashes):
 \`\`\`
 --- END_FILE ---
 
+5. Strictly only use icons from 'lucide-react' (such as import { Heart, Activity } from 'lucide-react') for any UI icons. Do not import or use other icon libraries like @heroicons/react, react-icons, etc. to prevent compilation issues.
+6. NEVER use '<{variable}' JSX syntax. Dynamic components MUST be assigned to a PascalCase variable first: const Icon = props.icon; return <Icon />; — using <{props.icon} /> is a fatal build error.
 --- END_FILES ---`;
 
     const userPrompt = `PROJECT SPEC:
@@ -255,7 +271,11 @@ GENERATION TARGET:
 - Goal: ${unit.description}
 - Metadata: ${JSON.stringify(unit.meta || {})}
 
-Generate the complete implementation file(s) for this target matching the shared contracts folder structure and interfaces. Do not add mock styling or placeholders.`;
+Generate the complete implementation file(s) for this target matching the shared contracts folder structure and interfaces.
+Important guidelines:
+1. Do not add mock styling, placeholders, or TODO comments. Write complete functional code.
+2. In the root component (usually "src/App.jsx"), you MUST import and render all other pages and custom components listed in the folderStructure of the SHARED CONTRACTS to present a cohesive, complete application. Never import non-existent files or mock modules that are not declared in the folderStructure contract.
+3. Do not generate, output, or mention the configuration and scaffold files that are already created locally. These include: package.json, vite.config.js, tailwind.config.js, postcss.config.js, index.html, and README.md. Only generate the files under the 'src/' directory (such as src/main.jsx, src/App.jsx, src/index.css, src/components/*, src/pages/*).`;
 
     return await executeAiRequest(systemPrompt, userPrompt, {
         ...options,

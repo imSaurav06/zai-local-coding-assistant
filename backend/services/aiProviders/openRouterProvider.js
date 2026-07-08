@@ -9,17 +9,23 @@ const sendChatCompletion = async (messages, config = {}, options = {}) => {
         throw new Error("OpenRouter API Key is missing in environment variables.");
     }
 
+    const maxTokens = config.tokenBudget || config.max_tokens || 4000;
+
+    // Create a clean copy of config without custom fields
+    const { tokenBudget, max_tokens, ...axiosConfig } = config;
+
     const response = await axios.post(
         `${baseURL}/chat/completions`,
         {
             model: model,
             messages: messages,
-            stream: false
+            stream: false,
+            max_tokens: maxTokens
         },
         {
-            ...config,
+            ...axiosConfig,
             headers: {
-                ...config.headers,
+                ...axiosConfig.headers,
                 Authorization: `Bearer ${apiKey}`,
                 "Content-Type": "application/json"
             }

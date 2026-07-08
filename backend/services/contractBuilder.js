@@ -33,12 +33,14 @@ const buildSharedContracts = (projectSpec) => {
         );
         if (projectSpec.components) {
             projectSpec.components.forEach(c => {
-                contracts.folderStructure.push(`src/components/${c.name}.jsx`);
+                const cleanName = c.name.replace(/[^a-zA-Z0-9_-]/g, "");
+                contracts.folderStructure.push(`src/components/${cleanName}.jsx`);
             });
         }
         if (projectSpec.pagesAndRoutes) {
             projectSpec.pagesAndRoutes.forEach(p => {
-                contracts.folderStructure.push(`src/pages/${p.name}.jsx`);
+                const cleanName = p.name.replace(/[^a-zA-Z0-9_-]/g, "");
+                contracts.folderStructure.push(`src/pages/${cleanName}.jsx`);
             });
         }
     }
@@ -47,7 +49,8 @@ const buildSharedContracts = (projectSpec) => {
         contracts.folderStructure.push("server.js");
         if (projectSpec.databaseModels) {
             projectSpec.databaseModels.forEach(m => {
-                contracts.folderStructure.push(`models/${m.name}.js`);
+                const cleanName = m.name.replace(/[^a-zA-Z0-9_-]/g, "");
+                contracts.folderStructure.push(`models/${cleanName}.js`);
             });
         }
     }

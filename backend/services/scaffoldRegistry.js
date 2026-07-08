@@ -17,8 +17,10 @@ const generateScaffoldFiles = (adapterName, projectSpec) => {
                 dependencies: {
                     react: "^18.2.0",
                     "react-dom": "^18.2.0",
+                    "lucide-react": "^0.263.1",
+                    "framer-motion": "^11.0.0",
                     ...(projectSpec.importantDependencies || []).reduce((acc, dep) => {
-                        if (!["react", "react-dom", "vite", "tailwindcss"].includes(dep.toLowerCase())) {
+                        if (!["react", "react-dom", "vite", "tailwindcss", "lucide-react", "framer-motion"].includes(dep.toLowerCase())) {
                             acc[dep] = "latest";
                         }
                         return acc;

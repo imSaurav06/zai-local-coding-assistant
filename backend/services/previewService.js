@@ -48,7 +48,7 @@ const sanitizePackageJson = (content) => {
     const pkg = JSON.parse(content);
     const ALLOWED_DEPS = new Set([
         "react", "react-dom", "react-router-dom", "lucide-react", "react-icons",
-        "tailwindcss", "autoprefixer", "postcss", "vite", "@vitejs/plugin-react",
+        "framer-motion", "tailwindcss", "autoprefixer", "postcss", "vite", "@vitejs/plugin-react",
         "chart.js", "react-chartjs-2", "axios", "prop-types"
     ]);
 
@@ -95,11 +95,71 @@ const getSanitizedEnv = () => {
     const safeKeys = ["PATH", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "HOME", "COMSPEC", "PATHEXT"];
     const safeEnv = {};
     for (const key of safeKeys) {
-        if (process.env[key]) {
-            safeEnv[key] = process.env[key];
+        // Case insensitive lookup
+        const actualKey = Object.keys(process.env).find(k => k.toUpperCase() === key.toUpperCase());
+        if (actualKey && process.env[actualKey] !== undefined) {
+            safeEnv[key] = String(process.env[actualKey]);
         }
     }
+    // Safe fallbacks
+    if (!safeEnv.PATH) {
+        safeEnv.PATH = process.env.PATH || "";
+    }
+    if (process.platform === "win32" && !safeEnv.SYSTEMROOT) {
+        safeEnv.SYSTEMROOT = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
+    }
     return safeEnv;
+};
+
+// Cwd validator
+const validateCwd = (cwd) => {
+    if (!cwd) {
+        throw new Error("Working directory (cwd) is not specified.");
+    }
+    const resolvedCwd = path.resolve(cwd);
+    if (!fs.existsSync(resolvedCwd)) {
+        throw new Error(`Working directory (cwd) does not exist: ${resolvedCwd}`);
+    }
+    const stat = fs.statSync(resolvedCwd);
+    if (!stat.isDirectory()) {
+        throw new Error(`Working directory (cwd) is not a directory: ${resolvedCwd}`);
+    }
+    // Check if within PREVIEWS_ROOT (canonical path safety check)
+    if (!resolvedCwd.startsWith(PREVIEWS_ROOT)) {
+        throw new Error(`Security Violation: working directory is outside the allowed previews root folder: ${resolvedCwd}`);
+    }
+    // Check package.json presence
+    const pkgPath = path.join(resolvedCwd, "package.json");
+    if (!fs.existsSync(pkgPath)) {
+        throw new Error(`Missing package.json in working directory: ${resolvedCwd}`);
+    }
+};
+
+// Spawn diagnostics logger
+const logSpawnDiagnostics = (executable, args, cwd, env, error) => {
+    let cwdExists = false;
+    let pkgExists = false;
+    try {
+        cwdExists = fs.existsSync(cwd);
+        if (cwdExists) {
+            pkgExists = fs.existsSync(path.join(cwd, "package.json"));
+        }
+    } catch (e) {}
+
+    const sanitizedKeys = Object.keys(env || {});
+    const pathAvailable = !!(env && (env.PATH || env.Path || env.path));
+
+    console.error("[Preview Service] Spawn diagnostics:", {
+        platform: process.platform,
+        executable,
+        args,
+        cwd,
+        cwdExists,
+        packageJsonExists: pkgExists,
+        sanitizedEnvKeys: sanitizedKeys,
+        pathAvailable,
+        errorMessage: error?.message || "none"
+    });
 };
 
 const getSessionMetadata = (session) => {
@@ -118,7 +178,8 @@ const pollServerHealth = async (session) => {
     const maxAttempts = 30; // 30 seconds max wait
 
     while (attempts < maxAttempts) {
-        if (session.status === "stopped" || session.status === "failed") {
+        // Exit if stdout/stderr already signaled ready, or if stopped/failed
+        if (session.status === "ready" || session.status === "stopped" || session.status === "failed") {
             return;
         }
 
@@ -134,7 +195,7 @@ const pollServerHealth = async (session) => {
         }
     }
 
-    // Health check failed
+    // Health check failed — but check if stdout already marked ready before failing
     if (session.status === "starting-server") {
         session.status = "failed";
         session.errors.push("Vite server failed to start/respond within 30s");
@@ -158,14 +219,36 @@ const setupAndStartServer = async (session, project) => {
         safeWriteFile(session.dirPath, file.name, content);
     });
 
+    // Validate cwd and package.json presence
+    try {
+        validateCwd(session.dirPath);
+    } catch (err) {
+        console.error(`[Preview Service] Cwd validation failed: ${err.message}`);
+        session.status = "failed";
+        session.errors.push(err.message);
+        return;
+    }
+
     session.status = "installing";
 
     // Run npm install using spawn
     const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-    const installProcess = spawn(npmCmd, ["install", "--no-audit", "--no-fund"], {
+    const spawnEnv = getSanitizedEnv();
+    const spawnOptions = {
         cwd: session.dirPath,
-        env: getSanitizedEnv()
-    });
+        env: spawnEnv,
+        shell: process.platform === "win32"
+    };
+
+    let installProcess;
+    try {
+        installProcess = spawn(npmCmd, ["install", "--no-audit", "--no-fund"], spawnOptions);
+    } catch (err) {
+        logSpawnDiagnostics(npmCmd, ["install", "--no-audit", "--no-fund"], session.dirPath, spawnEnv, err);
+        session.status = "failed";
+        session.errors.push(`Spawn failed: ${err.message}`);
+        return;
+    }
 
     installProcess.stderr.on("data", (data) => {
         const str = data.toString();
@@ -174,56 +257,84 @@ const setupAndStartServer = async (session, project) => {
         }
     });
 
-    await new Promise((resolve, reject) => {
-        // 45 seconds timeout for npm install
-        const timeout = setTimeout(() => {
-            installProcess.kill("SIGKILL");
-            reject(new Error("npm install timed out after 45s"));
-        }, 45000);
-
-        installProcess.on("close", (code) => {
-            clearTimeout(timeout);
-            if (code === 0) {
-                resolve();
-            } else {
-                reject(new Error(`npm install failed with exit code ${code}`));
-            }
-        });
-        installProcess.on("error", (err) => {
-            clearTimeout(timeout);
-            reject(err);
-        });
+    installProcess.on("error", (err) => {
+        logSpawnDiagnostics(npmCmd, ["install", "--no-audit", "--no-fund"], session.dirPath, spawnEnv, err);
     });
+
+    try {
+        await new Promise((resolve, reject) => {
+            // 120 seconds timeout for npm install
+            const timeout = setTimeout(() => {
+                installProcess.kill("SIGKILL");
+                reject(new Error("npm install timed out after 120s"));
+            }, 120000);
+
+            installProcess.on("close", (code) => {
+                clearTimeout(timeout);
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`npm install failed with exit code ${code}`));
+                }
+            });
+            installProcess.on("error", (err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
+        });
+    } catch (err) {
+        session.status = "failed";
+        session.errors.push(err.message);
+        return;
+    }
 
     // Start Vite server
     session.status = "starting-server";
     const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
-    
-    // Spawn npx vite directly
-    const child = spawn(npxCmd, [
+    const viteArgs = [
         "vite",
         "--port",
         session.port.toString(),
         "--strictPort",
         "--host",
         "127.0.0.1"
-    ], {
-        cwd: session.dirPath,
-        env: getSanitizedEnv()
-    });
+    ];
+    
+    let child;
+    try {
+        child = spawn(npxCmd, viteArgs, spawnOptions);
+    } catch (err) {
+        logSpawnDiagnostics(npxCmd, viteArgs, session.dirPath, spawnEnv, err);
+        session.status = "failed";
+        session.errors.push(`Spawn failed: ${err.message}`);
+        return;
+    }
 
     session.childProcess = child;
 
+    // Detect Vite's ready signal from stdout (primary signal on Windows).
+    // Vite prints "ready in" or "Local:" when the dev server is up.
     child.stdout.on("data", (data) => {
-        console.log(`[Preview Process stdout]: ${data.toString().trim()}`);
+        const str = data.toString();
+        console.log(`[Preview Process stdout]: ${str.trim()}`);
+        if ((str.includes("ready in") || str.includes("Local:")) && session.status === "starting-server") {
+            console.log(`[Preview Service] Vite reported ready via stdout. Port ${session.port} is live.`);
+            session.status = "ready";
+        }
     });
 
     child.stderr.on("data", (data) => {
         const str = data.toString();
-        if (session.errors.length < 50) {
-            session.errors.push(str);
+        // Vite sometimes outputs its ready banner to stderr on Windows
+        if ((str.includes("ready in") || str.includes("Local:")) && session.status === "starting-server") {
+            console.log(`[Preview Service] Vite reported ready via stderr. Port ${session.port} is live.`);
+            session.status = "ready";
+        } else {
+            if (session.errors.length < 50) {
+                session.errors.push(str);
+            }
+            console.error(`[Preview Process stderr]: ${str.trim()}`);
         }
-        console.error(`[Preview Process stderr]: ${str.trim()}`);
     });
 
     child.on("close", (code) => {
@@ -240,7 +351,8 @@ const setupAndStartServer = async (session, project) => {
         session.errors.push(err.message);
     });
 
-    // Poll server health using Axios (Ready only after HTTP health check succeeds)
+    // Poll server health using Axios — also marks ready if HTTP responds.
+    // If stdout already marked ready, this exits quickly on first successful check.
     await pollServerHealth(session);
 };
 
@@ -259,13 +371,20 @@ const cleanupSession = async (session) => {
         }
     }
 
-    // Delete temp folder recursively
+    // Delete temp folder recursively (with retries on Windows to allow file handles to be released)
     if (session.dirPath && fs.existsSync(session.dirPath)) {
-        try {
-            fs.rmSync(session.dirPath, { recursive: true, force: true });
-        } catch (e) {
-            console.error("Failed to delete preview dir:", e.message);
-        }
+        const removeDir = (dir, attempt = 1) => {
+            try {
+                fs.rmSync(dir, { recursive: true, force: true });
+            } catch (e) {
+                if (attempt < 4) {
+                    setTimeout(() => removeDir(dir, attempt + 1), 500 * attempt);
+                } else {
+                    console.error(`Failed to delete preview dir after multiple attempts: ${e.message}`);
+                }
+            }
+        };
+        removeDir(session.dirPath);
     }
 
     activePreviews.delete(session.projectId);
