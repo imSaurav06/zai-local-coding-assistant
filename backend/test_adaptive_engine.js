@@ -568,10 +568,25 @@ const runTests = async () => {
     }
     console.log("     PASS: Env values validated to contain only string parameters");
 
+    // Regression: adaptive timeout must always stay within 2–4 minute bounds (120s–240s)
+    console.log("   - Regression: calculateAdaptiveTimeout stays within 2–4 minute bounds...");
+    const strategies = ["DIRECT", "SCAFFOLD_AI", "PARALLEL", "CHUNKED"];
+    const tokenBudgets = [0, 100, 500, 1000, 3000, 10000];
+    for (const strategy of strategies) {
+        for (const budget of tokenBudgets) {
+            const ms = calculateAdaptiveTimeout(strategy, budget);
+            assert.ok(ms >= 120000, `Timeout ${ms}ms < 120s for strategy=${strategy} tokens=${budget}`);
+            assert.ok(ms <= 240000, `Timeout ${ms}ms > 240s for strategy=${strategy} tokens=${budget}`);
+        }
+    }
+    console.log("     PASS: All adaptive timeout values within 120s–240s bounds");
+
     console.log("\n================= ALL ADAPTIVE ENGINE UNIT TESTS PASSED! =================\n");
 };
 
-runTests().catch(e => {
+runTests().then(() => {
+    process.exit(0);
+}).catch(e => {
     console.error("UNIT TEST EXCEPTION:", e.message);
     console.error(e.stack);
     process.exit(1);

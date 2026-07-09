@@ -202,7 +202,9 @@ Hope this helps!` } }],
     console.log("\n================= ALL REGRESSION TESTS PASSED! =================\n");
 };
 
-runRegressionTest().catch(e => {
+runRegressionTest().then(() => {
+    process.exit(0);
+}).catch(e => {
     console.error("REGRESSION TEST EXCEPTION:", e.message);
     console.error(e.stack);
     process.exit(1);
