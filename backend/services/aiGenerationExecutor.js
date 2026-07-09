@@ -1,16 +1,20 @@
 const axios = require("axios");
 const providerRouter = require("./aiProviders/providerRouter");
 
+// Overall generation deadline — retries/fallback must not cause unbounded total wall time.
+// A single executeAiRequest call (primary + retries + fallback + retries) may not exceed this.
+const GENERATION_DEADLINE_MS = 300000; // 5 minutes
+
 // Adaptive timeout calculator based on strategy and token budget
 const calculateAdaptiveTimeout = (strategy, tokenBudget) => {
-    let timeout = 60000; // Base 60s
+    let timeout = 120000; // Base 120s
     if (strategy === "DIRECT" || strategy === "SCAFFOLD_AI") {
-        timeout = 60000 + (tokenBudget * 20); // 20ms per token
+        timeout = 120000 + (tokenBudget * 30); // 30ms per token
     } else {
-        timeout = 30000 + (tokenBudget * 15); // 15ms per token
+        timeout = 90000 + (tokenBudget * 20); // 20ms per token
     }
-    // Bound between 30s minimum and 180s maximum
-    return Math.min(180000, Math.max(30000, timeout));
+    // Bound between 120s minimum and 240s maximum
+    return Math.min(240000, Math.max(120000, timeout));
 };
 
 const executeWithBackoff = async (apiCallFn, retriesLeft, delay, options, stats) => {
@@ -41,9 +45,11 @@ const executeWithBackoff = async (apiCallFn, retriesLeft, delay, options, stats)
 
         const isTransient = isRateLimit || isTimeout || isNetwork || isTransient5xx;
 
-        // Check if we can retry
+        // Check if we can retry — also enforce the overall deadline
         const totalRetryBudgetMax = 15000; // Max 15 seconds wait budget total
-        if (isTransient && retriesLeft > 0 && stats.retryWaitMs < totalRetryBudgetMax) {
+        const elapsedMs = Date.now() - stats._startTime;
+        const remainingDeadlineMs = GENERATION_DEADLINE_MS - elapsedMs;
+        if (isTransient && retriesLeft > 0 && stats.retryWaitMs < totalRetryBudgetMax && remainingDeadlineMs > 8000) {
             stats.retries++;
             if (isTimeout) stats.timeoutCount++;
             if (isNetwork) stats.networkErrorCount++;
@@ -119,6 +125,8 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
     };
 
     const startTime = Date.now();
+    // Expose startTime to retry budget checker
+    stats._startTime = startTime;
 
     const runForProvider = async (provider) => {
         stats.finalProvider = provider;
@@ -146,19 +154,21 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
 
     try {
         const response = await runForProvider(primaryProvider);
-        stats.callDuration = Date.now() - startTime;
-        
-        if (options.callMetricsCollector) {
-            options.callMetricsCollector.push(stats);
-        }
 
-        console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
-
-        if (!response.content || typeof response.content !== "string") {
+        // BUG FIX: Validate content BEFORE logging success=true.
+        // Previously success=true was logged here and then null-content could throw into catch.
+        if (!response.content || typeof response.content !== "string" || response.content.trim().length === 0) {
             const nullContentErr = new Error(`Provider returned empty or null content. Model may have hit a context or content-policy limit.`);
             nullContentErr.isNullContent = true;
             throw nullContentErr;
         }
+
+        stats.callDuration = Date.now() - startTime;
+        if (options.callMetricsCollector) {
+            options.callMetricsCollector.push(stats);
+        }
+        console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
+
         return response.content.trim();
     } catch (primaryErr) {
         const status = primaryErr.response ? primaryErr.response.status : null;
@@ -179,19 +189,26 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
             stats.fallbackReason = primaryErr.message;
             
             try {
+                // Check deadline before attempting fallback
+                const elapsedBeforeFallback = Date.now() - startTime;
+                if (elapsedBeforeFallback > GENERATION_DEADLINE_MS - 5000) {
+                    throw new Error(`Generation deadline exceeded before fallback attempt (${elapsedBeforeFallback}ms elapsed).`);
+                }
+
                 // Execute fallback provider with its own retry/backoff policy
                 const response = await runForProvider(fallbackProvider);
+
+                // BUG FIX: Validate content BEFORE logging success=true for fallback path too.
+                if (!response.content || typeof response.content !== "string" || response.content.trim().length === 0) {
+                    throw new Error(`Fallback provider returned empty or null content. Model may have hit a context or content-policy limit.`);
+                }
+
                 stats.callDuration = Date.now() - startTime;
-                
                 if (options.callMetricsCollector) {
                     options.callMetricsCollector.push(stats);
                 }
-
                 console.log(`[AI Call Metrics] callIndex=${stats.callIndex} strategy=${stats.strategy} provider=${stats.finalProvider} (fallback) unit=${stats.unitId} duration=${stats.callDuration}ms success=true retries=${stats.retries}`);
 
-                if (!response.content || typeof response.content !== "string") {
-                    throw new Error(`Fallback provider returned empty or null content. Model may have hit a context or content-policy limit.`);
-                }
                 return response.content.trim();
             } catch (fallbackErr) {
                 stats.callDuration = Date.now() - startTime;

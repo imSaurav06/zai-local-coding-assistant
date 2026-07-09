@@ -32,8 +32,36 @@ const sendChatCompletion = async (messages, config = {}, options = {}) => {
         }
     );
 
+    // Defensive guard: validate response shape before accessing nested fields.
+    // Missing/empty choices or null content → return null so executor triggers typed fallback.
+    const choices = response.data && response.data.choices;
+    if (!choices || !Array.isArray(choices) || choices.length === 0) {
+        return {
+            content: null,
+            model: model,
+            provider: "openrouter",
+            usage: response.data.usage || {}
+        };
+    }
+
+    const message = choices[0].message;
+    if (!message) {
+        return {
+            content: null,
+            model: model,
+            provider: "openrouter",
+            usage: response.data.usage || {}
+        };
+    }
+
+    const content = message.content;
+    // Normalize: null, undefined, or whitespace-only → null so the executor's guard triggers
+    const normalizedContent = (typeof content === "string" && content.trim().length > 0)
+        ? content
+        : null;
+
     return {
-        content: response.data.choices[0].message.content,
+        content: normalizedContent,
         model: model,
         provider: "openrouter",
         usage: response.data.usage || {}

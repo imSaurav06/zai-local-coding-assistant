@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
+const cp = require("child_process");
 const net = require("net");
 const axios = require("axios");
 const Project = require("../models/Project");
@@ -58,7 +58,8 @@ const sanitizePackageJson = (content) => {
         version: "0.0.0",
         type: "module",
         scripts: {
-            dev: "vite"
+            dev: "vite",
+            build: "vite build"
         },
         dependencies: {},
         devDependencies: {}
@@ -167,71 +168,68 @@ const getSessionMetadata = (session) => {
         projectId: session.projectId,
         status: session.status,
         port: session.port,
-        url: session.status === "ready" ? `http://localhost:${session.port}` : null,
+        url: session.status === "READY" ? `http://localhost:${session.port}` : null,
         errors: session.errors
     };
 };
 
-const pollServerHealth = async (session) => {
-    const url = `http://127.0.0.1:${session.port}`;
-    let attempts = 0;
-    const maxAttempts = 30; // 30 seconds max wait
 
-    while (attempts < maxAttempts) {
-        // Exit if stdout/stderr already signaled ready, or if stopped/failed
-        if (session.status === "ready" || session.status === "stopped" || session.status === "failed") {
-            return;
-        }
 
-        try {
-            await axios.get(url, { timeout: 1000 });
-            // Health check success
-            session.status = "ready";
-            console.log(`[Preview Service] Port ${session.port} is healthy. Preview is ready!`);
-            return;
-        } catch (e) {
-            attempts++;
-            await new Promise(r => setTimeout(r, 1000));
-        }
-    }
-
-    // Health check failed — but check if stdout already marked ready before failing
-    if (session.status === "starting-server") {
-        session.status = "failed";
-        session.errors.push("Vite server failed to start/respond within 30s");
-        if (session.childProcess) {
-            session.childProcess.kill("SIGKILL");
-        }
-    }
-};
 
 const setupAndStartServer = async (session, project) => {
-    // Write files
-    project.files.forEach(file => {
-        let content = file.content;
-        if (file.name === "package.json") {
-            try {
-                content = sanitizePackageJson(content);
-            } catch (e) {
-                console.error("Failed parsing package.json:", e.message);
-            }
-        }
-        safeWriteFile(session.dirPath, file.name, content);
-    });
+    session.status = "VALIDATING";
 
-    // Validate cwd and package.json presence
+    // Precondition Checks
     try {
+        // 1. Write the project files into the temporary directory first
+        project.files.forEach(file => {
+            let content = file.content;
+            if (file.name === "package.json") {
+                try {
+                    content = sanitizePackageJson(content);
+                } catch (e) {
+                    throw new Error(`Failed parsing package.json: ${e.message}`);
+                }
+            }
+            safeWriteFile(session.dirPath, file.name, content);
+        });
+
+        // 2. Validate workspace path exists and is secure
         validateCwd(session.dirPath);
+
+        // 3. Run Generated Content Guard
+        const { applyContentGuard } = require("./generationOrchestrator");
+        const guardErrors = applyContentGuard(project.files);
+        if (guardErrors.length > 0) {
+            throw new Error(`Content Guard: ${guardErrors.join("; ")}`);
+        }
+
+        // 4. Run JS/JSX syntax validation
+        const { validateSyntax } = require("../utils/syntaxValidator");
+        const syntaxErrors = validateSyntax(project.files);
+        if (syntaxErrors.length > 0) {
+            const syntaxMsgs = syntaxErrors.map(e => `${e.filePath}: ${e.reason}`);
+            throw new Error(`Syntax Error: ${syntaxMsgs.join("; ")}`);
+        }
+
+        // 5. Run existing stack-aware project validation
+        const { validateProjectFiles } = require("./validationProfiles");
+        const projectErrors = validateProjectFiles(project.files, project.projectSpec || {});
+        if (projectErrors.length > 0) {
+            throw new Error(`Project integrity validation failed: ${projectErrors.join("; ")}`);
+        }
     } catch (err) {
-        console.error(`[Preview Service] Cwd validation failed: ${err.message}`);
-        session.status = "failed";
+        session.status = "FAILED";
         session.errors.push(err.message);
+        // Clean up temporary workspace directory
+        if (fs.existsSync(session.dirPath)) {
+            try { fs.rmSync(session.dirPath, { recursive: true, force: true }); } catch (e) {}
+        }
         return;
     }
 
-    session.status = "installing";
+    session.status = "BUILDING";
 
-    // Run npm install using spawn
     const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
     const spawnEnv = getSanitizedEnv();
     const spawnOptions = {
@@ -240,56 +238,46 @@ const setupAndStartServer = async (session, project) => {
         shell: process.platform === "win32"
     };
 
-    let installProcess;
-    try {
-        installProcess = spawn(npmCmd, ["install", "--no-audit", "--no-fund"], spawnOptions);
-    } catch (err) {
-        logSpawnDiagnostics(npmCmd, ["install", "--no-audit", "--no-fund"], session.dirPath, spawnEnv, err);
-        session.status = "failed";
-        session.errors.push(`Spawn failed: ${err.message}`);
-        return;
-    }
-
-    installProcess.stderr.on("data", (data) => {
-        const str = data.toString();
-        if (session.errors.length < 50) {
-            session.errors.push(str);
-        }
-    });
-
-    installProcess.on("error", (err) => {
-        logSpawnDiagnostics(npmCmd, ["install", "--no-audit", "--no-fund"], session.dirPath, spawnEnv, err);
-    });
-
-    try {
-        await new Promise((resolve, reject) => {
-            // 120 seconds timeout for npm install
-            const timeout = setTimeout(() => {
-                installProcess.kill("SIGKILL");
-                reject(new Error("npm install timed out after 120s"));
-            }, 120000);
-
-            installProcess.on("close", (code) => {
-                clearTimeout(timeout);
+    const runProcess = (cmd, args) => {
+        return new Promise((resolve, reject) => {
+            let proc;
+            try {
+                proc = cp.spawn(cmd, args, spawnOptions);
+            } catch (err) {
+                return reject(err);
+            }
+            let out = "";
+            let errOut = "";
+            proc.stdout.on("data", data => out += data.toString());
+            proc.stderr.on("data", data => errOut += data.toString());
+            proc.on("close", code => {
                 if (code === 0) {
-                    resolve();
+                    resolve({ code, out, errOut });
                 } else {
-                    reject(new Error(`npm install failed with exit code ${code}`));
+                    reject(new Error(`Command '${cmd} ${args.join(" ")}' failed with exit code ${code}. ${errOut || out}`));
                 }
             });
-            installProcess.on("error", (err) => {
-                clearTimeout(timeout);
-                reject(err);
-            });
+            proc.on("error", reject);
         });
+    };
+
+    try {
+        // Run npm install when required by current architecture
+        await runProcess(npmCmd, ["install", "--no-audit", "--no-fund"]);
+        // Run npm run build and require exit code 0
+        await runProcess(npmCmd, ["run", "build"]);
     } catch (err) {
-        session.status = "failed";
+        session.status = "FAILED";
         session.errors.push(err.message);
+        // Clean up temporary workspace directory
+        if (fs.existsSync(session.dirPath)) {
+            try { fs.rmSync(session.dirPath, { recursive: true, force: true }); } catch (e) {}
+        }
         return;
     }
 
-    // Start Vite server
-    session.status = "starting-server";
+    session.status = "STARTING";
+
     const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
     const viteArgs = [
         "vite",
@@ -299,65 +287,147 @@ const setupAndStartServer = async (session, project) => {
         "--host",
         "127.0.0.1"
     ];
-    
+
     let child;
     try {
-        child = spawn(npxCmd, viteArgs, spawnOptions);
+        child = cp.spawn(npxCmd, viteArgs, spawnOptions);
     } catch (err) {
-        logSpawnDiagnostics(npxCmd, viteArgs, session.dirPath, spawnEnv, err);
-        session.status = "failed";
+        session.status = "FAILED";
         session.errors.push(`Spawn failed: ${err.message}`);
+        if (fs.existsSync(session.dirPath)) {
+            try { fs.rmSync(session.dirPath, { recursive: true, force: true }); } catch (e) {}
+        }
         return;
     }
-
     session.childProcess = child;
 
-    // Detect Vite's ready signal from stdout (primary signal on Windows).
-    // Vite prints "ready in" or "Local:" when the dev server is up.
+    const handleFailure = (reason) => {
+        if (session.status === "READY" || session.status === "FAILED" || session.status === "stopped") return;
+        session.status = "FAILED";
+        session.errors.push(reason);
+        if (child) {
+            try { child.kill("SIGKILL"); } catch (e) {}
+        }
+        if (fs.existsSync(session.dirPath)) {
+            try { fs.rmSync(session.dirPath, { recursive: true, force: true }); } catch (e) {}
+        }
+    };
+
+    const detectFailurePattern = (str) => {
+        const lower = str.toLowerCase();
+        return lower.includes("vite compilation error") ||
+               lower.includes("babel parser error") ||
+               lower.includes("plugin:vite:react-babel") ||
+               lower.includes("failed to resolve import") ||
+               lower.includes("internal server error") ||
+               lower.includes("syntaxerror") ||
+               (lower.includes("syntax error") && !lower.includes("no syntax errors"));
+    };
+
+    const runDeepHealthCheck = async () => {
+        const url = `http://127.0.0.1:${session.port}`;
+        let attempt = 0;
+        const maxAttempts = 15;
+        while (attempt < maxAttempts) {
+            if (session.status === "FAILED" || session.status === "stopped") {
+                return;
+            }
+            try {
+                const response = await axios.get(url, {
+                    timeout: 2000,
+                    headers: { 'Accept': 'text/html' }
+                });
+
+                if (response.status !== 200) {
+                    throw new Error(`Health check returned non-200 status code: ${response.status}`);
+                }
+
+                const html = response.data;
+
+                if (html.includes("vite-error-overlay") ||
+                    html.includes("vite-error") ||
+                    html.includes("Vite Error") ||
+                    html.includes("Internal Server Error") ||
+                    html.includes("Failed to resolve import")) {
+                    throw new Error("Vite error overlay detected in health check response.");
+                }
+
+                const hasRoot = html.includes('id="root"');
+                const hasMain = html.includes('src="/src/main.jsx"');
+                if (!hasRoot && !hasMain) {
+                    throw new Error("HTML response missing deterministic entry marker (id='root' or src='/src/main.jsx').");
+                }
+
+                // Reachable ONLY from HEALTH_CHECKING
+                if (session.status === "HEALTH_CHECKING") {
+                    session.status = "READY";
+                    console.log(`[Preview Service] Health check succeeded. Live Preview is READY!`);
+                }
+                return;
+            } catch (err) {
+                if (err.message.includes("Vite error overlay") || err.message.includes("missing deterministic entry marker") || err.message.includes("non-200")) {
+                    throw err;
+                }
+                attempt++;
+                if (attempt >= maxAttempts) {
+                    throw new Error(`Vite server did not become healthy within timeout: ${err.message}`);
+                }
+                await new Promise(r => setTimeout(r, 500));
+            }
+        }
+    };
+
+    const transitionToHealthChecking = async () => {
+        if (session.status !== "STARTING") return;
+        session.status = "HEALTH_CHECKING";
+        try {
+            await runDeepHealthCheck();
+        } catch (err) {
+            handleFailure(err.message);
+        }
+    };
+
     child.stdout.on("data", (data) => {
         const str = data.toString();
         console.log(`[Preview Process stdout]: ${str.trim()}`);
-        if ((str.includes("ready in") || str.includes("Local:")) && session.status === "starting-server") {
-            console.log(`[Preview Service] Vite reported ready via stdout. Port ${session.port} is live.`);
-            session.status = "ready";
+        if (session.status === "STARTING") {
+            if (str.includes("ready in") || str.includes("Local:") || str.includes("Network:")) {
+                transitionToHealthChecking();
+            }
+        }
+        if (detectFailurePattern(str)) {
+            handleFailure(`Vite compilation error detected: ${str.trim()}`);
         }
     });
 
     child.stderr.on("data", (data) => {
         const str = data.toString();
-        // Vite sometimes outputs its ready banner to stderr on Windows
-        if ((str.includes("ready in") || str.includes("Local:")) && session.status === "starting-server") {
-            console.log(`[Preview Service] Vite reported ready via stderr. Port ${session.port} is live.`);
-            session.status = "ready";
-        } else {
-            if (session.errors.length < 50) {
-                session.errors.push(str);
+        console.error(`[Preview Process stderr]: ${str.trim()}`);
+        if (session.status === "STARTING") {
+            if (str.includes("ready in") || str.includes("Local:") || str.includes("Network:")) {
+                transitionToHealthChecking();
             }
-            console.error(`[Preview Process stderr]: ${str.trim()}`);
+        }
+        if (detectFailurePattern(str)) {
+            handleFailure(`Vite compilation error detected: ${str.trim()}`);
         }
     });
 
     child.on("close", (code) => {
         console.warn(`[Preview Process] vite closed with code ${code}`);
-        if (session.status !== "stopped") {
-            session.status = "failed";
-            session.errors.push(`Vite server closed with code ${code}`);
+        if (session.status !== "stopped" && session.status !== "READY" && session.status !== "FAILED") {
+            handleFailure(`Vite server closed early with code ${code}`);
         }
     });
 
     child.on("error", (err) => {
         console.error(`[Preview Process] vite error:`, err);
-        session.status = "failed";
-        session.errors.push(err.message);
+        handleFailure(err.message);
     });
-
-    // Poll server health using Axios — also marks ready if HTTP responds.
-    // If stdout already marked ready, this exits quickly on first successful check.
-    await pollServerHealth(session);
 };
 
 const cleanupSession = async (session) => {
-    session.status = "stopped";
+    session.status = "NOT_STARTED";
     if (session.expiryTimer) {
         clearTimeout(session.expiryTimer);
     }
@@ -443,7 +513,7 @@ const startPreview = async (projectId, userId) => {
     const session = {
         projectId,
         port,
-        status: "preparing",
+        status: "VALIDATING",
         dirPath: canonicalRoot,
         childProcess: null,
         lastActive: Date.now(),
@@ -457,7 +527,7 @@ const startPreview = async (projectId, userId) => {
     // Setup files in background
     setupAndStartServer(session, project).catch(err => {
         console.error(`[Preview Service] Background setup failed for ${projectId}:`, err.message);
-        session.status = "failed";
+        session.status = "FAILED";
         session.errors.push(err.message);
     });
 
@@ -467,7 +537,7 @@ const startPreview = async (projectId, userId) => {
 const getPreviewStatus = async (projectId, userId) => {
     const session = activePreviews.get(projectId);
     if (!session) {
-        return { status: "idle" };
+        return { status: "NOT_STARTED" };
     }
     // Verify ownership
     const project = await Project.findById(projectId);
@@ -485,7 +555,7 @@ const getPreviewStatus = async (projectId, userId) => {
 const stopPreview = async (projectId, userId) => {
     const session = activePreviews.get(projectId);
     if (!session) {
-        return { status: "stopped" };
+        return { status: "NOT_STARTED" };
     }
     // Verify ownership
     const project = await Project.findById(projectId);
@@ -496,7 +566,7 @@ const stopPreview = async (projectId, userId) => {
     }
 
     await cleanupSession(session);
-    return { status: "stopped" };
+    return { status: "NOT_STARTED" };
 };
 
 // Cleanup all active previews on backend shutdown
@@ -532,5 +602,6 @@ module.exports = {
     getPreviewStatus,
     stopPreview,
     cleanupAll,
-    activePreviews
+    activePreviews,
+    sanitizePackageJson
 };

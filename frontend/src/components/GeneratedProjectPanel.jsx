@@ -43,7 +43,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
   const [guideOpen, setGuideOpen] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState('');
 
-  const [previewStatus, setPreviewStatus] = useState('idle');
+  const [previewStatus, setPreviewStatus] = useState('NOT_STARTED');
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewErrors, setPreviewErrors] = useState([]);
   const [polling, setPolling] = useState(false);
@@ -51,7 +51,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
 
   // Sync preview status on mount/projectId change
   useEffect(() => {
-    setPreviewStatus('idle');
+    setPreviewStatus('NOT_STARTED');
     setPreviewUrl(null);
     setPreviewErrors([]);
     setPolling(false);
@@ -59,11 +59,11 @@ export default function GeneratedProjectPanel({ generatedProject }) {
     if (projectId) {
       api.get(`/project/${projectId}/preview/status`)
         .then(res => {
-          if (res.data.success && res.data.status !== 'idle') {
+          if (res.data.success && res.data.status !== 'NOT_STARTED') {
             setPreviewStatus(res.data.status);
             setPreviewUrl(res.data.url);
             setPreviewErrors(res.data.errors || []);
-            if (res.data.status !== 'ready' && res.data.status !== 'failed' && res.data.status !== 'stopped') {
+            if (res.data.status !== 'READY' && res.data.status !== 'FAILED') {
               setPolling(true);
             }
           }
@@ -82,13 +82,13 @@ export default function GeneratedProjectPanel({ generatedProject }) {
             setPreviewStatus(res.data.status);
             setPreviewUrl(res.data.url);
             setPreviewErrors(res.data.errors || []);
-            if (res.data.status === 'ready' || res.data.status === 'failed' || res.data.status === 'stopped') {
+            if (res.data.status === 'READY' || res.data.status === 'FAILED' || res.data.status === 'NOT_STARTED') {
               setPolling(false);
             }
           }
         } catch (err) {
           console.error("Polling preview failed:", err);
-          setPreviewStatus('failed');
+          setPreviewStatus('FAILED');
           setPreviewErrors([err.response?.data?.message || err.message]);
           setPolling(false);
         }
@@ -100,7 +100,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
 
   const handleStartPreview = async () => {
     if (!projectId) return;
-    setPreviewStatus('starting');
+    setPreviewStatus('VALIDATING');
     setPreviewErrors([]);
     try {
       const res = await api.post(`/project/${projectId}/preview`);
@@ -108,13 +108,13 @@ export default function GeneratedProjectPanel({ generatedProject }) {
         setPreviewStatus(res.data.status);
         setPreviewUrl(res.data.url);
         setPreviewErrors(res.data.errors || []);
-        if (res.data.status !== 'ready' && res.data.status !== 'failed' && res.data.status !== 'stopped') {
+        if (res.data.status !== 'READY' && res.data.status !== 'FAILED') {
           setPolling(true);
         }
       }
     } catch (err) {
       console.error("Start preview failed:", err);
-      setPreviewStatus('failed');
+      setPreviewStatus('FAILED');
       setPreviewErrors([err.response?.data?.message || err.message]);
     }
   };
@@ -200,6 +200,77 @@ export default function GeneratedProjectPanel({ generatedProject }) {
     setTimeout(() => setCopiedCommand(''), 2000);
   };
 
+  /**
+   * Build a hierarchical tree from a flat file list.
+   * Returns an ordered list of { type: 'dir'|'file', label, name, depth } entries.
+   */
+  const buildFileTree = (fileList) => {
+    const entries = [];
+    const seenDirs = new Set();
+
+    // Collect all unique directory paths
+    const allDirs = new Set();
+    fileList.forEach(f => {
+      const parts = f.name.split('/');
+      for (let i = 1; i < parts.length; i++) {
+        allDirs.add(parts.slice(0, i).join('/'));
+      }
+    });
+
+    // Sort directories so parents come before children
+    const sortedDirs = Array.from(allDirs).sort();
+
+    // We render items in this pass:
+    // 1. Root-level files first
+    // 2. Then directories, recursively with their files
+
+    // Group files by their immediate parent directory
+    const filesByDir = new Map();
+    filesByDir.set('', []);  // root
+    sortedDirs.forEach(d => filesByDir.set(d, []));
+    fileList.forEach(f => {
+      const lastSlash = f.name.lastIndexOf('/');
+      const parentDir = lastSlash === -1 ? '' : f.name.slice(0, lastSlash);
+      if (!filesByDir.has(parentDir)) filesByDir.set(parentDir, []);
+      filesByDir.get(parentDir).push(f);
+    });
+
+    const addDir = (dirPath, depth) => {
+      if (seenDirs.has(dirPath)) return;
+      seenDirs.add(dirPath);
+      const label = dirPath.split('/').pop();
+      entries.push({ type: 'dir', label: label + '/', name: dirPath, depth });
+
+      // Add files directly in this dir
+      const dirFiles = (filesByDir.get(dirPath) || []).sort((a, b) => a.name.localeCompare(b.name));
+      dirFiles.forEach(f => {
+        entries.push({ type: 'file', label: f.name.split('/').pop(), name: f.name, depth: depth + 1 });
+      });
+
+      // Recursively add subdirs
+      sortedDirs
+        .filter(d => {
+          const parts = d.split('/');
+          const parentParts = dirPath ? dirPath.split('/') : [];
+          return parts.length === parentParts.length + 1 && d.startsWith(dirPath ? dirPath + '/' : '');
+        })
+        .forEach(subDir => addDir(subDir, depth + 1));
+    };
+
+    // Root-level files first
+    const rootFiles = (filesByDir.get('') || []).sort((a, b) => a.name.localeCompare(b.name));
+    rootFiles.forEach(f => {
+      entries.push({ type: 'file', label: f.name, name: f.name, depth: 0 });
+    });
+
+    // Top-level directories
+    sortedDirs
+      .filter(d => !d.includes('/'))
+      .forEach(d => addDir(d, 0));
+
+    return entries;
+  };
+
   const renderPreview = () => {
     const isDark = designPreference.toLowerCase().includes('dark');
     const colorThemeClass = isDark ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900';
@@ -214,7 +285,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       );
     }
 
-    if (previewStatus === 'idle' || previewStatus === 'stopped') {
+    if (previewStatus === 'NOT_STARTED') {
       return (
         <div className="flex flex-col items-center justify-center p-8 text-center space-y-4 border border-dashed border-dark-border rounded-xl bg-slate-900/30 select-none">
           <FiEye className="w-8 h-8 text-brand-500 animate-pulse" />
@@ -234,16 +305,18 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       );
     }
 
-    if (previewStatus === 'starting' || previewStatus === 'preparing' || previewStatus === 'installing' || previewStatus === 'starting-server') {
+    if (previewStatus === 'VALIDATING' || previewStatus === 'BUILDING' || previewStatus === 'STARTING' || previewStatus === 'HEALTH_CHECKING') {
       let statusMessage = "Preparing sandbox workspace...";
-      if (previewStatus === 'installing') statusMessage = "Installing sandbox dependencies (npm install)...";
-      if (previewStatus === 'starting-server') statusMessage = "Starting local Vite development server...";
+      if (previewStatus === 'VALIDATING') statusMessage = "Running content guard and syntax validation...";
+      if (previewStatus === 'BUILDING') statusMessage = "Installing dependencies and running build check...";
+      if (previewStatus === 'STARTING') statusMessage = "Starting local Vite development server...";
+      if (previewStatus === 'HEALTH_CHECKING') statusMessage = "Performing application-level health check...";
 
       return (
         <div className="flex flex-col items-center justify-center p-8 text-center space-y-4 border border-dark-border rounded-xl bg-slate-900/30 select-none">
           <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
           <div className="space-y-1">
-            <h4 className="text-[10px] font-mono font-bold text-slate-300">Preview Status: {previewStatus.toUpperCase()}</h4>
+            <h4 className="text-[10px] font-mono font-bold text-slate-300">Preview Status: {previewStatus}</h4>
             <p className="text-[10px] text-dark-muted font-mono">{statusMessage}</p>
           </div>
           <button
@@ -256,7 +329,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       );
     }
 
-    if (previewStatus === 'failed') {
+    if (previewStatus === 'FAILED') {
       return (
         <div className="p-4 border border-red-500/30 bg-red-950/25 text-red-400 rounded-xl space-y-3 font-mono text-xs max-w-xl mx-auto">
           <h4 className="font-bold text-red-500 flex items-center gap-1.5 select-none">
@@ -285,7 +358,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
       );
     }
 
-    if (previewStatus === 'ready') {
+    if (previewStatus === 'READY') {
       return (
         <div className="space-y-3">
           {/* Toolbar */}
@@ -552,32 +625,51 @@ export default function GeneratedProjectPanel({ generatedProject }) {
             {/* Code explorer tab */}
             {activeTab === 'code' && files.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                <div className="md:col-span-3 flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-y-auto max-h-[300px] pb-2 md:pb-0 select-none md:border-r border-dark-border pr-0 md:pr-2 scrollbar-thin">
-                  {files.map((file) => (
-                    <button
-                      key={file.name}
-                      onClick={() => setActiveCodeFile(file.name)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-all cursor-pointer flex items-center gap-1.5 flex-shrink-0 ${
-                        activeCodeFile === file.name
-                          ? 'bg-brand-500/10 text-brand-500'
-                          : 'text-slate-400 hover:text-white bg-transparent'
-                      }`}
-                    >
-                      {file.name.endsWith('.jsx') ? (
-                        <FiLayout className="w-3.5 h-3.5 flex-shrink-0" />
-                      ) : file.name.endsWith('.js') && !file.name.toLowerCase().includes('schema') && !file.name.toLowerCase().includes('model') ? (
-                        <FiServer className="w-3.5 h-3.5 flex-shrink-0" />
-                      ) : file.name.toLowerCase().includes('schema') || file.name.toLowerCase().includes('model') ? (
-                        <FiDatabase className="w-3.5 h-3.5 flex-shrink-0" />
-                      ) : (
-                        <FiCode className="w-3.5 h-3.5 flex-shrink-0" />
-                      )}
-                      <span className="truncate max-w-[120px] font-mono" title={file.name}>
-                        {file.name.split('/').pop()}
-                      </span>
-                    </button>
-                  ))}
+                {/* Hierarchical file tree panel */}
+                <div className="md:col-span-3 flex flex-col gap-0.5 overflow-x-auto md:overflow-y-auto max-h-[340px] pb-2 md:pb-0 select-none md:border-r border-dark-border pr-0 md:pr-2 scrollbar-thin">
+                  {buildFileTree(files).map((entry, idx) => {
+                    const indent = entry.depth * 10;
+                    if (entry.type === 'dir') {
+                      return (
+                        <div
+                          key={`dir-${entry.name}-${idx}`}
+                          style={{ paddingLeft: `${indent + 4}px` }}
+                          className="flex items-center gap-1 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-500 select-none mt-1.5 first:mt-0"
+                        >
+                          <FiFolder className="w-3 h-3 text-brand-500/70 flex-shrink-0" />
+                          <span className="font-mono">{entry.label}</span>
+                        </div>
+                      );
+                    }
+                    // File entry
+                    const isActive = activeCodeFile === entry.name;
+                    const ext = entry.name.split('.').pop();
+                    const FileIcon = entry.name.endsWith('.jsx') || entry.name.endsWith('.tsx')
+                      ? FiLayout
+                      : entry.name.toLowerCase().includes('model') || entry.name.toLowerCase().includes('schema')
+                        ? FiDatabase
+                        : entry.name.endsWith('.js') || entry.name.endsWith('.ts')
+                          ? FiServer
+                          : FiCode;
+                    return (
+                      <button
+                        key={`file-${entry.name}-${idx}`}
+                        onClick={() => setActiveCodeFile(entry.name)}
+                        style={{ paddingLeft: `${indent + 8}px` }}
+                        className={`pr-2 py-1.5 rounded text-[10px] font-medium text-left transition-all cursor-pointer flex items-center gap-1.5 w-full ${
+                          isActive
+                            ? 'bg-brand-500/10 text-brand-400'
+                            : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                        }`}
+                        title={entry.name}
+                      >
+                        <FileIcon className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate font-mono text-[10px]" style={{ maxWidth: '120px' }}>{entry.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                {/* Code viewer panel */}
                 <div className="md:col-span-9">
                   <div className="text-[10px] text-dark-muted font-mono mb-2 bg-[#141416] px-3 py-1.5 rounded border border-dark-border/40 select-none flex justify-between items-center">
                     <span>File: <strong className="text-slate-200">{activeCodeFile}</strong></span>
@@ -585,7 +677,7 @@ export default function GeneratedProjectPanel({ generatedProject }) {
                   </div>
                   <CodeBlock
                     code={getStarterCode(activeCodeFile)}
-                    language={activeCodeFile.endsWith('.jsx') ? 'jsx' : activeCodeFile.endsWith('.json') ? 'json' : 'javascript'}
+                    language={activeCodeFile.endsWith('.jsx') || activeCodeFile.endsWith('.tsx') ? 'jsx' : activeCodeFile.endsWith('.json') ? 'json' : 'javascript'}
                   />
                 </div>
               </div>

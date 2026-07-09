@@ -1,4 +1,4 @@
-const { executeAiRequest, parseGeneratedFiles } = require("./aiGenerationExecutor");
+const aiExecutor = require("./aiGenerationExecutor");
 
 const mapErrorsToFiles = (errors, files) => {
     const affected = new Set();
@@ -79,12 +79,12 @@ Please output the corrected version of the edited files and the newly created fi
     // Allocate tokens: 1200 base + 900 per file, capped at 4000 to stay within free-tier limits
     const repairTokenBudget = Math.min(1200 + (batchNames.length * 900), 4000);
 
-    const rawOutput = await executeAiRequest(systemPrompt, userPrompt, {
+    const rawOutput = await aiExecutor.executeAiRequest(systemPrompt, userPrompt, {
         ...options,
         tokenBudget: repairTokenBudget
     });
     console.log(`[REPAIR DEBUG] Raw AI response:\n${rawOutput}`);
-    return parseGeneratedFiles(rawOutput);
+    return aiExecutor.parseGeneratedFiles(rawOutput);
 };
 
 const repairAffectedFiles = async (errors, files, projectSpec, contracts, options = {}) => {
@@ -106,7 +106,21 @@ const repairAffectedFiles = async (errors, files, projectSpec, contracts, option
         const repairedFiles = await repairBatch(errors, batch, currentFiles, projectSpec, contracts, options);
 
         // Merge repaired files back into the map
+        const { validateJsSyntax } = require("../utils/syntaxValidator");
+        const path = require("path");
         repairedFiles.forEach(rf => {
+            const oldContent = fileMap.get(rf.name);
+            if (oldContent !== undefined) {
+                const ext = path.extname(rf.name).toLowerCase();
+                if ([".js", ".jsx", ".mjs", ".cjs"].includes(ext)) {
+                    const oldHasError = !!validateJsSyntax(oldContent, rf.name);
+                    const newHasError = !!validateJsSyntax(rf.content, rf.name);
+                    if (!oldHasError && newHasError) {
+                        console.warn(`[Repair Guard] Rejecting syntax-invalid repair for file '${rf.name}' (was valid before).`);
+                        return; // Do not replace valid file with syntax-invalid repair output
+                    }
+                }
+            }
             fileMap.set(rf.name, rf.content);
         });
     }
