@@ -1,0 +1,36 @@
+[
+  {
+    "stack": "Node/Express",
+    "requested": "Create a structured Express REST API containing routes, controllers, middleware, and request validation CRUD endpoints for a 'books' resource, a health route, and server.js. No frontend.",
+    "resolvedProfile": "express",
+    "duration": 61350,
+    "expectedFileCount": 4,
+    "generatedFileCount": 5,
+    "zipExclusion": "PASS",
+    "zipExclusionDetails": "",
+    "preview": "PASS",
+    "previewStates": "BUILDING -> READY",
+    "health": "FAIL",
+    "apiEndpointEvidence": "N/A",
+    "install": "PASS",
+    "build": "SKIPPED",
+    "localRun": "FAIL",
+    "localHealth": "SKIPPED",
+    "localApi": "SKIPPED",
+    "status": "FAIL"
+  },
+  {
+    "stack": "Next.js",
+    "requested": "Create a basic Next.js app with next.config.js, app/page.jsx, app/layout.jsx, app/globals.css. Keep it extremely small.",
+    "resolvedProfile": "N/A",
+    "status": "FAIL",
+    "details": "Generation failed: Analysis failed"
+  },
+  {
+    "stack": "MERN",
+    "requested": "Build a minimal full-stack MERN task app. Provide frontend/src/main.jsx, frontend/src/App.jsx, and backend/server.js. Keep files under 20 lines.",
+    "resolvedProfile": "N/A",
+    "status": "FAIL",
+    "details": "Generation failed: Analysis failed"
+  }
+]

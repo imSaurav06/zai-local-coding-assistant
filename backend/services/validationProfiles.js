@@ -1,5 +1,6 @@
 const path = require("path");
-const { buildSharedContracts } = require("./contractBuilder");
+const { buildSharedContracts, isMernStack } = require("./contractBuilder");
+const { detectProfile } = require("./stackProfiles");
 
 const validateJsonSyntax = (content) => {
     try {
@@ -30,6 +31,12 @@ const validateRelativeImports = (files) => {
             const content = file.content;
 
             const checkImport = (relPath) => {
+                // Skip asset imports — they don't need to be in the file map
+                if (relPath.endsWith(".svg") || relPath.endsWith(".png") ||
+                    relPath.endsWith(".jpg") || relPath.endsWith(".jpeg") || relPath.endsWith(".gif") ||
+                    relPath.endsWith(".ico") || relPath.endsWith(".woff") || relPath.endsWith(".woff2")) {
+                    return;
+                }
                 // Resolve relative path
                 let resolved = path.join(dir, relPath).replace(/\\/g, "/");
                 
@@ -55,52 +62,29 @@ const validateRelativeImports = (files) => {
     return errors;
 };
 
-/**
- * Detect common JSX syntax errors that esbuild will reject at build time.
- * Example: <{icon} /> is invalid — must use a capitalized variable: const Icon = icon; <Icon />
- */
-const validateJsxSyntax = (files) => {
-    const errors = [];
-    for (const file of files) {
-        const filePath = file.name.replace(/\\/g, "/");
-        if (filePath.endsWith(".jsx") || filePath.endsWith(".tsx")) {
-            // Detect <{expr pattern — invalid dynamic component shorthand
-            if (/<\{/.test(file.content)) {
-                errors.push(
-                    `File '${filePath}' contains invalid JSX syntax '<{...}'. ` +
-                    `Dynamic components must be assigned to a capitalized variable: ` +
-                    `const DynComp = myProp; return <DynComp />;`
-                );
-            }
-            // Detect invalid closing tags with extra text or attributes (e.g., </h1 testing>)
-            const invalidClosingTagRegex = /<\/([a-zA-Z0-9]+)\s+[^>]+>/g;
-            let match;
-            while ((match = invalidClosingTagRegex.exec(file.content)) !== null) {
-                errors.push(
-                    `File '${filePath}' contains invalid JSX closing tag '${match[0]}'. Closing tags must not contain attributes or extra text.`
-                );
-            }
-        }
-    }
-    return errors;
-};
-
 const validateExternalDependencies = (files, errors) => {
-    const packageJsonFile = files.find(f => f.name === "package.json");
-    if (!packageJsonFile) return;
+    // Find all package.json files (could be root, frontend/, backend/)
+    const packageJsonFiles = files.filter(f =>
+        f.name === "package.json" ||
+        f.name === "frontend/package.json" ||
+        f.name === "backend/package.json"
+    );
+
+    if (packageJsonFiles.length === 0) return;
 
     let declaredDeps = new Set();
-    try {
-        const pj = JSON.parse(packageJsonFile.content);
-        if (pj.dependencies) {
-            Object.keys(pj.dependencies).forEach(k => declaredDeps.add(k));
+    for (const packageJsonFile of packageJsonFiles) {
+        try {
+            const pj = JSON.parse(packageJsonFile.content);
+            if (pj.dependencies) {
+                Object.keys(pj.dependencies).forEach(k => declaredDeps.add(k));
+            }
+            if (pj.devDependencies) {
+                Object.keys(pj.devDependencies).forEach(k => declaredDeps.add(k));
+            }
+        } catch (e) {
+            // Syntax error already handled elsewhere
         }
-        if (pj.devDependencies) {
-            Object.keys(pj.devDependencies).forEach(k => declaredDeps.add(k));
-        }
-    } catch (e) {
-        // Syntax error already handled elsewhere
-        return;
     }
 
     const builtins = new Set([
@@ -162,120 +146,55 @@ const validateProjectFiles = (files, projectSpec) => {
         return errors;
     }
 
-    // 1. Safe path validation
+    // 1. Safe path validation (Global check)
     for (const file of files) {
         if (file.name.includes("..") || path.isAbsolute(file.name)) {
             errors.push(`Invalid file path detected: '${file.name}'`);
         }
     }
 
-    // 2. Syntax validation for configuration files
-    const packageJsonFile = files.find(f => f.name === "package.json");
-    if (packageJsonFile) {
-        const jsonErr = validateJsonSyntax(packageJsonFile.content);
-        if (jsonErr) {
-            errors.push(`Invalid JSON syntax in 'package.json': ${jsonErr}`);
+    // 2. Validate json syntax in all package.json files (Global check)
+    files.forEach(f => {
+        if (f.name.endsWith("package.json")) {
+            const jsonErr = validateJsonSyntax(f.content);
+            if (jsonErr) {
+                errors.push(`Invalid JSON syntax in '${f.name}': ${jsonErr}`);
+            }
         }
+    });
+
+    // 3. Delegate profile-specific validations
+    const profile = detectProfile(projectSpec);
+    if (profile && typeof profile.validate === "function") {
+        const profileErrors = profile.validate(files, projectSpec);
+        errors.push(...profileErrors);
     }
 
-    // 3. Dependency validation (Check README exists)
+    // 4. Validate relative imports (Global check)
+    // Run separate import validation for subfolders if it's MERN
+    if (profile.name === "mern") {
+        const frontendFiles = files.filter(f => f.name.startsWith("frontend/"));
+        const backendFiles = files.filter(f => f.name.startsWith("backend/"));
+        errors.push(...validateRelativeImports(frontendFiles));
+        errors.push(...validateRelativeImports(backendFiles));
+    } else {
+        errors.push(...validateRelativeImports(files));
+    }
+
+    // 5. Validate external dependencies (Global check)
+    validateExternalDependencies(files, errors);
+
+    // 6. README check (Global check)
     const hasReadme = files.some(f => f.name.toLowerCase() === "readme.md");
     if (!hasReadme) {
         errors.push("Missing required file 'README.md'.");
     }
 
-    // 4. Validate relative local imports safely
-    const importErrors = validateRelativeImports(files);
-    errors.push(...importErrors);
-
-    // 5. Validate external dependencies are declared in package.json
-    validateExternalDependencies(files, errors);
-
-    // 5b. Validate JSX syntax correctness (catch invalid dynamic component patterns)
-    const jsxSyntaxErrors = validateJsxSyntax(files);
-    errors.push(...jsxSyntaxErrors);
-
-    // 6. Stack-aware React + Vite completeness validation
-    const tech = (((projectSpec && projectSpec.frontend) || "") + " " + ((projectSpec && projectSpec.backend) || "") + " " + ((projectSpec && projectSpec.database) || "")).toLowerCase();
-    const isReactVite = tech.includes("react") || tech.includes("vite") || files.some(f => f.name === "vite.config.js");
-
-    if (isReactVite) {
-        const reqFiles = [
-            "package.json",
-            "index.html",
-            "vite.config.js",
-            "src/main.jsx",
-            "src/App.jsx",
-            "src/index.css"
-        ];
-
-        // Ensure all specification contract folder structure files are generated
-        if (projectSpec) {
-            try {
-                const contracts = buildSharedContracts(projectSpec);
-                if (contracts && contracts.folderStructure) {
-                    contracts.folderStructure.forEach(pathKey => {
-                        const cleanPath = pathKey.replace(/\\/g, "/");
-                        if (!reqFiles.includes(cleanPath)) {
-                            reqFiles.push(cleanPath);
-                        }
-                    });
-                }
-            } catch (e) {
-                console.error("Failed building contracts during validation:", e.message);
-            }
-        }
-        
-        reqFiles.forEach(rf => {
-            const exists = files.some(f => f.name === rf);
-            if (!exists) {
-                errors.push(`Missing required file '${rf}'.`);
-            }
-        });
-
-        // HTML Entry reference check
-        const htmlFile = files.find(f => f.name === "index.html");
-        if (htmlFile) {
-            const hasEntryRef = /src\/main\.(jsx|js)/i.test(htmlFile.content);
-            if (!hasEntryRef) {
-                errors.push("index.html does not reference a valid entry path (expected src/main.jsx or src/main.js).");
-            }
-        }
-
-        // Main Entry file check
-        const mainFile = files.find(f => f.name === "src/main.jsx" || f.name === "src/main.js");
-        if (mainFile) {
-            const hasAppImport = /import\s+App\s+from/i.test(mainFile.content) || /require\(['"]\.\/App/i.test(mainFile.content);
-            if (!hasAppImport) {
-                errors.push("Entry module does not import the root application component 'App'.");
-            }
-        }
-
-        // Tailwind CSS directive check
-        const hasTailwind = tech.includes("tailwind") || (packageJsonFile && packageJsonFile.content.includes("tailwindcss"));
-        if (hasTailwind) {
-            const cssFile = files.find(f => f.name === "src/index.css" || f.name.endsWith(".css"));
-            if (cssFile) {
-                const hasTailwindDirectives = /@tailwind|@import\s+['"]tailwindcss['"]/i.test(cssFile.content);
-                if (!hasTailwindDirectives) {
-                    errors.push("Tailwind CSS configuration is present but Tailwind directives are not defined in any stylesheet.");
-                }
-            }
-        }
-
-        // Custom Prompt-specific UI check
-        const appFile = files.find(f => f.name === "src/App.jsx");
-        if (appFile) {
-            // Check that App.jsx contains more than standard boilerplate
-            const cleanContent = appFile.content.replace(/\s+/g, "");
-            if (cleanContent.length < 90) {
-                console.log(`[VALIDATION DEBUG] App.jsx content (length=${cleanContent.length}):\n${appFile.content}`);
-                errors.push("src/App.jsx only contains boilerplate/placeholder code and lacks implementation of the requested project.");
-            }
-        }
-    }
-
     return errors;
 };
 
-module.exports = { validateProjectFiles, validateJsonSyntax, validateRelativeImports };
+module.exports = {
+    validateProjectFiles,
+    validateJsonSyntax,
+    validateRelativeImports
+};

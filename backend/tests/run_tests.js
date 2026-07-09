@@ -9,6 +9,7 @@
 
 const assert = require("assert");
 const path = require("path");
+const axios = require("axios");
 
 // ─── Test Runner ─────────────────────────────────────────────────────────────
 const results = { passed: 0, failed: 0, total: 0 };
@@ -38,7 +39,7 @@ const backendRoot = path.resolve(__dirname, "..");
 const { applyContentGuard, generateRichPlan, generateRichReadme } = require(path.join(backendRoot, "services/generationOrchestrator"));
 const { validateProjectFiles } = require(path.join(backendRoot, "services/validationProfiles"));
 const { planGeneration } = require(path.join(backendRoot, "services/generationPlanner"));
-const { buildSharedContracts } = require(path.join(backendRoot, "services/contractBuilder"));
+const { buildSharedContracts, buildProjectManifest } = require(path.join(backendRoot, "services/contractBuilder"));
 const { sanitizePackageJson } = require(path.join(backendRoot, "services/previewService"));
 const { calculateAdaptiveTimeout } = require(path.join(backendRoot, "services/aiGenerationExecutor"));
 
@@ -456,12 +457,17 @@ suite("buildSharedContracts — Folder Structure", () => {
 
     test("includes server.js and model paths for MERN spec", () => {
         const contracts = buildSharedContracts(SAMPLE_MERN_SPEC);
-        assert.ok(contracts.folderStructure.includes("server.js"),
-            "Should include server.js for backend"
+        // MERN stack uses frontend/backend subfolder structure
+        assert.ok(
+            contracts.folderStructure.includes("backend/server.js"),
+            "Should include backend/server.js for MERN backend"
         );
-        assert.ok(contracts.folderStructure.includes("models/Task.js"),
-            "Should include models/Task.js"
+        assert.ok(
+            contracts.folderStructure.includes("backend/models/Task.js"),
+            "Should include backend/models/Task.js for MERN"
         );
+        // isMern flag must be set
+        assert.strictEqual(contracts.isMern, true, "MERN spec should have isMern=true");
     });
 
     test("maps backendApis to apiEndpoints", () => {
@@ -1032,8 +1038,583 @@ suite("E2E Fix Regressions", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sequential Async Test Executor & Results Summary
+// SUITE 10: MERN Stack Registry & Contract Builder
 // ─────────────────────────────────────────────────────────────────────────────
+const { generateScaffoldFiles } = require(path.join(backendRoot, "services/scaffoldRegistry"));
+const { isMernStack } = require(path.join(backendRoot, "services/contractBuilder"));
+
+suite("MERN Scaffold Registry & Contract Builder", () => {
+
+    test("isMernStack detects MERN correctly", () => {
+        assert.strictEqual(isMernStack(SAMPLE_MERN_SPEC), true, "MERN spec should be detected as MERN");
+        assert.strictEqual(isMernStack(SAMPLE_REACT_SPEC), false, "React-only spec should NOT be detected as MERN");
+    });
+
+    test("generateScaffoldFiles returns mern adapter files", () => {
+        const files = generateScaffoldFiles("mern", SAMPLE_MERN_SPEC);
+        const names = files.map(f => f.name);
+        assert.ok(names.includes("frontend/package.json"), "Should include frontend/package.json");
+        assert.ok(names.includes("backend/package.json"), "Should include backend/package.json");
+        assert.ok(names.includes("backend/config/db.js"), "Should include backend/config/db.js");
+        assert.ok(names.includes("backend/.env.example"), "Should include backend/.env.example");
+        assert.ok(names.includes("frontend/vite.config.js"), "Should include frontend/vite.config.js");
+        assert.ok(names.includes("frontend/tailwind.config.js"), "Should include frontend/tailwind.config.js");
+        assert.ok(names.includes(".gitignore"), "Should include .gitignore");
+    });
+
+    test("MERN frontend/package.json has react-router-dom and axios", () => {
+        const files = generateScaffoldFiles("mern", SAMPLE_MERN_SPEC);
+        const frontendPkg = files.find(f => f.name === "frontend/package.json");
+        assert.ok(frontendPkg, "frontend/package.json should exist");
+        const parsed = JSON.parse(frontendPkg.content);
+        assert.ok(parsed.dependencies["react-router-dom"], "Should have react-router-dom in frontend deps");
+        assert.ok(parsed.dependencies["axios"], "Should have axios in frontend deps");
+    });
+
+    test("MERN backend/package.json has express, mongoose, jsonwebtoken, bcryptjs", () => {
+        const files = generateScaffoldFiles("mern", SAMPLE_MERN_SPEC);
+        const backendPkg = files.find(f => f.name === "backend/package.json");
+        assert.ok(backendPkg, "backend/package.json should exist");
+        const parsed = JSON.parse(backendPkg.content);
+        assert.ok(parsed.dependencies["express"], "Should have express in backend deps");
+        assert.ok(parsed.dependencies["mongoose"], "Should have mongoose in backend deps");
+        assert.ok(parsed.dependencies["jsonwebtoken"], "Should have jsonwebtoken in backend deps");
+        assert.ok(parsed.dependencies["bcryptjs"], "Should have bcryptjs in backend deps");
+    });
+
+    test("MERN backend/.env.example has PORT, MONGO_URI, JWT_SECRET", () => {
+        const files = generateScaffoldFiles("mern", SAMPLE_MERN_SPEC);
+        const envFile = files.find(f => f.name === "backend/.env.example");
+        assert.ok(envFile, "backend/.env.example should exist");
+        assert.ok(envFile.content.includes("MONGO_URI"), "Should include MONGO_URI");
+        assert.ok(envFile.content.includes("JWT_SECRET"), "Should include JWT_SECRET");
+        assert.ok(envFile.content.includes("PORT"), "Should include PORT");
+    });
+
+    test("MERN vite.config.js has proxy to backend :5000", () => {
+        const files = generateScaffoldFiles("mern", SAMPLE_MERN_SPEC);
+        const viteConfig = files.find(f => f.name === "frontend/vite.config.js");
+        assert.ok(viteConfig, "frontend/vite.config.js should exist");
+        assert.ok(viteConfig.content.includes("5000"), "vite.config.js should proxy to port 5000");
+        assert.ok(viteConfig.content.includes("/api"), "vite.config.js should proxy /api");
+    });
+
+    test("MERN contract has frontend and backend folder structure paths", () => {
+        const { buildSharedContracts } = require(path.join(backendRoot, "services/contractBuilder"));
+        const contracts = buildSharedContracts(SAMPLE_MERN_SPEC);
+        assert.ok(contracts.folderStructure.includes("frontend/src/main.jsx"), "Should have frontend/src/main.jsx");
+        assert.ok(contracts.folderStructure.includes("frontend/src/App.jsx"), "Should have frontend/src/App.jsx");
+        assert.ok(contracts.folderStructure.includes("backend/server.js"), "Should have backend/server.js");
+        assert.ok(contracts.folderStructure.includes("backend/app.js"), "Should have backend/app.js");
+        assert.ok(contracts.folderStructure.includes("backend/middleware/authMiddleware.js"), "Should have authMiddleware");
+        assert.ok(contracts.folderStructure.includes("backend/utils/generateToken.js"), "Should have generateToken");
+    });
+
+    test("MERN contract does not use flat server.js path", () => {
+        const { buildSharedContracts } = require(path.join(backendRoot, "services/contractBuilder"));
+        const contracts = buildSharedContracts(SAMPLE_MERN_SPEC);
+        // Flat server.js (not prefixed with backend/) should NOT exist in MERN contract
+        assert.ok(
+            !contracts.folderStructure.includes("server.js"),
+            "MERN contract should NOT include flat 'server.js' — it should be 'backend/server.js'"
+        );
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUITE 11: MERN Generation Planner Strategy
+// ─────────────────────────────────────────────────────────────────────────────
+suite("MERN Generation Planner — Strategy & Units", () => {
+
+    test("MERN spec selects CHUNKED strategy", () => {
+        const plan = planGeneration(SAMPLE_MERN_SPEC);
+        assert.strictEqual(plan.strategy, "CHUNKED",
+            `Expected CHUNKED strategy for MERN, got ${plan.strategy}`
+        );
+    });
+
+    test("MERN spec uses 'mern' scaffold adapter", () => {
+        const plan = planGeneration(SAMPLE_MERN_SPEC);
+        assert.strictEqual(plan.scaffoldAdapter, "mern",
+            `Expected mern scaffold adapter, got ${plan.scaffoldAdapter}`
+        );
+    });
+
+    test("MERN spec generates 6 MERN-specific generation units", () => {
+        const plan = planGeneration(SAMPLE_MERN_SPEC);
+        assert.ok(plan.generationUnits.length >= 5,
+            `Expected at least 5 generation units for MERN, got ${plan.generationUnits.length}`
+        );
+    });
+
+    test("MERN deterministic files include backend and frontend scaffold files", () => {
+        const plan = planGeneration(SAMPLE_MERN_SPEC);
+        assert.ok(plan.deterministicFiles.includes("frontend/package.json"),
+            "MERN deterministic files should include frontend/package.json"
+        );
+        assert.ok(plan.deterministicFiles.includes("backend/package.json"),
+            "MERN deterministic files should include backend/package.json"
+        );
+        assert.ok(plan.deterministicFiles.includes("backend/config/db.js"),
+            "MERN deterministic files should include backend/config/db.js"
+        );
+    });
+
+    test("MERN plan isMern flag is true", () => {
+        const plan = planGeneration(SAMPLE_MERN_SPEC);
+        assert.strictEqual(plan.isMern, true, "MERN plan should have isMern=true");
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUITE 12: MERN Validation Profiles
+// ─────────────────────────────────────────────────────────────────────────────
+suite("validateProjectFiles — MERN Stack", () => {
+
+    const COMPLETE_MERN_FILES = [
+        // Root level
+        { name: ".gitignore", content: "node_modules/\n.env\n" },
+        { name: "README.md", content: "# TaskManager\n\nA full-stack MERN application with backend API and React frontend." },
+        // Backend
+        { name: "backend/package.json", content: JSON.stringify({
+            name: "taskmanager-backend",
+            scripts: { start: "node server.js", dev: "nodemon server.js" },
+            dependencies: { express: "^4.18.2", mongoose: "^8.0.0", jsonwebtoken: "^9.0.2", bcryptjs: "^2.4.3", dotenv: "^16.3.1", cors: "^2.8.5" }
+        }, null, 2)},
+        { name: "backend/.env.example", content: "PORT=5000\nMONGO_URI=mongodb://localhost/taskmanager\nJWT_SECRET=your_secret_here\n" },
+        { name: "backend/config/db.js", content: "const mongoose = require('mongoose');\nconst connectDB = async () => { await mongoose.connect(process.env.MONGO_URI); };\nmodule.exports = connectDB;" },
+        { name: "backend/server.js", content: "const express = require('express');\nconst connectDB = require('./config/db');\nconst app = require('./app');\nconst PORT = process.env.PORT || 5000;\nconnectDB();\napp.listen(PORT, () => console.log('Server running on port ' + PORT));" },
+        { name: "backend/app.js", content: "const express = require('express');\nconst cors = require('cors');\nconst app = express();\napp.use(cors());\napp.use(express.json());\napp.use('/api/health', require('./routes/healthRoutes'));\nmodule.exports = app;" },
+        { name: "backend/models/Task.js", content: "const mongoose = require('mongoose');\nconst TaskSchema = new mongoose.Schema({ title: String, completed: Boolean, userId: mongoose.Schema.Types.ObjectId });\nmodule.exports = mongoose.model('Task', TaskSchema);" },
+        { name: "backend/models/User.js", content: "const mongoose = require('mongoose');\nconst UserSchema = new mongoose.Schema({ email: String, password: String });\nmodule.exports = mongoose.model('User', UserSchema);" },
+        { name: "backend/controllers/authController.js", content: "const jwt = require('jsonwebtoken');\nconst User = require('../models/User');\nexports.login = async (req, res) => { res.json({ token: 'test' }); };" },
+        { name: "backend/controllers/taskController.js", content: "const Task = require('../models/Task');\nexports.getTasks = async (req, res) => { const tasks = await Task.find(); res.json(tasks); };" },
+        { name: "backend/routes/authRoutes.js", content: "const express = require('express');\nconst router = express.Router();\nconst { login } = require('../controllers/authController');\nrouter.post('/login', login);\nmodule.exports = router;" },
+        { name: "backend/routes/taskRoutes.js", content: "const express = require('express');\nconst router = express.Router();\nconst { getTasks } = require('../controllers/taskController');\nrouter.get('/', getTasks);\nmodule.exports = router;" },
+        { name: "backend/middleware/authMiddleware.js", content: "const jwt = require('jsonwebtoken');\nconst protect = (req, res, next) => { const token = req.headers.authorization?.split(' ')[1]; if (!token) return res.status(401).json({ message: 'Unauthorized' }); jwt.verify(token, process.env.JWT_SECRET, (err, user) => { if (err) return res.status(403).json({ message: 'Forbidden' }); req.user = user; next(); }); };\nmodule.exports = { protect };" },
+        { name: "backend/middleware/errorMiddleware.js", content: "const errorHandler = (err, req, res, next) => { res.status(500).json({ message: err.message }); };\nmodule.exports = { errorHandler };" },
+        { name: "backend/utils/generateToken.js", content: "const jwt = require('jsonwebtoken');\nconst generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });\nmodule.exports = generateToken;" },
+        { name: "backend/routes/healthRoutes.js", content: "const express = require('express');\nconst router = express.Router();\nrouter.get('/', (req, res) => res.json({ status: 'OK' }));\nmodule.exports = router;" },
+        // Frontend
+        { name: "frontend/package.json", content: JSON.stringify({
+            name: "taskmanager-frontend",
+            type: "module",
+            scripts: { dev: "vite", build: "vite build", preview: "vite preview" },
+            dependencies: { react: "^18.2.0", "react-dom": "^18.2.0", "react-router-dom": "^6.20.0", axios: "^1.6.0" },
+            devDependencies: { vite: "^5.0.0", "@vitejs/plugin-react": "^4.2.0", tailwindcss: "^3.4.0" }
+        }, null, 2)},
+        { name: "frontend/index.html", content: `<!doctype html><html><head><title>TaskManager</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>` },
+        { name: "frontend/vite.config.js", content: "import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()], server: { proxy: { '/api': 'http://localhost:5000' } } });" },
+        { name: "frontend/tailwind.config.js", content: "export default { content: ['./index.html', './src/**/*.{js,jsx}'] };" },
+        { name: "frontend/postcss.config.js", content: "export default { plugins: { tailwindcss: {}, autoprefixer: {} } };" },
+        { name: "frontend/.env.example", content: "VITE_API_URL=http://localhost:5000/api\n" },
+        { name: "frontend/src/main.jsx", content: "import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);" },
+        { name: "frontend/src/App.jsx", content: "import React from 'react'; import { BrowserRouter, Routes, Route } from 'react-router-dom'; import Dashboard from './pages/Dashboard'; import Login from './pages/Login'; export default function App() { return (<BrowserRouter><Routes><Route path='/' element={<Dashboard />} /><Route path='/login' element={<Login />} /></Routes></BrowserRouter>); }" },
+        { name: "frontend/src/index.css", content: "@tailwind base;\n@tailwind components;\n@tailwind utilities;\nbody { margin: 0; background: #111827; color: #fff; }" },
+        { name: "frontend/src/context/AuthContext.jsx", content: "import React, { createContext, useContext, useState } from 'react'; const AuthContext = createContext(); export const AuthProvider = ({ children }) => { const [user, setUser] = useState(null); return (<AuthContext.Provider value={{ user, setUser }}>{children}</AuthContext.Provider>); }; export const useAuth = () => useContext(AuthContext);" },
+        { name: "frontend/src/hooks/useAuth.js", content: "import { useAuth } from '../context/AuthContext'; export default useAuth;" },
+        { name: "frontend/src/services/api.js", content: "import axios from 'axios'; const api = axios.create({ baseURL: '/api' }); export default api;" },
+        { name: "frontend/src/services/authService.js", content: "import api from './api'; export const login = (data) => api.post('/auth/login', data); export const register = (data) => api.post('/auth/register', data);" },
+        { name: "frontend/src/services/taskService.js", content: "import api from './api'; export const getTasks = () => api.get('/tasks'); export const createTask = (data) => api.post('/tasks', data);" },
+        { name: "frontend/src/pages/Dashboard.jsx", content: "import React, { useEffect, useState } from 'react'; import TaskCard from '../components/TaskCard'; import { getTasks } from '../services/taskService'; export default function Dashboard() { const [tasks, setTasks] = useState([]); useEffect(() => { getTasks().then(r => setTasks(r.data)); }, []); return (<div className='p-8'><h1 className='text-3xl font-bold text-white mb-6'>Dashboard</h1>{tasks.map(t => <TaskCard key={t._id} task={t} />)}</div>); }" },
+        { name: "frontend/src/pages/Login.jsx", content: "import React, { useState } from 'react'; import { login } from '../services/authService'; export default function Login() { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = async (e) => { e.preventDefault(); await login({ email, password }); }; return (<div className='flex min-h-screen items-center justify-center bg-gray-900'><form onSubmit={handleSubmit} className='bg-gray-800 p-8 rounded-xl'><input type='email' value={email} onChange={e=>setEmail(e.target.value)} placeholder='Email' /><input type='password' value={password} onChange={e=>setPassword(e.target.value)} placeholder='Password' /><button type='submit'>Login</button></form></div>); }" },
+        { name: "frontend/src/components/TaskCard.jsx", content: "import React from 'react'; export default function TaskCard({ task }) { return (<div className='bg-gray-800 p-4 rounded-lg mb-4 text-white'><h3 className='font-semibold'>{task.title}</h3><span className='text-sm text-gray-400'>{task.completed ? 'Completed' : 'Pending'}</span></div>); }" },
+    ];
+
+    test("passes with all required MERN files present", () => {
+        const errors = validateProjectFiles(COMPLETE_MERN_FILES, SAMPLE_MERN_SPEC);
+        const criticalErrors = errors.filter(e =>
+            e.includes("Missing required") ||
+            e.includes("frontend/src/main.jsx") ||
+            e.includes("frontend/src/App.jsx") ||
+            e.includes("backend/server.js") ||
+            e.includes("backend/package.json") ||
+            e.includes("frontend/package.json") ||
+            e.includes("boilerplate")
+        );
+        assert.strictEqual(criticalErrors.length, 0,
+            `Expected no critical MERN errors, got: ${criticalErrors.join("; ")}`
+        );
+    });
+
+    test("flags missing backend/server.js in MERN project", () => {
+        const incomplete = COMPLETE_MERN_FILES.filter(f => f.name !== "backend/server.js");
+        const errors = validateProjectFiles(incomplete, SAMPLE_MERN_SPEC);
+        assert.ok(
+            errors.some(e => e.includes("backend/server.js")),
+            "Should flag missing backend/server.js in MERN project"
+        );
+    });
+
+    test("flags missing frontend/src/main.jsx in MERN project", () => {
+        const incomplete = COMPLETE_MERN_FILES.filter(f => f.name !== "frontend/src/main.jsx");
+        const errors = validateProjectFiles(incomplete, SAMPLE_MERN_SPEC);
+        assert.ok(
+            errors.some(e => e.includes("frontend/src/main.jsx")),
+            "Should flag missing frontend/src/main.jsx in MERN project"
+        );
+    });
+
+    test("flags missing backend/.env.example in MERN project", () => {
+        const incomplete = COMPLETE_MERN_FILES.filter(f => f.name !== "backend/.env.example");
+        const errors = validateProjectFiles(incomplete, SAMPLE_MERN_SPEC);
+        assert.ok(
+            errors.some(e => e.includes("backend/.env.example")),
+            "Should flag missing backend/.env.example in MERN project"
+        );
+    });
+
+    test("flags boilerplate-only frontend/src/App.jsx in MERN project", () => {
+        const withBoilerplate = COMPLETE_MERN_FILES.map(f =>
+            f.name === "frontend/src/App.jsx"
+                ? { ...f, content: "export default function App() { return <div/>; }" }
+                : f
+        );
+        const errors = validateProjectFiles(withBoilerplate, SAMPLE_MERN_SPEC);
+        assert.ok(
+            errors.some(e => e.includes("boilerplate")),
+            "Should flag boilerplate App.jsx in MERN project"
+        );
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUITE 13: Content Guard MERN Config File Exemptions
+// ─────────────────────────────────────────────────────────────────────────────
+suite("Content Guard — MERN Config File Exemptions", () => {
+
+    test("does not flag frontend/package.json as near-empty", () => {
+        const files = [
+            { name: "frontend/package.json", content: '{"name": "test"}' }
+        ];
+        const errors = applyContentGuard(files);
+        assert.strictEqual(errors.length, 0,
+            "frontend/package.json should not be flagged as near-empty by content guard"
+        );
+    });
+
+    test("does not flag frontend/vite.config.js as near-empty", () => {
+        const files = [
+            { name: "frontend/vite.config.js", content: "export default {};" }
+        ];
+        const errors = applyContentGuard(files);
+        assert.strictEqual(errors.length, 0,
+            "frontend/vite.config.js should not be flagged as near-empty"
+        );
+    });
+
+    test("does not flag backend/.env.example as near-empty", () => {
+        const files = [
+            { name: "backend/.env.example", content: "PORT=5000\n" }
+        ];
+        const errors = applyContentGuard(files);
+        assert.strictEqual(errors.length, 0,
+            "backend/.env.example should not be flagged as near-empty"
+        );
+    });
+
+    test("does not flag frontend/tailwind.config.js as near-empty", () => {
+        const files = [
+            { name: "frontend/tailwind.config.js", content: "export default { content: [] };" }
+        ];
+        const errors = applyContentGuard(files);
+        assert.strictEqual(errors.length, 0,
+            "frontend/tailwind.config.js should not be flagged as near-empty"
+        );
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUITE 14: Generalized Stack Profiles and Dynamic Project Manifests
+// ─────────────────────────────────────────────────────────────────────────────
+suite("Generalized Stack Profiles & Project Manifests", () => {
+
+    test("Vanilla HTML/CSS/JS spec creates correct manifest", () => {
+        const spec = {
+            projectName: "Vanilla Site",
+            projectType: "Website",
+            frontend: "HTML/CSS/JS",
+            backend: "None",
+            pagesAndRoutes: [{ name: "About" }, { name: "Contact" }]
+        };
+        const manifest = buildProjectManifest("build a vanilla site", spec);
+        assert.strictEqual(manifest.projectName, "Vanilla Site");
+        assert.strictEqual(manifest.stackProfile, "vanilla");
+        assert.ok(manifest.expectedFiles.includes("index.html"));
+        assert.ok(manifest.expectedFiles.includes("style.css"));
+        assert.ok(manifest.expectedFiles.includes("about.html"));
+        assert.ok(manifest.expectedFiles.includes("contact.html"));
+        assert.strictEqual(manifest.previewStrategy.type, "static");
+    });
+
+    test("Next.js spec creates correct manifest", () => {
+        const spec = {
+            projectName: "Next App",
+            projectType: "Web App",
+            frontend: "Next.js",
+            pagesAndRoutes: [{ name: "Dashboard" }]
+        };
+        const manifest = buildProjectManifest("build a next.js app", spec);
+        assert.strictEqual(manifest.stackProfile, "nextjs");
+        assert.ok(manifest.expectedFiles.includes("app/page.jsx"));
+        assert.ok(manifest.expectedFiles.includes("app/layout.jsx"));
+        assert.ok(manifest.expectedFiles.includes("app/dashboard/page.jsx"));
+        assert.strictEqual(manifest.previewStrategy.type, "next");
+    });
+
+    test("Express API spec creates correct manifest", () => {
+        const spec = {
+            projectName: "Express API",
+            projectType: "REST API",
+            backend: "Express",
+            databaseModels: [{ name: "User" }, { name: "Product" }]
+        };
+        const manifest = buildProjectManifest("build express server", spec);
+        assert.strictEqual(manifest.stackProfile, "express");
+        assert.ok(manifest.expectedFiles.includes("server.js"));
+        assert.ok(manifest.expectedFiles.includes("models/User.js"));
+        assert.ok(manifest.expectedFiles.includes("models/Product.js"));
+        assert.strictEqual(manifest.previewStrategy.type, "node");
+    });
+
+    test("FastAPI spec creates correct manifest", () => {
+        const spec = {
+            projectName: "FastAPI Project",
+            projectType: "Backend Service",
+            backend: "FastAPI"
+        };
+        const manifest = buildProjectManifest("build fastapi backend", spec);
+        assert.strictEqual(manifest.stackProfile, "fastapi");
+        assert.ok(manifest.expectedFiles.includes("main.py"));
+        assert.ok(manifest.expectedFiles.includes("requirements.txt"));
+        assert.strictEqual(manifest.previewStrategy.type, "fastapi");
+    });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUITE 15: Mongoose Options Sanitization & Backend Readiness Polling
+// ─────────────────────────────────────────────────────────────────────────────
+const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+const { sanitizeMongooseConnectOptions } = require(path.join(backendRoot, "services/generationOrchestrator"));
+
+suite("Mongoose Options Sanitization & Backend Readiness", () => {
+    let originalFindById;
+    let originalSpawn;
+    let originalAxiosGet;
+    let mockProject;
+    let mockProc;
+    let axiosCalls = [];
+    let axiosResponseMock = () => { throw new Error("Connection refused"); };
+
+    const setupMocks = (filesList, projectSpecification = { backend: "express", projectType: "Express API" }) => {
+        originalFindById = Project.findById;
+        originalSpawn = cp.spawn;
+        originalAxiosGet = axios.get;
+
+        mockProject = {
+            _id: "projectExpress",
+            userId: "user123",
+            files: filesList,
+            projectSpec: projectSpecification,
+            save: async function() { return this; }
+        };
+
+        Project.findById = async function(id) {
+            return mockProject;
+        };
+
+        mockProc = createMockProcess();
+        cp.spawn = (cmd, args, opts) => {
+            const hasInstallOrBuild = (args && (args.includes("install") || args.includes("build"))) || (cmd && cmd.includes("npm"));
+            if (hasInstallOrBuild) {
+                const p = createMockProcess();
+                setTimeout(() => p.emit("close", 0), 10);
+                return p;
+            }
+            return mockProc;
+        };
+
+        axiosCalls = [];
+        axios.get = async (url, opts) => {
+            axiosCalls.push(url);
+            return axiosResponseMock(url);
+        };
+    };
+
+    const restoreMocks = () => {
+        Project.findById = originalFindById;
+        cp.spawn = originalSpawn;
+        axios.get = originalAxiosGet;
+        previewService.activePreviews.clear();
+    };
+
+    const createMockProcess = () => {
+        const listeners = {};
+        const stdoutListeners = {};
+        const stderrListeners = {};
+        return {
+            stdout: {
+                on: (event, cb) => { stdoutListeners[event] = cb; },
+                emit: (event, data) => { if (stdoutListeners[event]) stdoutListeners[event](data); }
+            },
+            stderr: {
+                on: (event, cb) => { stderrListeners[event] = cb; },
+                emit: (event, data) => { if (stderrListeners[event]) stderrListeners[event](data); }
+            },
+            on: (event, cb) => { listeners[event] = cb; },
+            emit: (event, code) => { if (listeners[event]) listeners[event](code); },
+            kill: () => {},
+            exitCode: null
+        };
+    };
+
+    test("detectProfile returns correct previewTimeoutMs for stacks", () => {
+        const nextSpec = detectProfile({ backend: "nextjs", projectType: "Next.js App" });
+        assert.strictEqual(nextSpec.previewTimeoutMs, 240000, "Next.js timeout should be 240s");
+
+        const expressSpec = detectProfile({ backend: "express", projectType: "Express API" });
+        assert.strictEqual(expressSpec.previewTimeoutMs, 120000, "Express timeout should be 120s");
+
+        const mernSpec = detectProfile({ backend: "express", projectType: "MERN Stack" });
+        assert.strictEqual(mernSpec.previewTimeoutMs, 180000, "MERN timeout should be 180s");
+    });
+
+    test("sanitizeMongooseConnectOptions strips useNewUrlParser and useUnifiedTopology", () => {
+        const files = [
+            {
+                name: "server.js",
+                content: `
+                    mongoose.connect(process.env.MONGODB_URI, {
+                        useNewUrlParser: true,
+                        useUnifiedTopology: true,
+                        someOtherOption: 'hello'
+                    });
+                `
+            }
+        ];
+        sanitizeMongooseConnectOptions(files);
+
+        assert.ok(!files[0].content.includes("useNewUrlParser"), "Should strip useNewUrlParser");
+        assert.ok(!files[0].content.includes("useUnifiedTopology"), "Should strip useUnifiedTopology");
+        assert.ok(files[0].content.includes("someOtherOption"), "Should preserve other options");
+    });
+
+    test("delayed server startup eventually becomes READY", async () => {
+        const files = [
+            { name: "package.json", content: '{"main":"server.js","dependencies":{"express":"^4.18.0"}}' },
+            { name: "server.js", content: "const express = require('express');" },
+            { name: ".env.example", content: "PORT=3000" },
+            { name: "README.md", content: "# Express API" }
+        ];
+
+        let callCount = 0;
+        axiosResponseMock = () => {
+            callCount++;
+            if (callCount < 3) {
+                const err = new Error("connect ECONNREFUSED 127.0.0.1:port");
+                err.code = "ECONNREFUSED";
+                throw err;
+            }
+            return { status: 200, data: { status: "ok" } };
+        };
+
+        setupMocks(files);
+        try {
+            await previewService.startPreview("projectExpress", "user123");
+            const session = previewService.activePreviews.get("projectExpress");
+
+            // Wait up to 4 seconds for readiness polling to execute
+            for (let i = 0; i < 40; i++) {
+                if (session.status === "READY" || session.status === "FAILED") break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            assert.strictEqual(session.status, "READY", "Session should eventually transition to READY");
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("child exits before readiness transitions to FAILED", async () => {
+        const files = [
+            { name: "package.json", content: '{"main":"server.js","dependencies":{"express":"^4.18.0"}}' },
+            { name: "server.js", content: "const express = require('express');" },
+            { name: ".env.example", content: "PORT=3000" },
+            { name: "README.md", content: "# Express API" }
+        ];
+
+        axiosResponseMock = () => {
+            const err = new Error("connect ECONNREFUSED 127.0.0.1:port");
+            err.code = "ECONNREFUSED";
+            throw err;
+        };
+
+        setupMocks(files);
+        try {
+            await previewService.startPreview("projectExpress", "user123");
+            const session = previewService.activePreviews.get("projectExpress");
+
+            // Wait brief moment then mark process exited
+            await new Promise(r => setTimeout(r, 200));
+            mockProc.exitCode = 1;
+            mockProc.emit("close", 1);
+
+            // Wait up to 2 seconds for polling to detect the exit
+            for (let i = 0; i < 20; i++) {
+                if (session.status === "FAILED") break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            console.log("DEBUG child exits status:", session.status, "errors:", session.errors);
+            assert.strictEqual(session.status, "FAILED", "Session should transition to FAILED if process exits");
+            assert.ok(session.errors.some(e => e.includes("early")), "Errors should explain the exit");
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("readiness deadline exceeded transitions to FAILED", async () => {
+        const files = [
+            { name: "package.json", content: '{"main":"server.js","dependencies":{"express":"^4.18.0"}}' },
+            { name: "server.js", content: "const express = require('express');" },
+            { name: ".env.example", content: "PORT=3000" },
+            { name: "README.md", content: "# Express API" }
+        ];
+
+        axiosResponseMock = () => {
+            const err = new Error("connect ECONNREFUSED");
+            err.code = "ECONNREFUSED";
+            throw err;
+        };
+
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+
+        const originalDetectProfile = detectProfile;
+        require(path.join(backendRoot, "services/stackProfiles")).detectProfile = (spec) => {
+            const profile = originalDetectProfile(spec);
+            return { ...profile, previewTimeoutMs: 100 };
+        };
+
+        setupMocks(files, { backend: "express", projectType: "Express API" });
+        try {
+            await previewService.startPreview("projectExpress", "user123");
+            const session = previewService.activePreviews.get("projectExpress");
+
+            // Wait up to 2.5 seconds for polling to timeout (deadline is 100ms)
+            for (let i = 0; i < 25; i++) {
+                if (session.status === "FAILED") break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            console.log("DEBUG deadline exceeded status:", session.status, "errors:", session.errors);
+            assert.strictEqual(session.status, "FAILED", "Session should transition to FAILED upon exceeding deadline");
+            assert.ok(session.errors.some(e => e.includes("did not become healthy")), "Error should mention health check failure");
+        } finally {
+            require(path.join(backendRoot, "services/stackProfiles")).detectProfile = originalDetectProfile;
+            restoreMocks();
+        }
+    });
+});
+
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

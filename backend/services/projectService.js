@@ -72,7 +72,7 @@ Ensure the technology selection represents the BEST fit for the request. Choose 
             ];
 
             const data = await providerRouter.sendChatCompletion(messages, {
-                timeout: 120000
+                timeout: 90000
             });
 
             let content = (data.content || "").trim();
@@ -165,10 +165,19 @@ Ensure the technology selection represents the BEST fit for the request. Choose 
             };
 
         } catch (error) {
-            // If transient and retries remain, wait and retry
-            if (error.isTransientAnalyzeFailure && attempt < MAX_ANALYZE_ATTEMPTS) {
+            const isTransient = error.isTransientAnalyzeFailure ||
+                                error.code === "ECONNABORTED" ||
+                                error.code === "ETIMEDOUT" ||
+                                error.code === "ECONNRESET" ||
+                                error.code === "EAI_AGAIN" ||
+                                error.code === "ENOTFOUND" ||
+                                error.message.toLowerCase().includes("timeout") ||
+                                error.message.toLowerCase().includes("rate limit") ||
+                                error.providerStatus === 429;
+
+            if (isTransient && attempt < MAX_ANALYZE_ATTEMPTS) {
                 const waitMs = 2000 * attempt;
-                console.warn(`[analyze] Transient failure on attempt ${attempt}/${MAX_ANALYZE_ATTEMPTS}. Retrying in ${waitMs}ms...`);
+                console.warn(`[analyze] Transient failure on attempt ${attempt}/${MAX_ANALYZE_ATTEMPTS} (${error.message}). Retrying in ${waitMs}ms...`);
                 await new Promise(r => setTimeout(r, waitMs));
                 continue;
             }

@@ -1,6 +1,6 @@
 const { planGeneration } = require("./generationPlanner");
 const { generateScaffoldFiles } = require("./scaffoldRegistry");
-const { buildSharedContracts } = require("./contractBuilder");
+const { buildSharedContracts, buildProjectManifest, isMernStack } = require("./contractBuilder");
 const aiExecutor = require("./aiGenerationExecutor");
 const { mergeFiles } = require("./generationMerger");
 const { validateProjectFiles } = require("./validationProfiles");
@@ -57,6 +57,26 @@ const MARKDOWN_FENCE_PATTERN = /^```(?:jsx?|tsx?|javascript|typescript|html|css|
 
 const MIN_CONTENT_CHARS = 30; // Non-whitespace characters minimum
 
+const sanitizeMongooseConnectOptions = (files) => {
+    for (const file of files) {
+        const filePath = file.name.replace(/\\/g, "/");
+        if (filePath.endsWith(".js") || filePath.endsWith(".jsx") || filePath.endsWith(".ts") || filePath.endsWith(".tsx")) {
+            let content = file.content || "";
+            if (content.includes("useNewUrlParser") || content.includes("useUnifiedTopology")) {
+                let cleaned = content;
+                cleaned = cleaned.replace(/useNewUrlParser\s*:\s*(?:true|false)\s*,?/g, "");
+                cleaned = cleaned.replace(/useUnifiedTopology\s*:\s*(?:true|false)\s*,?/g, "");
+                cleaned = cleaned.replace(/\{\s*,\s*\}/g, "{}");
+                cleaned = cleaned.replace(/\{\s*\}/g, "{}");
+                cleaned = cleaned.replace(/,\s*\}/g, "}");
+                cleaned = cleaned.replace(/\{\s*,/g, "{");
+                file.content = cleaned;
+                console.log(`[Sanitizer] Stripped obsolete Mongoose options from ${file.name}`);
+            }
+        }
+    }
+};
+
 /**
  * Scans all generated files for placeholder or truncated content.
  * Returns validation-style error strings for any that fail.
@@ -70,9 +90,14 @@ const applyContentGuard = (files) => {
         const nonWhitespace = content.replace(/\s/g, "");
         const isConfigFile = /\.(json|toml|yaml|yml|env|txt|gitignore|lock|md|mdx)$/.test(file.name) ||
                               file.name === ".env.example" ||
+                              file.name === "backend/.env.example" ||
+                              file.name === "frontend/.env.example" ||
                               file.name === "postcss.config.js" ||
+                              file.name === "frontend/postcss.config.js" ||
                               file.name === "tailwind.config.js" ||
-                              file.name === "vite.config.js";
+                              file.name === "frontend/tailwind.config.js" ||
+                              file.name === "vite.config.js" ||
+                              file.name === "frontend/vite.config.js";
         if (!isConfigFile && nonWhitespace.length < MIN_CONTENT_CHARS) {
             errors.push(
                 `Content guard: File '${file.name}' has near-empty content (${nonWhitespace.length} non-whitespace chars). ` +
@@ -338,9 +363,33 @@ const generateRichReadme = (projectSpec, files) => {
     // Getting Started
     lines.push("## 🚀 Getting Started");
     lines.push("");
-    lines.push("```bash");
-    lines.push("# 1. Clone or extract the project");
-    if (hasNodeFiles) {
+
+    const mern = isMernStack(projectSpec);
+    const hasBackendPkg = files && files.some(f => f.name === "backend/package.json");
+    const hasFrontendPkg = files && files.some(f => f.name === "frontend/package.json");
+
+    if (mern || (hasBackendPkg && hasFrontendPkg)) {
+        lines.push("### Backend Setup");
+        lines.push("");
+        lines.push("```bash");
+        lines.push("cd backend");
+        lines.push("npm install");
+        lines.push("cp .env.example .env   # then fill in your values");
+        lines.push("npm run dev            # starts on http://localhost:5000");
+        lines.push("```");
+        lines.push("");
+        lines.push("### Frontend Setup");
+        lines.push("");
+        lines.push("```bash");
+        lines.push("cd frontend");
+        lines.push("npm install");
+        lines.push("npm run dev            # starts on http://localhost:5173");
+        lines.push("```");
+        lines.push("");
+        lines.push("> **Note:** Start the backend server first, then the frontend.");
+    } else if (hasNodeFiles) {
+        lines.push("```bash");
+        lines.push("# 1. Clone or extract the project");
         lines.push("");
         lines.push("# 2. Install dependencies");
         lines.push("npm install");
@@ -358,7 +407,10 @@ const generateRichReadme = (projectSpec, files) => {
             lines.push("# 3. Start the server");
             lines.push("npm run dev   # or: npm start");
         }
+        lines.push("```");
     } else if (hasPythonFiles) {
+        lines.push("```bash");
+        lines.push("# 1. Clone or extract the project");
         lines.push("");
         lines.push("# 2. Create and activate virtual environment");
         lines.push("python -m venv venv");
@@ -371,12 +423,44 @@ const generateRichReadme = (projectSpec, files) => {
         const isFastapi = projectSpec.backend && projectSpec.backend.toLowerCase().includes("fastapi");
         lines.push("# 4. Run the application");
         lines.push(isFastapi ? "uvicorn main:app --reload" : "python manage.py runserver");
+        lines.push("```");
     }
-    lines.push("```");
     lines.push("");
 
     // Environment Variables
-    if (projectSpec.environmentVariables && projectSpec.environmentVariables.length > 0) {
+    if (mern) {
+        lines.push("## 🔐 Environment Variables");
+        lines.push("");
+        lines.push("### Backend (`backend/.env`)");
+        lines.push("");
+        lines.push("```bash");
+        lines.push("cp backend/.env.example backend/.env");
+        lines.push("```");
+        lines.push("");
+        lines.push("| Variable | Description |");
+        lines.push("|----------|-------------|");
+        lines.push("| `PORT` | Backend server port (default: 5000) |");
+        lines.push("| `MONGO_URI` | MongoDB connection string |");
+        lines.push("| `JWT_SECRET` | Secret key for JWT token signing |");
+        if (projectSpec.environmentVariables) {
+            projectSpec.environmentVariables.forEach(v => {
+                if (!['PORT', 'MONGO_URI', 'JWT_SECRET'].includes(v)) {
+                    lines.push(`| \`${v}\` | Required — see \`backend/.env.example\` |`);
+                }
+            });
+        }
+        lines.push("");
+        lines.push("### Frontend (`frontend/.env`)");
+        lines.push("");
+        lines.push("```bash");
+        lines.push("cp frontend/.env.example frontend/.env");
+        lines.push("```");
+        lines.push("");
+        lines.push("| Variable | Description |");
+        lines.push("|----------|-------------|");
+        lines.push("| `VITE_API_URL` | Backend API base URL (default: http://localhost:5000/api) |");
+        lines.push("");
+    } else if (projectSpec.environmentVariables && projectSpec.environmentVariables.length > 0) {
         lines.push("## 🔐 Environment Variables");
         lines.push("");
         lines.push("Copy `.env.example` to `.env` and fill in the values:");
@@ -391,7 +475,7 @@ const generateRichReadme = (projectSpec, files) => {
             lines.push(`| \`${v}\` | Required — see \`.env.example\` for details |`);
         });
         lines.push("");
-    } else if (!isFrontendOnly) {
+    } else if (!isFrontendOnly && !mern) {
         lines.push("## 🔐 Environment Variables");
         lines.push("");
         lines.push("No environment variables are required for this project.");
@@ -520,17 +604,25 @@ const generateRunInstructions = (projectSpec, files) => {
     let frontendUrl = "";
     let backendUrl = "";
 
-    const hasMern = projectSpec.projectType?.toLowerCase().includes("mern") ||
-                    projectSpec.backend?.toLowerCase().includes("express") ||
-                    files.some(f => f.name.includes("server.js") || f.name.includes("backend/"));
-
-    const hasNode = files.some(f => f.name === "package.json");
-    const hasPython = files.some(f => f.name === "requirements.txt" || f.name === "pyproject.toml");
+    const hasMernFiles = files && (files.some(f => f.name === "backend/package.json") ||
+                          files.some(f => f.name.startsWith("backend/")));
+    const hasNode = files && files.some(f => f.name === "package.json");
+    const hasPython = files && files.some(f => f.name === "requirements.txt" || f.name === "pyproject.toml");
 
     if (hasNode) prerequisites.push("Node.js (v18+)");
     if (hasPython) prerequisites.push("Python (3.9+)");
+    if (isMernStack(projectSpec) || hasMernFiles) {
+        if (!prerequisites.includes("MongoDB (local or Atlas)")) {
+            prerequisites.push("MongoDB (local or Atlas)");
+        }
+    } else if (projectSpec.database) {
+        if (projectSpec.database.toLowerCase().includes("mongo")) prerequisites.push("MongoDB (local or Atlas)");
+        else if (projectSpec.database.toLowerCase().includes("postgre")) prerequisites.push("PostgreSQL server");
+        else if (projectSpec.database.toLowerCase().includes("redis")) prerequisites.push("Redis server");
+    }
 
-    if (hasMern) {
+
+    if (isMernStack(projectSpec) || hasMernFiles) {
         frontendUrl = "http://localhost:5173";
         backendUrl = "http://localhost:5000";
         steps.push(
@@ -613,6 +705,7 @@ const orchestrateGeneration = async ({ originalPrompt, projectSpec }, progressEm
     progressEmitter.emit("Planning Generation", "Formulating optimal generation strategy...");
     const plan = planGeneration(projectSpec);
     const contracts = buildSharedContracts(projectSpec);
+    const manifest = buildProjectManifest(originalPrompt, projectSpec);
 
     const planningMs = Date.now() - startTime;
     verifyCancellation();
@@ -677,13 +770,23 @@ ${JSON.stringify(projectSpec, null, 2)}`;
                 const chunk = group.slice(i, i + limit);
 
                 const promises = chunk.map(async (unit) => {
-                    const rawOutput = await aiExecutor.generateUnitCode(unit, projectSpec, contracts, {
-                        cancelSignal: options.cancelSignal,
-                        callMetricsCollector,
-                        callIndex: callIndex++,
-                        strategy: plan.strategy
-                    });
-                    return aiExecutor.parseGeneratedFiles(rawOutput);
+                    let lastErr = null;
+                    for (let attempt = 1; attempt <= 3; attempt++) {
+                        try {
+                            const rawOutput = await aiExecutor.generateUnitCode(unit, projectSpec, contracts, {
+                                cancelSignal: options.cancelSignal,
+                                callMetricsCollector,
+                                callIndex: callIndex++,
+                                strategy: plan.strategy
+                            });
+                            return aiExecutor.parseGeneratedFiles(rawOutput);
+                        } catch (err) {
+                            lastErr = err;
+                            console.warn(`[orchestrateGeneration] Unit '${unit.id}' generation attempt ${attempt}/3 failed: ${err.message}. Retrying in ${2000 * attempt}ms...`);
+                            await new Promise(r => setTimeout(r, 2000 * attempt));
+                        }
+                    }
+                    throw lastErr || new Error(`Generation unit '${unit.id}' failed after 3 attempts.`);
                 });
 
                 const results = await Promise.allSettled(promises);
@@ -726,6 +829,9 @@ ${JSON.stringify(projectSpec, null, 2)}`;
             finalFiles._guardErrors = guardErrors;
         }
     }
+
+    // Sanitize any deprecated Mongoose options before validating code integrity
+    sanitizeMongooseConnectOptions(finalFiles);
 
     // Ensure README exists before validation
     verifyCancellation();
@@ -812,6 +918,9 @@ ${JSON.stringify(projectSpec, null, 2)}`;
         };
     }
 
+    // Sanitize connect options again to cover any repaired or merged files
+    sanitizeMongooseConnectOptions(finalFiles);
+
     const runInstructions = generateRunInstructions(projectSpec, finalFiles);
 
     // Generate rich plan for the PLAN tab
@@ -867,5 +976,6 @@ module.exports = {
     orchestrateGeneration,
     applyContentGuard,
     generateRichPlan,
-    generateRichReadme
+    generateRichReadme,
+    sanitizeMongooseConnectOptions
 };

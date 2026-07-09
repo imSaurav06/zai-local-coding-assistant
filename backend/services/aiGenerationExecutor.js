@@ -43,10 +43,11 @@ const executeWithBackoff = async (apiCallFn, retriesLeft, delay, options, stats)
         const isNetwork = ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"].includes(code);
         const isTransient5xx = status >= 500 && status <= 599;
 
-        const isTransient = isRateLimit || isTimeout || isNetwork || isTransient5xx;
+        const isNullContent = err.isNullContent === true;
+        const isTransient = isRateLimit || isTimeout || isNetwork || isTransient5xx || isNullContent;
 
         // Check if we can retry — also enforce the overall deadline
-        const totalRetryBudgetMax = 15000; // Max 15 seconds wait budget total
+        const totalRetryBudgetMax = 30000; // Max 30 seconds wait budget total
         const elapsedMs = Date.now() - stats._startTime;
         const remainingDeadlineMs = GENERATION_DEADLINE_MS - elapsedMs;
         if (isTransient && retriesLeft > 0 && stats.retryWaitMs < totalRetryBudgetMax && remainingDeadlineMs > 8000) {
@@ -133,7 +134,7 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
         const configuredTimeout = options.timeout || calculateAdaptiveTimeout(strategy, tokenBudget);
         stats.configuredTimeout = configuredTimeout;
         
-        const apiCall = () => {
+        const apiCall = async () => {
             const config = {};
             if (options.cancelSignal) {
                 config.signal = options.cancelSignal;
@@ -146,22 +147,20 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
                 { role: "user", content: userPrompt }
             ];
 
-            return providerRouter.sendChatCompletionDirect(provider, messages, config, options);
+            const res = await providerRouter.sendChatCompletionDirect(provider, messages, config, options);
+            if (!res.content || typeof res.content !== "string" || res.content.trim().length === 0) {
+                const nullContentErr = new Error(`Provider returned empty or null content. Model may have hit a context or content-policy limit.`);
+                nullContentErr.isNullContent = true;
+                throw nullContentErr;
+            }
+            return res;
         };
 
-        return await executeWithBackoff(apiCall, 2, 1000, options, stats);
+        return await executeWithBackoff(apiCall, 3, 1000, options, stats);
     };
 
     try {
         const response = await runForProvider(primaryProvider);
-
-        // BUG FIX: Validate content BEFORE logging success=true.
-        // Previously success=true was logged here and then null-content could throw into catch.
-        if (!response.content || typeof response.content !== "string" || response.content.trim().length === 0) {
-            const nullContentErr = new Error(`Provider returned empty or null content. Model may have hit a context or content-policy limit.`);
-            nullContentErr.isNullContent = true;
-            throw nullContentErr;
-        }
 
         stats.callDuration = Date.now() - startTime;
         if (options.callMetricsCollector) {
@@ -197,11 +196,6 @@ const executeAiRequest = async (systemPrompt, userPrompt, options = {}) => {
 
                 // Execute fallback provider with its own retry/backoff policy
                 const response = await runForProvider(fallbackProvider);
-
-                // BUG FIX: Validate content BEFORE logging success=true for fallback path too.
-                if (!response.content || typeof response.content !== "string" || response.content.trim().length === 0) {
-                    throw new Error(`Fallback provider returned empty or null content. Model may have hit a context or content-policy limit.`);
-                }
 
                 stats.callDuration = Date.now() - startTime;
                 if (options.callMetricsCollector) {
@@ -247,14 +241,82 @@ const parseGeneratedFiles = (resultContent) => {
             continue; // Skip instruction placeholder
         }
         let content = fileMatch[2].trim();
-        content = content.replace(/^```\w*\r?\n/, "").replace(/```$/, "").trim();
+        // Robustly strip leading code fences
+        content = content.replace(/^\s*```[a-zA-Z0-9#\+]*\r?\n/, "");
+        // Robustly strip trailing code fences
+        content = content.replace(/```\s*$/, "");
+        content = content.trim();
         files.push({ name: filePath, content });
     }
     return files;
 };
 
-const generateUnitCode = async (unit, projectSpec, contracts, options = {}) => {
-    const systemPrompt = `You are an expert AI software engineer. Generate implementation files matching the approved contracts and spec.
+/**
+ * Build a system prompt for a specific generation unit type.
+ * Differentiates MERN backend vs frontend units to avoid cross-contamination.
+ */
+const buildUnitSystemPrompt = (unit, isMern) => {
+    const isMernBackend = isMern && (
+        unit.type === "backend-foundation" ||
+        unit.type === "backend-api"
+    );
+    const isMernFrontend = isMern && (
+        unit.type === "frontend-shell" ||
+        unit.type === "frontend-pages" ||
+        unit.type === "frontend-components"
+    );
+    const isMernDoc = isMern && unit.type === "documentation";
+
+    let scaffoldNote = "";
+    if (isMernBackend) {
+        scaffoldNote = `
+SCAFFOLD FILES ALREADY EXIST (do not regenerate these):
+- backend/package.json (already created with express, mongoose, jsonwebtoken, bcryptjs, dotenv, cors)
+- backend/config/db.js (already created with mongoose connectDB function)
+- backend/routes/healthRoutes.js (already created with GET /api/health endpoint)
+- backend/.env.example (already created with PORT, MONGO_URI, JWT_SECRET)
+- .gitignore (already created)
+
+YOU MUST GENERATE THESE BACKEND FILES (they are NOT scaffold files):
+- backend/server.js (Express server entry, requires app.js and starts listening)
+- backend/app.js (Express app configuration with middleware and route mounting)
+- backend/models/*.js (Mongoose schemas)
+- backend/controllers/*.js (Route handler functions)
+- backend/routes/authRoutes.js and other route files
+- backend/middleware/authMiddleware.js
+- backend/middleware/errorMiddleware.js
+- backend/utils/generateToken.js`;
+    } else if (isMernFrontend) {
+        scaffoldNote = `
+SCAFFOLD FILES ALREADY EXIST (do not regenerate these):
+- frontend/package.json (already created with react, react-dom, react-router-dom, axios, react-icons, tailwindcss)
+- frontend/vite.config.js (already created with Vite + proxy to backend :5000)
+- frontend/tailwind.config.js (already created)
+- frontend/postcss.config.js (already created)
+- frontend/index.html (already created with <div id="root"> and src/main.jsx script)
+- frontend/.env.example (already created with VITE_API_URL)
+
+YOU MUST GENERATE THESE FRONTEND FILES (they are NOT scaffold files):
+- frontend/src/main.jsx
+- frontend/src/App.jsx
+- frontend/src/index.css
+- frontend/src/context/*.jsx
+- frontend/src/hooks/*.js
+- frontend/src/services/*.js
+- frontend/src/pages/*.jsx
+- frontend/src/components/**/*.jsx`;
+    } else if (isMernDoc) {
+        scaffoldNote = `
+Generate documentation and any missing configuration files.
+All scaffold files are already created. Generate only:
+- README.md (comprehensive project documentation at root level)`;
+    } else {
+        // Non-MERN: original behavior
+        scaffoldNote = `
+Do not generate, output, or mention the configuration and scaffold files that are already created locally. These include: package.json, vite.config.js, tailwind.config.js, postcss.config.js, index.html, and README.md. Only generate the files under the 'src/' directory (such as src/main.jsx, src/App.jsx, src/index.css, src/components/*, src/pages/*).`;
+    }
+
+    return `You are an expert AI software engineer. Generate implementation files matching the approved contracts and spec.
 Rules:
 1. Provide only the file paths and complete code files requested.
 2. Never output verbose explanations, markdown commentary, or design footnotes.
@@ -269,9 +331,16 @@ For each file, use this exact separator structure (including the dashes):
 \`\`\`
 --- END_FILE ---
 
-5. Strictly only use icons from 'lucide-react' (such as import { Heart, Activity } from 'lucide-react') for any UI icons. Do not import or use other icon libraries like @heroicons/react, react-icons, etc. to prevent compilation issues.
+5. For UI icons in React: prefer react-icons (e.g., import { FaGithub } from 'react-icons/fa'). Only use lucide-react if react-icons is not available.
 6. NEVER use '<{variable}' JSX syntax. Dynamic components MUST be assigned to a PascalCase variable first: const Icon = props.icon; return <Icon />; — using <{props.icon} /> is a fatal build error.
+7. Write complete, production-quality code. No TODOs, no placeholders, no stub implementations.
+${scaffoldNote}
 --- END_FILES ---`;
+};
+
+const generateUnitCode = async (unit, projectSpec, contracts, options = {}) => {
+    const isMern = contracts.isMern || false;
+    const systemPrompt = buildUnitSystemPrompt(unit, isMern);
 
     const userPrompt = `PROJECT SPEC:
 - Project Name: ${projectSpec.projectName}
@@ -279,20 +348,28 @@ For each file, use this exact separator structure (including the dashes):
 - Frontend: ${projectSpec.frontend}
 - Backend: ${projectSpec.backend}
 - Database: ${projectSpec.database}
+- Authentication: ${projectSpec.authentication || "None"}
+- Design: ${projectSpec.designRequirements || "Tailwind CSS"}
 
 SHARED CONTRACTS:
 ${JSON.stringify(contracts, null, 2)}
 
 GENERATION TARGET:
-- Module ID: ${unit.id}
+- Unit ID: ${unit.id}
+- Unit Type: ${unit.type || "general"}
 - Goal: ${unit.description}
 - Metadata: ${JSON.stringify(unit.meta || {})}
 
-Generate the complete implementation file(s) for this target matching the shared contracts folder structure and interfaces.
-Important guidelines:
-1. Do not add mock styling, placeholders, or TODO comments. Write complete functional code.
-2. In the root component (usually "src/App.jsx"), you MUST import and render all other pages and custom components listed in the folderStructure of the SHARED CONTRACTS to present a cohesive, complete application. Never import non-existent files or mock modules that are not declared in the folderStructure contract.
-3. Do not generate, output, or mention the configuration and scaffold files that are already created locally. These include: package.json, vite.config.js, tailwind.config.js, postcss.config.js, index.html, and README.md. Only generate the files under the 'src/' directory (such as src/main.jsx, src/App.jsx, src/index.css, src/components/*, src/pages/*).`;
+CRITICAL REQUIREMENTS:
+1. Write COMPLETE, WORKING code for every file — no stubs, no placeholders, no TODOs.
+2. All local imports must resolve to paths declared in SHARED CONTRACTS folderStructure.
+3. Use realistic, professional portfolio data (not "Lorem ipsum" or "placeholder").
+4. For the portfolio: the developer is a skilled Full-Stack JavaScript Developer with experience in React, Node.js, MongoDB, and related technologies.
+5. All API calls in the frontend must use relative paths (e.g., '/api/health') since Vite proxies to the backend.
+6. Backend must use proper async/await with error handling.
+7. All React components must be visually professional with Tailwind CSS dark theme styling.
+
+Generate the complete implementation files for Unit: ${unit.id}`;
 
     return await executeAiRequest(systemPrompt, userPrompt, {
         ...options,

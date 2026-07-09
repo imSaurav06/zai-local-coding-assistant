@@ -36,7 +36,7 @@ const startServer = async () => {
         const server = app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
         });
-        server.timeout = 240000; // 4 minutes
+        server.timeout = 600000; // 10 minutes
     } catch (error) {
         console.error("Failed to start server:", error.message);
         process.exit(1);

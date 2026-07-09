@@ -16,7 +16,7 @@ const generateAIResponse = async (prompt) => {
         ];
 
         const data = await providerRouter.sendChatCompletion(messages, {
-            timeout: 120000,
+            timeout: 180000,
         });
 
         console.log("2. AI RESPONSE RECEIVED VIA PROVIDER ROUTER");

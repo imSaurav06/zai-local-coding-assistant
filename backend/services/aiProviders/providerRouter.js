@@ -85,7 +85,23 @@ const sendChatCompletion = async (messages, config = {}, options = {}) => {
 
         if (isFallbackEligible && fallback && fallback !== primary) {
             console.warn(`[AI Failover] Primary provider '${primary}' failed (${status ?? code}). Retrying exactly once via fallback provider '${fallback}'...`);
-            return await sendChatCompletionDirect(fallback, messages, config, options);
+            let lastErr;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    return await sendChatCompletionDirect(fallback, messages, config, options);
+                } catch (fallbackErr) {
+                    lastErr = fallbackErr;
+                    const fCode = fallbackErr.code || "";
+                    const fStatus = fallbackErr.response ? fallbackErr.response.status : null;
+                    const isFTransient = ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"].includes(fCode) || fStatus === 429 || (fStatus >= 500 && fStatus <= 599);
+                    if (!isFTransient || attempt === 3) {
+                        throw fallbackErr;
+                    }
+                    const waitMs = attempt * 2000;
+                    console.warn(`[AI Failover] Fallback attempt ${attempt} failed (${fCode || fStatus}). Retrying in ${waitMs}ms...`);
+                    await new Promise(r => setTimeout(r, waitMs));
+                }
+            }
         }
 
         // Re-throw with a clean message that includes provider context
