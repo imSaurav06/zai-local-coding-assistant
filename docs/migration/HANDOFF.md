@@ -18,33 +18,29 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ## 2. Current Migration State
 
-*   **Current Phase**: PHASE 0 (Migration Control Plane + Safety Baseline)
-*   **Current Task Pack**: None (Phase 0 is complete)
-*   **Last Completed Task Pack**: Task Pack 0E (Handoff Protocol)
-*   **Overall Status**: DONE (Phase 0 has succeeded)
+*   **Current Phase**: PHASE 1 (ProjectSpec Foundation + Stable Requirement IDs)
+*   **Current Task Pack**: 1A (Current Requirement Payload Characterization)
+*   **Last Completed Task Pack**: Task Pack 1A (Current Requirement Payload Characterization)
+*   **Overall Status**: DONE (Task Pack 1A completed successfully)
 
 ---
 
 ## 3. Working Tree State & Uncommitted Changes
 - **Git Branch**: `main`
-- **Working Tree Status**: Clean. (All pre-existing hardening changes are committed in previous commits b80fae565f49838c1647c70a3c0ee0baba0f0d71 and bbb13e2b8acd7f8a3b5459510f12dda79ede5680).
-- **Preserved Uncommitted Work**: N/A (No pre-existing modifications to protect).
-- **Files Created/Changed in Phase 0**:
-  - [TARGET_ARCHITECTURE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/architecture/TARGET_ARCHITECTURE.md)
-  - [ARCHITECTURE_DECISIONS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/architecture/ARCHITECTURE_DECISIONS.md)
-  - [MIGRATION_PLAN.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/MIGRATION_PLAN.md)
-  - [CURRENT_STATE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/CURRENT_STATE.md)
-  - [PHASE_STATUS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_STATUS.md)
-  - [HANDOFF.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/HANDOFF.md)
-  - [TEST_BASELINE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/TEST_BASELINE.md)
+- **Working Tree Status**: Modified files present (documentation and test changes).
+- **Files Created/Changed in Task Pack 1A**:
+  - [PHASE_1A_REQUIREMENT_PAYLOAD_CHARACTERIZATION.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_1A_REQUIREMENT_PAYLOAD_CHARACTERIZATION.md) (Created)
+  - [backend/tests/run_tests.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js) (Modified to add characterization tests)
+  - [docs/migration/PHASE_STATUS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_STATUS.md) (Modified status)
+  - [docs/migration/HANDOFF.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/HANDOFF.md) (Modified handoff)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **Last Test Metrics**: 102 passed, 0 failed, 0 skipped.
+- **Last Test Metrics**: 115 passed, 0 failed, 0 skipped.
 - **Historical 97 Deterministic Tests**: Verified passing.
-- **New Tests Added**: 5 unit tests verifying Vite scripts preservation, timeout bounds clamping, and preview ready transitions.
+- **New Tests Added**: 13 unit characterization tests protecting parsing, fenced JSON isolation, missing fields defaulting, transient retry limits, dynamic profile stack mapping, projectSpec reference immutability, and 6 stack selection priority collision scenarios.
 - **Untested Critical Modules**: `aiService.js`, `providerRouter.js`, `openRouterProvider.js`, `zaiProvider.js`, `progressEmitter.js`.
 
 ---
@@ -63,6 +59,6 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 7. Next Exact Action
-Review and execute only Task Pack 1A: Current Requirement Payload Characterization.
+Review PHASE_1A_REQUIREMENT_PAYLOAD_CHARACTERIZATION.md and the Phase 1A characterization tests before designing or executing Task Pack 1B.
 
-**STOP CONDITIONS**: Do not edit production source files or start implementation of Task Pack 1A until the next session is initialized.
+**STOP CONDITIONS**: Do not edit production source files or start implementation of Task Pack 1B until the next session is initialized.

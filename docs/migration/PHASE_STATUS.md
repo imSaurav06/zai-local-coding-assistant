@@ -78,15 +78,16 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Dependencies**: Phase 0.
 
 ### Task Pack 1A: Current Requirement Payload Characterization
-- **Status**: NOT_STARTED
-- **Started At**: N/A
-- **Completed At**: N/A
-- **Files Changed**: None.
-- **Tests Run**: None.
-- **Test Result**: N/A
+- **Status**: DONE
+- **Started At**: 2026-07-10T21:38:00+05:30
+- **Completed At**: 2026-07-10T22:00:00+05:30
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_1A_REQUIREMENT_PAYLOAD_CHARACTERIZATION.md`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Tests Added**: 13 unit tests verifying parsing, fenced extraction, defaults, transient retry loops, rate limits error paths, stack profile mapping, spec reference immutability, and 6 priority collision heuristics.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 115 Passed, 0 Failed.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: Review and execute only Task Pack 1A: Current Requirement Payload Characterization.
+- **Next Action**: STOP. Review Phase 1A report and tests. Design Task Pack 1B (Canonical ProjectSpec Schema + Validation Boundary) in the next session.
 
 ### Task Pack 1B: Canonical ProjectSpec Schema + Validation Boundary
 - **Status**: NOT_STARTED
@@ -106,7 +107,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 | Phase | Description | Status | Target Completion |
 |---|---|---|---|
-| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | NOT_STARTED | TBD |
+| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | IN_PROGRESS (Task Pack 1A DONE) | TBD |
 | **Phase 2** | Requirement Validator + RTM-Lite | NOT_STARTED | TBD |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | NOT_STARTED | TBD |
 | **Phase 4** | TaskGraph / Simple DAG Planner | NOT_STARTED | TBD |

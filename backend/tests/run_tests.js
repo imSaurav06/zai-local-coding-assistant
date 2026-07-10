@@ -1615,6 +1615,260 @@ suite("Mongoose Options Sanitization & Backend Readiness", () => {
 });
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SUITE 9: Requirement Analysis Characterization (Phase 1A)
+// ─────────────────────────────────────────────────────────────────────────────
+suite("Requirement Analysis Characterization (Phase 1A)", () => {
+    let originalSend;
+    let originalSetTimeout;
+
+    const mockSendCompletion = (fn) => {
+        providerRouter.sendChatCompletion = fn;
+    };
+
+    const setupMocks = () => {
+        originalSend = providerRouter.sendChatCompletion;
+        originalSetTimeout = global.setTimeout;
+        global.setTimeout = (cb) => cb(); // Instant retries
+    };
+
+    const restoreMocks = () => {
+        providerRouter.sendChatCompletion = originalSend;
+        global.setTimeout = originalSetTimeout;
+    };
+
+    const providerRouter = require(path.join(backendRoot, "services/aiProviders/providerRouter"));
+    const projectService = require(path.join(backendRoot, "services/projectService"));
+
+    test("Valid requirement-analysis response parsing", async () => {
+        setupMocks();
+        const validPayload = {
+            projectName: "GymSite",
+            projectType: "React Landing Page",
+            frontend: "React (Vite)",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "Tailwind CSS",
+            pagesAndRoutes: [{ path: "/", name: "Landing", description: "Hero section" }],
+            components: [{ name: "Navbar", purpose: "Nav bar" }],
+            backendApis: [],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: ["react-router-dom"],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "npm run dev", buildScript: "npm run build" },
+            deploymentRequirements: "Vercel",
+            assumptions: ["Frontend only"]
+        };
+
+        mockSendCompletion(async () => {
+            return { content: JSON.stringify(validPayload), provider: "mock", model: "mock-model" };
+        });
+
+        try {
+            const spec = await projectService.analyzeRequirements({ prompt: "Test prompt" });
+            assert.strictEqual(spec.projectName, "GymSite");
+            assert.strictEqual(spec.projectType, "React Landing Page");
+            assert.strictEqual(spec.frontend, "React (Vite)");
+            assert.deepStrictEqual(spec.pagesAndRoutes, validPayload.pagesAndRoutes);
+            assert.deepStrictEqual(spec.runBuildRequirements, validPayload.runBuildRequirements);
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("Fenced JSON extraction with leading/trailing prose", async () => {
+        setupMocks();
+        const jsonWithProse = `Some introductory text...
+\`\`\`json
+{
+  "projectName": "FitApp",
+  "projectType": "MERN app",
+  "frontend": "React"
+}
+\`\`\`
+Some footer text...`;
+
+        mockSendCompletion(async () => {
+            return { content: jsonWithProse, provider: "mock", model: "mock-model" };
+        });
+
+        try {
+            const spec = await projectService.analyzeRequirements({ prompt: "Test prompt" });
+            assert.strictEqual(spec.projectName, "FitApp");
+            assert.strictEqual(spec.projectType, "MERN app");
+            assert.strictEqual(spec.frontend, "React");
+            assert.strictEqual(spec.backend, "None"); // Defaulted
+            assert.deepStrictEqual(spec.pagesAndRoutes, []); // Defaulted
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("Missing/partial fields defaults", async () => {
+        setupMocks();
+        // Return JSON missing almost all fields
+        mockSendCompletion(async () => {
+            return { content: '{"projectName":"OnlyName"}', provider: "mock", model: "mock-model" };
+        });
+
+        try {
+            const spec = await projectService.analyzeRequirements({ prompt: "Test prompt" });
+            assert.strictEqual(spec.projectName, "OnlyName");
+            assert.strictEqual(spec.projectType, "Web Application"); // Default
+            assert.strictEqual(spec.backend, "None"); // Default
+            assert.deepStrictEqual(spec.pagesAndRoutes, []); // Default
+            assert.deepStrictEqual(spec.runBuildRequirements, { runScript: "npm run dev", buildScript: "" }); // Default
+            assert.strictEqual(spec.deploymentRequirements, "None"); // Default
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("Malformed AI output fallback retry success", async () => {
+        setupMocks();
+        let callCount = 0;
+        mockSendCompletion(async () => {
+            callCount++;
+            if (callCount === 1) {
+                return { content: "This is not JSON at all!", provider: "mock", model: "mock-model" };
+            }
+            return { content: '{"projectName":"RetrySuccess"}', provider: "mock", model: "mock-model" };
+        });
+
+        try {
+            const spec = await projectService.analyzeRequirements({ prompt: "Test prompt" });
+            assert.strictEqual(callCount, 2, "Should retry and call provider twice");
+            assert.strictEqual(spec.projectName, "RetrySuccess");
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("Empty response behavior and retrying", async () => {
+        setupMocks();
+        let callCount = 0;
+        mockSendCompletion(async () => {
+            callCount++;
+            if (callCount === 1) {
+                return { content: "", provider: "mock", model: "mock-model" }; // empty
+            }
+            return { content: '{"projectName":"RetryEmptySuccess"}', provider: "mock", model: "mock-model" };
+        });
+
+        try {
+            const spec = await projectService.analyzeRequirements({ prompt: "Test prompt" });
+            assert.strictEqual(callCount, 2, "Should retry after empty response");
+            assert.strictEqual(spec.projectName, "RetryEmptySuccess");
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("Provider failure retrying and propagation", async () => {
+        setupMocks();
+        let callCount = 0;
+        mockSendCompletion(async () => {
+            callCount++;
+            throw new Error("Provider rate limit error");
+        });
+
+        try {
+            await assert.rejects(
+                projectService.analyzeRequirements({ prompt: "Test prompt" }),
+                /Failed to analyze requirements: Provider rate limit error/
+            );
+            assert.strictEqual(callCount, 3, "Should retry up to max attempts (3)");
+        } finally {
+            restoreMocks();
+        }
+    });
+
+    test("Stack profiles mapping (unknown/dynamic stack)", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        const spec = {
+            projectName: "UnknownStackProj",
+            projectType: "Some random tech",
+            frontend: "Ruby on Rails",
+            backend: "Ruby",
+            database: "SQLite"
+        };
+        const profile = detectProfile(spec);
+        assert.strictEqual(profile.name, "dynamic", "Unknown stack should map to the dynamic fallback profile");
+    });
+
+    test("projectSpec immutability under planner and contract building", () => {
+        const spec = { ...SAMPLE_REACT_SPEC };
+        const originalSpecStr = JSON.stringify(spec);
+        planGeneration(spec);
+        buildSharedContracts(spec);
+        buildProjectManifest("gym app", spec);
+        assert.strictEqual(JSON.stringify(spec), originalSpecStr, "projectSpec must not be modified by planners or contract builders");
+    });
+
+    test("Collision: React and Express without Mongo maps to dynamic fallback if React is in projectType", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        const spec = {
+            frontend: "React",
+            backend: "Express",
+            projectType: "React Application",
+            database: "None"
+        };
+        const profile = detectProfile(spec);
+        assert.strictEqual(profile.name, "dynamic", "React + Express without Mongo should map to dynamic when React is in projectType");
+    });
+
+    test("Collision: React and Express without Mongo maps to express if React is only in frontend field", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        const spec = {
+            frontend: "React",
+            backend: "Express",
+            database: "None"
+        };
+        const profile = detectProfile(spec);
+        assert.strictEqual(profile.name, "express", "React + Express should map to express if React is only in frontend because Express detect ignores frontend field");
+    });
+
+    test("Collision: Next.js and React maps to nextjs", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        const spec = {
+            frontend: "Next.js with React",
+            projectType: "Next.js Portfolio"
+        };
+        const profile = detectProfile(spec);
+        assert.strictEqual(profile.name, "nextjs", "Next.js + React should map to nextjs");
+    });
+
+    test("Collision: Django backend maps to dynamic generating django files", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        const spec = {
+            backend: "Django framework",
+            database: "Postgres"
+        };
+        const profile = detectProfile(spec);
+        assert.strictEqual(profile.name, "dynamic", "Django maps to dynamic");
+        const folderStructure = profile.getFolderStructure(spec);
+        assert.ok(folderStructure.includes("manage.py"), "Should include manage.py for Django");
+        assert.ok(folderStructure.includes("requirements.txt"), "Should include requirements.txt for Django");
+    });
+
+    test("Collision: Vanilla fallback maps correctly on empty backend/database", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        const spec = {
+            frontend: "None",
+            backend: "None",
+            database: "None"
+        };
+        const profile = detectProfile(spec);
+        assert.strictEqual(profile.name, "vanilla", "No backend/database matches should map to vanilla");
+    });
+});
+
+
+
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
