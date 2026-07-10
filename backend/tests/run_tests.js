@@ -1866,6 +1866,411 @@ Some footer text...`;
     });
 });
 
+suite("Canonical ProjectSpec Schema & Validation (Phase 1B)", () => {
+    const { validateProjectSpec, errorCodes } = require(path.join(backendRoot, "core/projectSpec"));
+
+    const getValidSpec = () => ({
+        schemaVersion: "1.0",
+        projectName: "ValidProject",
+        projectType: "React Landing Page",
+        frontend: "React (Vite)",
+        backend: "None",
+        database: "None",
+        authentication: "None",
+        designRequirements: "Tailwind CSS",
+        pagesAndRoutes: [
+            { path: "/", name: "LandingPage", description: "Hero section" }
+        ],
+        components: [
+            { name: "Navbar", purpose: "Navigation" }
+        ],
+        backendApis: [],
+        databaseModels: [],
+        integrations: ["Stripe"],
+        importantDependencies: ["react", "react-dom"],
+        environmentVariables: ["VITE_API_KEY"],
+        architectureConstraints: ["Responsive layout"],
+        runBuildRequirements: {
+            runScript: "npm run dev",
+            buildScript: "npm run build"
+        },
+        deploymentRequirements: "Vercel",
+        assumptions: ["No database needed"]
+    });
+
+    test("1. Complete valid canonical ProjectSpec passes", () => {
+        const spec = getValidSpec();
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.errors.length, 0);
+        assert.strictEqual(res.value.projectName, "ValidProject");
+    });
+
+    test("2. Validation does not mutate input", () => {
+        const spec = getValidSpec();
+        const originalJson = JSON.stringify(spec);
+        validateProjectSpec(spec);
+        assert.strictEqual(JSON.stringify(spec), originalJson);
+    });
+
+    test("3. Validated output does not share nested mutable references with input", () => {
+        const spec = getValidSpec();
+        const res = validateProjectSpec(spec);
+        assert.ok(res.success);
+        assert.notStrictEqual(res.value, spec);
+        assert.notStrictEqual(res.value.pagesAndRoutes, spec.pagesAndRoutes);
+        assert.notStrictEqual(res.value.pagesAndRoutes[0], spec.pagesAndRoutes[0]);
+    });
+
+    test("4. Validated output is deeply immutable", () => {
+        const spec = getValidSpec();
+        const res = validateProjectSpec(spec);
+        assert.ok(res.success);
+        assert.throws(() => {
+            res.value.projectName = "MutatedName";
+        }, TypeError);
+        assert.throws(() => {
+            res.value.pagesAndRoutes[0].path = "/new";
+        }, TypeError);
+        assert.throws(() => {
+            res.value.pagesAndRoutes.push({ path: "/foo", name: "Foo", description: "Foo" });
+        }, TypeError);
+    });
+
+    test("5. Missing schemaVersion fails", () => {
+        const spec = getValidSpec();
+        delete spec.schemaVersion;
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_VERSION && e.path === "schemaVersion"));
+    });
+
+    test("6. Unsupported schemaVersion fails", () => {
+        const spec = getValidSpec();
+        spec.schemaVersion = "2.0";
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_VERSION && e.path === "schemaVersion"));
+    });
+
+    test("7. Missing required top-level field fails", () => {
+        const spec = getValidSpec();
+        delete spec.projectName;
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_REQUIRED && e.path === "projectName"));
+    });
+
+    test("8. Wrong primitive type fails", () => {
+        const spec = getValidSpec();
+        spec.projectName = 12345;
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_TYPE && e.path === "projectName"));
+    });
+
+    test("9. Wrong array element type fails", () => {
+        const spec = getValidSpec();
+        spec.integrations = [123];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_TYPE && e.path === "integrations[0]"));
+    });
+
+    test("10. Malformed pagesAndRoutes entry fails", () => {
+        const spec = getValidSpec();
+        spec.pagesAndRoutes = [
+            { path: "no-leading-slash", name: "Page", description: "Desc" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_PAGE_ROUTE && e.path === "pagesAndRoutes[0].path"));
+    });
+
+    test("11. Malformed components entry fails", () => {
+        const spec = getValidSpec();
+        spec.components = [
+            { name: "", purpose: "Invalid empty name" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_VALUE && e.path === "components[0].name"));
+    });
+
+    test("12. Malformed backendApis entry fails", () => {
+        const spec = getValidSpec();
+        spec.backendApis = [
+            { method: "GET", path: "no-slash", purpose: "invalid path" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_API_PATH && e.path === "backendApis[0].path"));
+    });
+
+    test("13. Invalid HTTP method fails", () => {
+        const spec = getValidSpec();
+        spec.backendApis = [
+            { method: "INVALID", path: "/api/test", purpose: "invalid method" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_HTTP_METHOD && e.path === "backendApis[0].method"));
+    });
+
+    test("14. Malformed API path fails", () => {
+        const spec = getValidSpec();
+        spec.backendApis = [
+            { method: "POST", path: "api/test", purpose: "missing leading slash" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_API_PATH && e.path === "backendApis[0].path"));
+    });
+
+    test("15. Duplicate API method/path fails", () => {
+        const spec = getValidSpec();
+        spec.backendApis = [
+            { method: "GET", path: "/api/users", purpose: "first" },
+            { method: "get ", path: " /api/users", purpose: "second" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.DUPLICATE_API && e.path === "backendApis[1]"));
+    });
+
+    test("16. Duplicate page route fails", () => {
+        const spec = getValidSpec();
+        spec.pagesAndRoutes = [
+            { path: "/home", name: "Home", description: "Home page" },
+            { path: "/home", name: "Home2", description: "Duplicate path" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.DUPLICATE_ROUTE && e.path === "pagesAndRoutes[1].path"));
+    });
+
+    test("17. Duplicate component name fails", () => {
+        const spec = getValidSpec();
+        spec.components = [
+            { name: "Button", purpose: "A button" },
+            { name: "button", purpose: "A duplicate button" }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.DUPLICATE_COMPONENT && e.path === "components[1].name"));
+    });
+
+    test("18. Malformed databaseModels entry fails", () => {
+        const spec = getValidSpec();
+        spec.databaseModels = [
+            { name: "User", fields: [123] }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_TYPE && e.path === "databaseModels[0].fields[0]"));
+    });
+
+    test("19. Duplicate database model name fails", () => {
+        const spec = getValidSpec();
+        spec.databaseModels = [
+            { name: "User", fields: ["name (String)"] },
+            { name: "user", fields: ["email (String)"] }
+        ];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.DUPLICATE_MODEL && e.path === "databaseModels[1].name"));
+    });
+
+    test("20. Invalid environment variable name fails", () => {
+        const spec = getValidSpec();
+        spec.environmentVariables = ["1INVALID_ENV"];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_ENV_VAR && e.path === "environmentVariables[0]"));
+    });
+
+    test("21. Invalid dependency name fails according to documented policy", () => {
+        const spec = getValidSpec();
+        spec.importantDependencies = ["react space"];
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_DEP_NAME && e.path === "importantDependencies[0]"));
+    });
+
+    test("22. Missing runBuildRequirements key fails", () => {
+        const spec = getValidSpec();
+        spec.runBuildRequirements = { runScript: "node index.js" };
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_REQUIRED && e.path === "runBuildRequirements.buildScript"));
+    });
+
+    test("23. Unknown top-level field behavior matches strictness policy", () => {
+        const spec = getValidSpec();
+        spec.unknownField = "value";
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.UNKNOWN_FIELD && e.path === "unknownField"));
+    });
+
+    test("24. Unknown nested field behavior matches strictness policy", () => {
+        const spec = getValidSpec();
+        spec.pagesAndRoutes[0].unknownNested = "some value";
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.UNKNOWN_FIELD && e.path === "pagesAndRoutes[0].unknownNested"));
+    });
+
+    test("25. Empty/whitespace-only string behavior matches policy", () => {
+        const spec = getValidSpec();
+        spec.projectName = "   ";
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_VALUE && e.path === "projectName"));
+    });
+
+    test("26. Multiple validation errors are returned where practical", () => {
+        const spec = getValidSpec();
+        spec.projectName = "";
+        spec.frontend = "";
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors.length, 2);
+    });
+
+    test("27. Validation error ordering is deterministic", () => {
+        const spec = getValidSpec();
+        spec.frontend = "";
+        spec.projectName = "";
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.errors[0].path, "frontend");
+        assert.strictEqual(res.errors[1].path, "projectName");
+    });
+
+    test("28. Same candidate produces deterministic validation result", () => {
+        const spec = getValidSpec();
+        spec.frontend = "";
+        spec.projectName = "";
+        const res1 = validateProjectSpec(spec);
+        const res2 = validateProjectSpec(spec);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("29. Total boundary checks with arbitrary inputs (null, undefined, date, class, functions)", () => {
+        assert.strictEqual(validateProjectSpec(null).success, false);
+        assert.strictEqual(validateProjectSpec(undefined).success, false);
+        assert.strictEqual(validateProjectSpec(true).success, false);
+        assert.strictEqual(validateProjectSpec(123).success, false);
+        assert.strictEqual(validateProjectSpec("string").success, false);
+        assert.strictEqual(validateProjectSpec([]).success, false);
+        assert.strictEqual(validateProjectSpec(() => {}).success, false);
+        assert.strictEqual(validateProjectSpec(new Date()).success, false);
+        assert.strictEqual(validateProjectSpec(/regex/).success, false);
+        
+        class MyClass {}
+        assert.strictEqual(validateProjectSpec(new MyClass()).success, false);
+
+        const spec = getValidSpec();
+        spec.runBuildRequirements = new Date();
+        assert.strictEqual(validateProjectSpec(spec).success, false);
+    });
+
+    test("30. Sparse arrays are caught and fail validation", () => {
+        const spec = getValidSpec();
+        spec.pagesAndRoutes = [];
+        spec.pagesAndRoutes[0] = { path: "/a", name: "A", description: "A" };
+        spec.pagesAndRoutes[2] = { path: "/b", name: "B", description: "B" };
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_TYPE && e.path === "pagesAndRoutes[1]"));
+    });
+
+    test("31. Prototype pollution / inherited property bypasses are prevented", () => {
+        // Pollute Object.prototype temporarily
+        Object.prototype.tempPollutedField = "polluted";
+        try {
+            const spec = getValidSpec();
+            // Delete a required field from own properties
+            delete spec.projectName;
+            // Set the deleted property on Object.prototype to simulate prototype pollution bypass attempt
+            Object.prototype.projectName = "BypassedName";
+
+            const res = validateProjectSpec(spec);
+            assert.strictEqual(res.success, false);
+            assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_REQUIRED && e.path === "projectName"), 
+                "Should catch missing required field even if present on Object.prototype");
+        } finally {
+            delete Object.prototype.tempPollutedField;
+            delete Object.prototype.projectName;
+        }
+    });
+
+    test("32. Throwing getters are caught safely without crashing", () => {
+        const spec = getValidSpec();
+        Object.defineProperty(spec, "projectName", {
+            get() { throw new Error("Malicious throwing getter"); },
+            enumerable: true
+        });
+        const res = validateProjectSpec(spec);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_VALUE && e.path === "" && e.message.includes("Malicious throwing getter")));
+    });
+
+    test("33. Route / API path strict validations", () => {
+        const spec = getValidSpec();
+        
+        // Allowed paths
+        const validPaths = ["/", "/users", "/users/:id", "/users/{id}", "/users/*"];
+        validPaths.forEach(p => {
+            spec.pagesAndRoutes[0].path = p;
+            assert.strictEqual(validateProjectSpec(spec).success, true, `Should accept valid path: ${p}`);
+        });
+
+        // Rejected paths
+        const invalidPaths = ["users", "//users", "/users/", "/users/ ", "/users?foo=bar", "/users#section"];
+        invalidPaths.forEach(p => {
+            spec.pagesAndRoutes[0].path = p;
+            assert.strictEqual(validateProjectSpec(spec).success, false, `Should reject invalid path: ${p}`);
+        });
+    });
+
+    test("34. Dependency name format rules (NPM scopes, versions, spaces)", () => {
+        const spec = getValidSpec();
+
+        // Allowed
+        const validDeps = ["react", "@scope/package", "package-name", "package_name"];
+        validDeps.forEach(d => {
+            spec.importantDependencies = [d];
+            assert.strictEqual(validateProjectSpec(spec).success, true, `Should accept valid dependency: ${d}`);
+        });
+
+        // Rejected
+        const invalidDeps = ["package/name", "react@18", "git+ssh://github.com", "http://github.com", "", "   "];
+        invalidDeps.forEach(d => {
+            spec.importantDependencies = [d];
+            assert.strictEqual(validateProjectSpec(spec).success, false, `Should reject invalid dependency: ${d}`);
+        });
+    });
+
+    test("35. Environment variable name format rules (digits, lower, symbols)", () => {
+        const spec = getValidSpec();
+
+        // Allowed
+        const validEnvs = ["DATABASE_URL", "VITE_API_URL", "NEXT_PUBLIC_API_URL", "db_url", "_my_var"];
+        validEnvs.forEach(env => {
+            spec.environmentVariables = [env];
+            assert.strictEqual(validateProjectSpec(spec).success, true, `Should accept valid env: ${env}`);
+        });
+
+        // Rejected
+        const invalidEnvs = ["1_VAR", "VAR-NAME", "VAR=VAL", "", "   "];
+        invalidEnvs.forEach(env => {
+            spec.environmentVariables = [env];
+            assert.strictEqual(validateProjectSpec(spec).success, false, `Should reject invalid env: ${env}`);
+        });
+    });
+});
+
 
 
 

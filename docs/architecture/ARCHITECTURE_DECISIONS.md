@@ -166,3 +166,14 @@ This log documents the key architectural decisions for the Z.ai Application Buil
 *   **Consequences**: Eases model migration path.
 *   **Migration Dependencies**: ADR-014.
 *   **Open Questions**: None.
+
+---
+
+## ADR-016: ProjectSpec Custom Internal Validation Engine
+*   **Context**: We need to validate structured ProjectSpec configurations strictly (primitive types, array formats, schema versions, duplicate paths/methods/names, etc.).
+*   **Decision**: Implement a custom, dependency-free internal validation module inside `backend/core/projectSpec/projectSpecValidator.js`.
+*   **Current Status**: ACCEPTED (Phase 1B).
+*   **Reason**: Keeps the codebase lightweight, minimizes dependency-chain complexity, allows deterministic error formatting/taxonomy mapping, and executes 100% offline.
+*   **Consequences**: Requires maintaining custom validation logic, but avoids dependency bloat or lockfile drift.
+*   **Migration Dependencies**: ADR-002.
+*   **Open Questions**: None.

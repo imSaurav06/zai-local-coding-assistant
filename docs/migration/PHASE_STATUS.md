@@ -90,7 +90,18 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Next Action**: STOP. Review Phase 1A report and tests. Design Task Pack 1B (Canonical ProjectSpec Schema + Validation Boundary) in the next session.
 
 ### Task Pack 1B: Canonical ProjectSpec Schema + Validation Boundary
-- **Status**: NOT_STARTED
+- **Status**: DONE
+- **Started At**: 2026-07-10T22:01:00+05:30
+- **Completed At**: 2026-07-10T22:15:00+05:30
+- **Files Changed**: `docs/architecture/ARCHITECTURE_DECISIONS.md`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`, `backend/core/projectSpec/projectSpecSchema.js`, `backend/core/projectSpec/projectSpecValidator.js`
+- **Files Created**: `backend/core/projectSpec/projectSpecErrors.js`, `backend/core/projectSpec/index.js`, `docs/migration/PHASE_1B_PROJECTSPEC_SCHEMA_AND_VALIDATION.md`
+- **Dependency Decision**: Hand-written custom validation logic implemented to keep the boundary dependency-free, offline, and lightweight (ADR-016).
+- **Tests Added**: 35 new unit tests covering validation correctness, immutability, nested structures, duplicate checks, empty string bounds, environment variables, dependency names, error ordering, result determinism, safe catches for getters/errors, plain-object validation, inherited prototype checks, sparse arrays skip, and strict route formatting.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 150 Passed, 0 Failed.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 1B reports and tests before designing or executing Task Pack 1C.
 
 ### Task Pack 1C: Requirement Analysis &rarr; ProjectSpec Compiler/Adapter
 - **Status**: NOT_STARTED
@@ -107,7 +118,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 | Phase | Description | Status | Target Completion |
 |---|---|---|---|
-| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | IN_PROGRESS (Task Pack 1A DONE) | TBD |
+| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | IN_PROGRESS (Task Packs 1A & 1B DONE) | TBD |
 | **Phase 2** | Requirement Validator + RTM-Lite | NOT_STARTED | TBD |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | NOT_STARTED | TBD |
 | **Phase 4** | TaskGraph / Simple DAG Planner | NOT_STARTED | TBD |
