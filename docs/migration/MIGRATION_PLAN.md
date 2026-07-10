@@ -1,0 +1,172 @@
+# Master Incremental Migration Plan
+
+This plan details the incremental evolution of the Z.ai Application Builder. Each phase is decomposed into small, self-contained Task Packs.
+
+---
+
+## Task Pack Execution Protocol
+
+Every future Task Pack must strictly adhere to this protocol:
+
+### Before Implementation
+1. **Read all migration logs**:
+   - `TARGET_ARCHITECTURE.md`
+   - `ARCHITECTURE_DECISIONS.md`
+   - `MIGRATION_PLAN.md`
+   - `CURRENT_STATE.md`
+   - `PHASE_STATUS.md`
+   - `HANDOFF.md`
+   - `TEST_BASELINE.md`
+2. **Inspect workspace safety**:
+   - Run `git status` to verify the working tree is clean.
+   - Confirm you are on the correct branch.
+   - Run a baseline regression test check: `node tests/run_tests.js`.
+3. **Align Scope**: Verify acceptance criteria for the target Task Pack.
+
+### During Implementation
+4. **Targeted Changes**: Edit only the specific files required for the Task Pack.
+5. **No Scope Creep**: Do not implement future phases or perform unrelated code cleanups.
+6. **Backward Compatibility**: Wrap existing boundaries so the codebase continues to compile and run.
+7. **Add Tests**: Write unit/integration tests covering new functions or classes.
+
+### After Implementation
+8. **Verify code**:
+   - Run targeted tests for the modified module.
+   - Run full regression tests: `node tests/run_tests.js`.
+9. **Update Documentation**:
+   - Mark completed status in `PHASE_STATUS.md`.
+   - Update `HANDOFF.md` with current working tree progress, test results, and next actions.
+   - Update `TEST_BASELINE.md` and `ARCHITECTURE_DECISIONS.md` if baseline metrics or ADR scopes changed.
+10. **STOP**: Hand off the progress. Do not start the next Task Pack.
+
+---
+
+## Migration Phases
+
+### PHASE 0: Migration Control Plane + Safety Baseline
+- **Goal**: Establish safety guidelines and document current codebase.
+- **Dependencies**: None.
+- **Task Packs**:
+  - **Task Pack 0A**: Safety inspection and current branch git check. (Status: DONE)
+  - **Task Pack 0B**: Discover and classify existing test commands. (Status: DONE)
+  - **Task Pack 0C**: Create target architecture diagrams and diagrams logs. (Status: DONE)
+  - **Task Pack 0D**: Set up handoff protocols and progress tracker. (Status: DONE)
+- **Acceptance Criteria**: Control documents exist and 102 tests pass successfully.
+- **Relative Effort**: XS.
+
+### PHASE 1: ProjectSpec Foundation + Stable Requirement IDs
+- **Goal**: Define `ProjectSpec` JSON schema and introduce stable IDs for compiled prompt requirements.
+- **Dependencies**: Phase 0.
+- **Task Packs**:
+  - **Task Pack 1A**: Define the ProjectSpec Mongoose & JSON schema structures.
+  - **Task Pack 1B**: Modify requirement parser in `projectService.js` to assign stable IDs (e.g. `REQ-001`) to spec entries.
+- **Modules Affected**: `projectService.js`, `Project.js` model.
+- **Relative Effort**: S.
+
+### PHASE 2: Requirement Validator + RTM-Lite
+- **Goal**: Implement AST checks for specifications and build a requirements mapping index.
+- **Dependencies**: Phase 1.
+- **Task Packs**:
+  - **Task Pack 2A**: Create `RequirementValidator` class checking spec fields.
+  - **Task Pack 2B**: Build `RTMLite` tracker mapping requirement IDs to contract files.
+- **Modules Affected**: `projectService.js`, `validationProfiles.js`.
+- **Relative Effort**: S.
+
+### PHASE 3: Architecture / DB / API / Auth / Deployment Contracts
+- **Goal**: Build contract generators that output file tree and interface contracts before code generation.
+- **Dependencies**: Phase 2.
+- **Task Packs**:
+  - **Task Pack 3A**: Refactor `contractBuilder.js` to generate path manifests.
+  - **Task Pack 3B**: Add validators verifying that files follow contract boundaries.
+- **Modules Affected**: `contractBuilder.js`, `validationProfiles.js`.
+- **Relative Effort**: S.
+
+### PHASE 4: TaskGraph / Simple DAG Planner
+- **Goal**: Replace heuristic planners with a directed acyclic graph scheduler.
+- **Dependencies**: Phase 3.
+- **Task Packs**:
+  - **Task Pack 4A**: Create `TaskGraph` model.
+  - **Task Pack 4B**: Refactor `generationPlanner.js` to output a topological waves schedule.
+- **Modules Affected**: `generationPlanner.js`.
+- **Relative Effort**: M.
+
+### PHASE 5: Durable Checkpoints + Resume
+- **Goal**: Save intermediate generation files and task states to MongoDB to support resuming.
+- **Dependencies**: Phase 4.
+- **Task Packs**:
+  - **Task Pack 5A**: Add `Checkpoint` schema in MongoDB.
+  - **Task Pack 5B**: Integrate checkpoint saves after each successful wave in the orchestrator.
+- **Modules Affected**: `Project.js` model, `generationOrchestrator.js`.
+- **Relative Effort**: M.
+
+### PHASE 6: ContextBuilder
+- **Goal**: Build import-subgraph context builders to reduce prompt sizes.
+- **Dependencies**: Phase 5.
+- **Task Packs**:
+  - **Task Pack 6A**: Write an AST relative-import scraper for JS/Python files.
+  - **Task Pack 6B**: Integrate `ContextBuilder` into task worker calls.
+- **Modules Affected**: `aiGenerationExecutor.js`.
+- **Relative Effort**: L.
+
+### PHASE 7: Structured / Transactional File Operations
+- **Goal**: Build a transactional virtual file system (VFS) for staging file updates.
+- **Dependencies**: Phase 6.
+- **Task Packs**:
+  - **Task Pack 7A**: Write `FileOperationsEngine` class.
+  - **Task Pack 7B**: Update the orchestrator to stage writes in the VFS instead of standard array list.
+- **Modules Affected**: `generationOrchestrator.js`, `previewService.js`.
+- **Relative Effort**: M.
+
+### PHASE 8: Incremental Verification Engine
+- **Goal**: Run syntax and imports verification immediately after a task finishes.
+- **Dependencies**: Phase 7.
+- **Task Packs**:
+  - **Task Pack 8A**: Decouple checkers from `validationProfiles.js` into modular classes.
+  - **Task Pack 8B**: Trigger validation checkers at task execution boundaries.
+- **Modules Affected**: `validationProfiles.js`, `generationOrchestrator.js`.
+- **Relative Effort**: M.
+
+### PHASE 9: Bounded Targeted Repair
+- **Goal**: Refactor repair loops to run single-file isolated corrections with rollbacks.
+- **Dependencies**: Phase 8.
+- **Task Packs**:
+  - **Task Pack 9A**: Modify `targetedRepairService.js` to run isolated file repairs.
+  - **Task Pack 9B**: Integrate VFS rollbacks on invalid syntax repairs.
+- **Modules Affected**: `targetedRepairService.js`.
+- **Relative Effort**: M.
+
+### PHASE 10: AIProviderGateway Hardening + GLM-5.2 Primary Migration
+- **Goal**: Consolidate gateway wrappers and configure GLM-5.2 as primary model.
+- **Dependencies**: Phase 9.
+- **Task Packs**:
+  - **Task Pack 10A**: Refactor providerRouter into `AIProviderGateway` class.
+  - **Task Pack 10B**: Change primary model variables in `.env` to GLM-5.2.
+- **Modules Affected**: `providerRouter.js`, `aiGenerationExecutor.js`, `.env.example`.
+- **Relative Effort**: S.
+
+### PHASE 11: Controlled Parallel Task Execution
+- **Goal**: Run independent task graph nodes in parallel using a pool worker model.
+- **Dependencies**: Phase 10.
+- **Task Packs**:
+  - **Task Pack 11A**: Create thread pool executors inside `ExecutionOrchestrator`.
+  - **Task Pack 11B**: Manage rate limit throttling.
+- **Modules Affected**: `generationOrchestrator.js`.
+- **Relative Effort**: L.
+
+### PHASE 12: Requirement / Integration / Security / Deployment Audits
+- **Goal**: Implement final system auditors checking coverage, package safety, and build outputs.
+- **Dependencies**: Phase 11.
+- **Task Packs**:
+  - **Task Pack 12A**: Write compliance checkers for the RTM-lite mapping.
+  - **Task Pack 12B**: Implement npm security vulnerability auditing.
+- **Modules Affected**: `validationProfiles.js`, `projectController.js`.
+- **Relative Effort**: M.
+
+### PHASE 13: LearnSphere-Scale E2E Benchmark + Release Qualification
+- **Goal**: Benchmark the complete system on complex prompts and verify output readiness.
+- **Dependencies**: Phase 12.
+- **Task Packs**:
+  - **Task Pack 13A**: Create the LearnSphere LMS prompt benchmark.
+  - **Task Pack 13B**: Audit build qualification and packaging.
+- **Modules Affected**: E2E test scripts.
+- **Relative Effort**: M.
