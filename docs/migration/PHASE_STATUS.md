@@ -104,7 +104,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Next Action**: STOP. Review Phase 1B reports and tests before designing or executing Task Pack 1C.
 
 ### Task Pack 1C: Requirement Analysis &rarr; ProjectSpec Compiler/Adapter
-- **Status**: NOT_STARTED
+- **Status**: DONE
+- **Started At**: 2026-07-10T22:30:00+05:30
+- **Completed At**: 2026-07-10T22:52:00+05:30
+- **Files Changed**: `backend/core/projectSpec/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Files Created**: `backend/core/projectSpec/projectSpecCompiler.js`, `docs/migration/PHASE_1C_PROJECTSPEC_COMPILER_ADAPTER.md`
+- **Compiler Public API**: `compileProjectSpec(legacyPayload)`
+- **Normalization Policy**: Field-specific string normalization with case preservation, trim-only parameters, specific case-insensitive `"none"` to `"None"` canonicalization sentinels, and strict uppercase HTTP method conversions.
+- **Unknown-field Policy**: Rejects unknown top-level or nested properties with structured error `COMPILE_ERROR_UNKNOWN_FIELD`.
+- **Schema-version Ownership**: Compiler overwrites any caller-supplied parameter, ignores override attempts, and explicitly assigns v1.0 schema version, touching it to validate throwing getters.
+- **Tests Added**: 43 new unit tests covering compiler normalization mappings, default fallbacks, circular reference checks, sparse array rejections, input immutability, validator delegation, throwing getters safety, and determinism.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 193 Passed, 0 Failed.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review `PHASE_1C_PROJECTSPEC_COMPILER_ADAPTER.md`, `projectSpecCompiler.js`, ProjectSpec module exports, and Task Pack 1C tests before designing or executing Task Pack 1D.
 
 ### Task Pack 1D: Deterministic Stable Requirement Identity
 - **Status**: NOT_STARTED
@@ -118,7 +132,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 | Phase | Description | Status | Target Completion |
 |---|---|---|---|
-| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | IN_PROGRESS (Task Packs 1A & 1B DONE) | TBD |
+| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | IN_PROGRESS (Task Packs 1A, 1B & 1C DONE) | TBD |
 | **Phase 2** | Requirement Validator + RTM-Lite | NOT_STARTED | TBD |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | NOT_STARTED | TBD |
 | **Phase 4** | TaskGraph / Simple DAG Planner | NOT_STARTED | TBD |

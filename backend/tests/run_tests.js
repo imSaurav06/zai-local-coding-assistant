@@ -2271,6 +2271,537 @@ suite("Canonical ProjectSpec Schema & Validation (Phase 1B)", () => {
     });
 });
 
+suite("ProjectSpec Compiler / Adapter (Phase 1C)", () => {
+    const { compileProjectSpec, compilerErrorCodes, errorCodes } = require(path.join(backendRoot, "core/projectSpec"));
+
+    const getLegacyPayload = () => ({
+        projectName: "LegacyProject",
+        projectType: "React Landing Page",
+        frontend: "React (Vite)",
+        backend: "None",
+        database: "None",
+        authentication: "None",
+        designRequirements: "Tailwind CSS",
+        pagesAndRoutes: [
+            { path: "/", name: "Landing", description: "Hero section" }
+        ],
+        components: [
+            { name: "Navbar", purpose: "Navigation" }
+        ],
+        backendApis: [],
+        databaseModels: [],
+        integrations: ["Stripe"],
+        importantDependencies: ["react"],
+        environmentVariables: ["VITE_API_KEY"],
+        architectureConstraints: ["Responsive"],
+        runBuildRequirements: {
+            runScript: "npm run dev",
+            buildScript: "npm run build"
+        },
+        deploymentRequirements: "Vercel",
+        assumptions: ["None"]
+    });
+
+    test("1. Complete canonical-compatible legacy payload compiles successfully", () => {
+        const payload = getLegacyPayload();
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.projectName, "LegacyProject");
+    });
+
+    test("2. schemaVersion is assigned by compiler", () => {
+        const payload = getLegacyPayload();
+        delete payload.schemaVersion;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.schemaVersion, "1.0");
+    });
+
+    test("3. Caller-supplied schemaVersion cannot override compiler-owned version", () => {
+        // schemaVersion "1.0"
+        const payload1 = getLegacyPayload();
+        payload1.schemaVersion = "1.0";
+        const res1 = compileProjectSpec(payload1);
+        assert.strictEqual(res1.success, true);
+        assert.strictEqual(res1.value.schemaVersion, "1.0");
+
+        // schemaVersion unsupported string
+        const payload2 = getLegacyPayload();
+        payload2.schemaVersion = "99.0";
+        const res2 = compileProjectSpec(payload2);
+        assert.strictEqual(res2.success, true);
+        assert.strictEqual(res2.value.schemaVersion, "1.0");
+
+        // schemaVersion wrong primitive type
+        const payload3 = getLegacyPayload();
+        payload3.schemaVersion = 123;
+        const res3 = compileProjectSpec(payload3);
+        assert.strictEqual(res3.success, true);
+        assert.strictEqual(res3.value.schemaVersion, "1.0");
+
+        // schemaVersion object
+        const payload4 = getLegacyPayload();
+        payload4.schemaVersion = { ver: "1.0" };
+        const res4 = compileProjectSpec(payload4);
+        assert.strictEqual(res4.success, true);
+        assert.strictEqual(res4.value.schemaVersion, "1.0");
+
+        // schemaVersion throwing getter
+        const payload5 = getLegacyPayload();
+        Object.defineProperty(payload5, "schemaVersion", {
+            get() { throw new Error("Throwing schemaVersion"); },
+            enumerable: true
+        });
+        const res5 = compileProjectSpec(payload5);
+        assert.strictEqual(res5.success, false);
+        assert.ok(res5.errors[0].message.includes("Throwing schemaVersion"));
+    });
+
+    test("4. Missing array fields normalize to []", () => {
+        const payload = getLegacyPayload();
+        delete payload.pagesAndRoutes;
+        delete payload.components;
+        delete payload.backendApis;
+        delete payload.databaseModels;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.value.pagesAndRoutes, []);
+        assert.deepStrictEqual(res.value.components, []);
+    });
+
+    test("5. Missing string fields normalize to characterized defaults", () => {
+        const payload = getLegacyPayload();
+        delete payload.frontend;
+        delete payload.backend;
+        delete payload.database;
+        delete payload.authentication;
+        delete payload.designRequirements;
+        delete payload.deploymentRequirements;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.frontend, "None");
+        assert.strictEqual(res.value.backend, "None");
+        assert.strictEqual(res.value.database, "None");
+    });
+
+    test("6. Missing projectName defaults to MyProject", () => {
+        const payload = getLegacyPayload();
+        delete payload.projectName;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.projectName, "MyProject");
+    });
+
+    test("7. Missing projectType defaults to Web Application", () => {
+        const payload = getLegacyPayload();
+        delete payload.projectType;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.projectType, "Web Application");
+    });
+
+    test("8. Missing runBuildRequirements gets characterized default", () => {
+        const payload = getLegacyPayload();
+        delete payload.runBuildRequirements;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.value.runBuildRequirements, { runScript: "npm run dev", buildScript: "" });
+    });
+
+    test("9. Input is not mutated", () => {
+        const payload = getLegacyPayload();
+        const original = JSON.parse(JSON.stringify(payload));
+        compileProjectSpec(payload);
+        assert.deepStrictEqual(payload, original);
+    });
+
+    test("10. Successful output shares no nested mutable references", () => {
+        const payload = getLegacyPayload();
+        const res = compileProjectSpec(payload);
+        assert.notStrictEqual(res.value.runBuildRequirements, payload.runBuildRequirements);
+        assert.notStrictEqual(res.value.pagesAndRoutes, payload.pagesAndRoutes);
+    });
+
+    test("11. Successful output is deeply immutable", () => {
+        const payload = getLegacyPayload();
+        const res = compileProjectSpec(payload);
+        assert.throws(() => { res.value.projectName = "Changed"; });
+        assert.throws(() => { res.value.runBuildRequirements.runScript = "node server.js"; });
+    });
+
+    test("12. Missing nested keys behavior for pagesAndRoutes", () => {
+        const payload = getLegacyPayload();
+        payload.pagesAndRoutes = [{ path: "/" }];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_REQUIRED && e.path.startsWith("pagesAndRoutes[0]")));
+    });
+
+    test("13. Missing nested keys behavior for components", () => {
+        const payload = getLegacyPayload();
+        payload.components = [{ name: "Navbar" }];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_REQUIRED && e.path === "components[0].purpose"));
+    });
+
+    test("14. Missing nested keys behavior for backendApis", () => {
+        const payload = getLegacyPayload();
+        payload.backendApis = [{ method: "GET", path: "/api" }];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_REQUIRED && e.path === "backendApis[0].purpose"));
+    });
+
+    test("15. Missing nested keys behavior for databaseModels", () => {
+        const payload = getLegacyPayload();
+        payload.databaseModels = [{ name: "User" }];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.MISSING_REQUIRED && e.path === "databaseModels[0].fields"));
+    });
+
+    test("16. Extra nested fields policy", () => {
+        const payload = getLegacyPayload();
+        payload.components = [{ name: "Navbar", purpose: "Nav", extraField: "value" }];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.UNKNOWN_FIELD && e.path === "components[0].extraField"));
+    });
+
+    test("17. Unknown top-level field policy", () => {
+        const payload = getLegacyPayload();
+        payload.unknownField = "value";
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.UNKNOWN_FIELD && e.path === "unknownField"));
+    });
+
+    test("18. Wrong top-level primitive type rejection", () => {
+        const payload = getLegacyPayload();
+        payload.projectName = 123;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.INVALID_TYPE && e.path === "projectName"));
+    });
+
+    test("19. Wrong collection type rejection", () => {
+        const payload = getLegacyPayload();
+        payload.pagesAndRoutes = "not-an-array";
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.INVALID_TYPE && e.path === "pagesAndRoutes"));
+    });
+
+    test("20. Primitive nested array element rejection", () => {
+        const payload = getLegacyPayload();
+        payload.pagesAndRoutes = ["string-not-object"];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_TYPE && e.path === "pagesAndRoutes[0]"));
+    });
+
+    test("21. Sparse array rejection", () => {
+        const payload = getLegacyPayload();
+        payload.pagesAndRoutes = [];
+        payload.pagesAndRoutes[0] = { path: "/", name: "Home", description: "Home" };
+        payload.pagesAndRoutes[2] = { path: "/about", name: "About", description: "About" };
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.SPARSE_ARRAY && e.path === "pagesAndRoutes[1]"));
+    });
+
+    test("22. Null handling", () => {
+        const res = compileProjectSpec(null);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.INVALID_INPUT));
+    });
+
+    test("23. undefined handling", () => {
+        const res = compileProjectSpec(undefined);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.INVALID_INPUT));
+    });
+
+    test("24. Empty-string policy", () => {
+        const payload = getLegacyPayload();
+        payload.projectName = "";
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.projectName, "MyProject");
+    });
+
+    test("25. Whitespace-only policy", () => {
+        const payload = getLegacyPayload();
+        payload.projectName = "   ";
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.projectName, "MyProject");
+    });
+
+    test("26. 'None' casing/whitespace policy", () => {
+        const payload = getLegacyPayload();
+        payload.frontend = "  nOnE  ";
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.frontend, "None");
+    });
+
+    test("27. runBuildRequirements partial object behavior", () => {
+        const payload = getLegacyPayload();
+        payload.runBuildRequirements = { runScript: "node index.js" };
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.runBuildRequirements.buildScript, "");
+    });
+
+    test("28. Invalid HTTP method delegated to validator", () => {
+        const payload = getLegacyPayload();
+        payload.backendApis = [{ method: "INVALID", path: "/api", purpose: "Test" }];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_HTTP_METHOD && e.path === "backendApis[0].method"));
+    });
+
+    test("29. Invalid route delegated to validator", () => {
+        const payload = getLegacyPayload();
+        payload.pagesAndRoutes = [{ path: "invalid-path-no-slash", name: "Home", description: "Home" }];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_PAGE_ROUTE && e.path === "pagesAndRoutes[0].path"));
+    });
+
+    test("30. Duplicate route delegated to validator", () => {
+        const payload = getLegacyPayload();
+        payload.pagesAndRoutes = [
+            { path: "/home", name: "H1", description: "D1" },
+            { path: "/home", name: "H2", description: "D2" }
+        ];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.DUPLICATE_ROUTE && e.path === "pagesAndRoutes[1].path"));
+    });
+
+    test("31. Duplicate API delegated to validator", () => {
+        const payload = getLegacyPayload();
+        payload.backendApis = [
+            { method: "get", path: "/api", purpose: "d1" },
+            { method: "GET", path: "/api", purpose: "d2" }
+        ];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.DUPLICATE_API && e.path === "backendApis[1]"));
+    });
+
+    test("32. Invalid env var delegated to validator", () => {
+        const payload = getLegacyPayload();
+        payload.environmentVariables = ["INVALID-ENV-VAR"];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_ENV_VAR && e.path === "environmentVariables[0]"));
+    });
+
+    test("33. Invalid dependency delegated to validator", () => {
+        const payload = getLegacyPayload();
+        payload.importantDependencies = ["react@18"];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === errorCodes.INVALID_DEP_NAME && e.path === "importantDependencies[0]"));
+    });
+
+    test("34. Case preservation for stack fields, dependencies, env vars, routes, component/model names, and free text", () => {
+        const payload = getLegacyPayload();
+        payload.projectName = "PreserveMyCase";
+        payload.projectType = "preserveMyCase Stack";
+        payload.frontend = "ReactFrontend";
+        payload.backend = "ExpressBackend";
+        payload.database = "MongoDb";
+        payload.authentication = "JwtAuth";
+        payload.designRequirements = "TailwindCss";
+        payload.deploymentRequirements = "AwsAmplify";
+        
+        payload.importantDependencies = ["React-Router-Dom", "Axios"];
+        payload.environmentVariables = ["PRESERVE_CASE_ENV"];
+        
+        payload.integrations = ["StripePay"];
+        payload.architectureConstraints = ["CleanArchitecture"];
+        payload.assumptions = ["SomeFreeTextAssumption"];
+        
+        payload.pagesAndRoutes = [
+            { path: "/SomeRoutePath", name: "SomePageName", description: "SomePageDescription" }
+        ];
+        payload.components = [
+            { name: "SomeComponentName", purpose: "SomeComponentPurpose" }
+        ];
+        payload.backendApis = [
+            { method: "get", path: "/SomeApiPath", purpose: "SomeApiPurpose" }
+        ];
+        payload.databaseModels = [
+            { name: "SomeModelName", fields: ["FieldName1", "FieldName2"] }
+        ];
+        payload.runBuildRequirements = {
+            runScript: "npm Run Dev",
+            buildScript: "npm Run Build"
+        };
+
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.value.projectName, "PreserveMyCase");
+        assert.strictEqual(res.value.projectType, "preserveMyCase Stack");
+        assert.strictEqual(res.value.frontend, "ReactFrontend");
+        assert.strictEqual(res.value.backend, "ExpressBackend");
+        assert.strictEqual(res.value.database, "MongoDb");
+        assert.strictEqual(res.value.authentication, "JwtAuth");
+        assert.strictEqual(res.value.designRequirements, "TailwindCss");
+        assert.strictEqual(res.value.deploymentRequirements, "AwsAmplify");
+        assert.strictEqual(res.value.importantDependencies[0], "React-Router-Dom");
+        assert.strictEqual(res.value.importantDependencies[1], "Axios");
+        assert.strictEqual(res.value.environmentVariables[0], "PRESERVE_CASE_ENV");
+        assert.strictEqual(res.value.integrations[0], "StripePay");
+        assert.strictEqual(res.value.architectureConstraints[0], "CleanArchitecture");
+        assert.strictEqual(res.value.assumptions[0], "SomeFreeTextAssumption");
+        assert.strictEqual(res.value.pagesAndRoutes[0].path, "/SomeRoutePath");
+        assert.strictEqual(res.value.pagesAndRoutes[0].name, "SomePageName");
+        assert.strictEqual(res.value.pagesAndRoutes[0].description, "SomePageDescription");
+        assert.strictEqual(res.value.components[0].name, "SomeComponentName");
+        assert.strictEqual(res.value.components[0].purpose, "SomeComponentPurpose");
+        assert.strictEqual(res.value.backendApis[0].method, "GET"); // HTTP method uppercase
+        assert.strictEqual(res.value.backendApis[0].path, "/SomeApiPath");
+        assert.strictEqual(res.value.backendApis[0].purpose, "SomeApiPurpose");
+        assert.strictEqual(res.value.databaseModels[0].name, "SomeModelName");
+        assert.strictEqual(res.value.databaseModels[0].fields[0], "FieldName1");
+        assert.strictEqual(res.value.databaseModels[0].fields[1], "FieldName2");
+        assert.strictEqual(res.value.runBuildRequirements.runScript, "npm Run Dev");
+        assert.strictEqual(res.value.runBuildRequirements.buildScript, "npm Run Build");
+    });
+
+    test("35. Stack semantic fields preserved and stack-selection quirks are not altered", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        
+        // Case 1: React + Express without Mongo maps to dynamic when React is in projectType
+        const p1 = getLegacyPayload();
+        p1.frontend = "React";
+        p1.backend = "Express";
+        p1.projectType = "React Application";
+        p1.database = "None";
+        const res1 = compileProjectSpec(p1);
+        assert.strictEqual(res1.success, true);
+        const profile1 = detectProfile(res1.value);
+        assert.strictEqual(profile1.name, "dynamic");
+
+        // Case 2: React + Express without Mongo maps to express if React is only in frontend field
+        const p2 = getLegacyPayload();
+        p2.frontend = "React";
+        p2.backend = "Express";
+        p2.projectType = "Web Application";
+        p2.database = "None";
+        const res2 = compileProjectSpec(p2);
+        assert.strictEqual(res2.success, true);
+        const profile2 = detectProfile(res2.value);
+        assert.strictEqual(profile2.name, "express");
+
+        // Case 3: Django backend maps to dynamic
+        const p3 = getLegacyPayload();
+        p3.frontend = "None";
+        p3.backend = "Django";
+        p3.projectType = "Django Web App";
+        const res3 = compileProjectSpec(p3);
+        assert.strictEqual(res3.success, true);
+        const profile3 = detectProfile(res3.value);
+        assert.strictEqual(profile3.name, "dynamic");
+    });
+
+    test("36. Missing, undefined, and null normalization policies matrix", () => {
+        // Missing/undefined/null to defaults
+        const p1 = getLegacyPayload();
+        delete p1.frontend;
+        p1.integrations = undefined;
+        p1.runBuildRequirements = null;
+        const res1 = compileProjectSpec(p1);
+        assert.strictEqual(res1.success, true);
+        assert.strictEqual(res1.value.frontend, "None");
+        assert.deepStrictEqual(res1.value.integrations, []);
+        assert.deepStrictEqual(res1.value.runBuildRequirements, { runScript: "npm run dev", buildScript: "" });
+
+        // Reject null inside string arrays
+        const p2 = getLegacyPayload();
+        p2.integrations = ["Stripe", null];
+        const res2 = compileProjectSpec(p2);
+        assert.strictEqual(res2.success, false);
+        assert.ok(res2.errors.some(e => e.code === errorCodes.INVALID_TYPE && e.path === "integrations[1]"));
+
+        // Reject null inside nested fields
+        const p3 = getLegacyPayload();
+        p3.pagesAndRoutes = [{ path: null, name: "Home", description: "Home" }];
+        const res3 = compileProjectSpec(p3);
+        assert.strictEqual(res3.success, false);
+        assert.ok(res3.errors.some(e => e.code === errorCodes.INVALID_TYPE && e.path === "pagesAndRoutes[0].path"));
+    });
+
+    test("37. Validation errors remain structured", () => {
+        const payload = getLegacyPayload();
+        payload.projectName = "";
+        payload.importantDependencies = ["react@18"];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(Array.isArray(res.errors), true);
+        assert.strictEqual(res.errors.length, 1);
+        assert.strictEqual(res.errors[0].code, errorCodes.INVALID_DEP_NAME);
+    });
+
+    test("38. Compiler errors are distinguishable from validator errors", () => {
+        const payload = getLegacyPayload();
+        payload.unknownField = "val";
+        payload.importantDependencies = ["react@18"];
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.UNKNOWN_FIELD));
+    });
+
+    test("39. Error ordering deterministic", () => {
+        const payload = getLegacyPayload();
+        payload.unknownField = "val";
+        payload.anotherUnknown = "val";
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].path, "anotherUnknown");
+        assert.strictEqual(res.errors[1].path, "unknownField");
+    });
+
+    test("40. Repeated compilation deterministic", () => {
+        const payload = getLegacyPayload();
+        const res1 = compileProjectSpec(payload);
+        const res2 = compileProjectSpec(payload);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("41. Arbitrary JS input does not unexpectedly throw", () => {
+        assert.strictEqual(compileProjectSpec(123).success, false);
+        assert.strictEqual(compileProjectSpec("string").success, false);
+        assert.strictEqual(compileProjectSpec(new Date()).success, false);
+        assert.strictEqual(compileProjectSpec(/regex/).success, false);
+    });
+
+    test("42. Throwing getter safely rejected if testable", () => {
+        const payload = getLegacyPayload();
+        Object.defineProperty(payload, "projectName", {
+            get() { throw new Error("Throwing getter"); },
+            enumerable: true
+        });
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors[0].message.includes("Throwing getter"));
+    });
+
+    test("43. Circular reference safely rejected", () => {
+        const payload = getLegacyPayload();
+        payload.self = payload;
+        const res = compileProjectSpec(payload);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === compilerErrorCodes.CIRCULAR_REFERENCE));
+    });
+});
+
 
 
 
