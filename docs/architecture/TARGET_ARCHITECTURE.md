@@ -65,8 +65,10 @@ graph TD
 - **Existing Module Mapping**: Refactors [projectService.js:analyzeRequirements](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/projectService.js#L9).
 
 ### 4.2 ProjectSpec
-- **Responsibility**: The canonical, validated structural data model of the application.
+- **Responsibility**: The canonical, validated structural data model of the application. It acts as a persistence-independent canonical domain contract. MongoDB/Mongoose models are persistence representations, not the canonical ProjectSpec definition.
 - **Input/Output**: JSON Schema defining routes, schemas, APIs, auth, styling, and dependencies.
+- **Consumer Tracing**: Consume by future validation, RTM, contracts, TaskGraph planning, ContextBuilder, verification, audits, and persistence adapters.
+- **Requirement Identity**: Requirement identity is assigned deterministically by application code, not trusted to LLM output.
 - **Existing Module Mapping**: Formalizes the schema currently used in [projectService.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/projectService.js).
 
 ### 4.3 RequirementValidator

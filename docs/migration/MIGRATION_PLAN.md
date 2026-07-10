@@ -55,13 +55,25 @@ Every future Task Pack must strictly adhere to this protocol:
 - **Relative Effort**: XS.
 
 ### PHASE 1: ProjectSpec Foundation + Stable Requirement IDs
-- **Goal**: Define `ProjectSpec` JSON schema and introduce stable IDs for compiled prompt requirements.
+- **Goal**: Establish a canonical, persistence-independent ProjectSpec schema and integrate it safely into the existing requirements compiling path.
 - **Dependencies**: Phase 0.
 - **Task Packs**:
-  - **Task Pack 1A**: Define the ProjectSpec Mongoose & JSON schema structures.
-  - **Task Pack 1B**: Modify requirement parser in `projectService.js` to assign stable IDs (e.g. `REQ-001`) to spec entries.
+  - **Task Pack 1A**: Current Requirement Payload Characterization
+    - *Goal*: Inspect and characterize the exact current output contracts of `projectService.js` requirement analysis, including normal AI output, fallback/default output, parsing/normalization paths, downstream consumers, and compatibility assumptions.
+    - *Constraints*: Production behavior must not change. `Project.js` must not be modified. Add characterization tests only when Phase 1A implementation later begins.
+  - **Task Pack 1B**: Canonical ProjectSpec Schema + Validation Boundary
+    - *Goal*: Introduce a persistence-independent canonical `ProjectSpec` schema/types and validation boundary.
+    - *Constraints*: `ProjectSpec` must not be defined as a Mongoose model. MongoDB persistence mapping remains a separate concern. Do not choose or install a new validation dependency until existing repository dependencies and constraints are inspected.
+  - **Task Pack 1C**: Requirement Analysis &rarr; ProjectSpec Compiler/Adapter
+    - *Goal*: Convert existing requirement-analysis output into canonical `ProjectSpec` without rewriting the existing analyzer.
+    - *Constraints*: Preserve backward compatibility with current generation consumers.
+  - **Task Pack 1D**: Deterministic Stable Requirement Identity
+    - *Goal*: Introduce application-controlled deterministic requirement identity.
+    - *Constraints*: Do not rely on the LLM to generate stable IDs. Distinguish internal stable requirement identity from human-readable sequential display IDs if necessary. The exact identity policy must be decided from repository evidence and covered by deterministic tests.
+  - **Task Pack 1E**: Existing Pipeline Compatibility Integration
+    - *Goal*: Integrate validated `ProjectSpec` into the existing generation pipeline incrementally while preserving current behavior and the 102-test regression baseline.
 - **Modules Affected**: `projectService.js`, `Project.js` model.
-- **Relative Effort**: S.
+- **Relative Effort**: M.
 
 ### PHASE 2: Requirement Validator + RTM-Lite
 - **Goal**: Implement AST checks for specifications and build a requirements mapping index.

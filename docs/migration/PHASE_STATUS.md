@@ -73,6 +73,35 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 ---
 
+## Phase 1: ProjectSpec Foundation + Stable Requirement IDs
+- **Goal**: Establish a canonical, persistence-independent ProjectSpec schema and integrate it safely into the existing requirements compiling path.
+- **Dependencies**: Phase 0.
+
+### Task Pack 1A: Current Requirement Payload Characterization
+- **Status**: NOT_STARTED
+- **Started At**: N/A
+- **Completed At**: N/A
+- **Files Changed**: None.
+- **Tests Run**: None.
+- **Test Result**: N/A
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: Review and execute only Task Pack 1A: Current Requirement Payload Characterization.
+
+### Task Pack 1B: Canonical ProjectSpec Schema + Validation Boundary
+- **Status**: NOT_STARTED
+
+### Task Pack 1C: Requirement Analysis &rarr; ProjectSpec Compiler/Adapter
+- **Status**: NOT_STARTED
+
+### Task Pack 1D: Deterministic Stable Requirement Identity
+- **Status**: NOT_STARTED
+
+### Task Pack 1E: Existing Pipeline Compatibility Integration
+- **Status**: NOT_STARTED
+
+---
+
 ## Future Migration Phases
 
 | Phase | Description | Status | Target Completion |

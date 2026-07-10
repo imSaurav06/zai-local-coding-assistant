@@ -6,8 +6,8 @@ This document coordinates the transfer of state between migration sessions.
 
 ## 1. Project Mission Summary
 Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI application builder. Features to migrate:
-- Validated `ProjectSpec` (the canonical JSON structure).
-- Stable Requirement IDs and RTM-lite tracing index.
+- Validated canonical, persistence-independent `ProjectSpec` domain contract.
+- Stable application-controlled deterministic Requirement IDs and RTM-lite tracing index.
 - Contract-first API/DB schemas compile.
 - `TaskGraph` DAG planner with parallel workers.
 - Transactional virtual file system (VFS) staging edits.
@@ -63,11 +63,6 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 7. Next Exact Action
-1. **Initialize Phase 1**: Review the scope of Task Pack 1A in [MIGRATION_PLAN.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/MIGRATION_PLAN.md).
-2. **Read First**:
-   - [TARGET_ARCHITECTURE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/architecture/TARGET_ARCHITECTURE.md)
-   - [MIGRATION_PLAN.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/MIGRATION_PLAN.md)
-   - [projectService.js:analyzeRequirements](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/projectService.js#L9) (for Phase 1 refactoring).
-3. **Execute First**: Run the regression tests `node tests/run_tests.js` inside `backend` to verify safety.
+Review and execute only Task Pack 1A: Current Requirement Payload Characterization.
 
-**STOP CONDITIONS**: Do not edit production source files or start implementation of Phase 1 until the next session is initialized.
+**STOP CONDITIONS**: Do not edit production source files or start implementation of Task Pack 1A until the next session is initialized.
