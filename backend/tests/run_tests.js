@@ -2802,8 +2802,960 @@ suite("ProjectSpec Compiler / Adapter (Phase 1C)", () => {
     });
 });
 
+suite("Requirement Identity (Phase 1D)", () => {
+    const { deriveRequirementIdentities, REQUIREMENT_IDENTITY_VERSION, identityErrorCodes } = require(path.join(backendRoot, "core/requirements"));
+    const { _deriveRequirementIdentitiesInternal } = require(path.join(backendRoot, "core/requirements/requirementIdentity"));
+    const { compileProjectSpec, errorCodes } = require(path.join(backendRoot, "core/projectSpec"));
 
+    const getValidProjectSpec = () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "React (Vite)",
+            backend: "Express.js",
+            database: "MongoDB",
+            authentication: "JWT",
+            designRequirements: "Tailwind CSS",
+            pagesAndRoutes: [
+                { path: "/", name: "Landing", description: "Landing page view" }
+            ],
+            components: [
+                { name: "Button", purpose: "Generic UI button" }
+            ],
+            backendApis: [
+                { method: "GET", path: "/api/status", purpose: "Status check API" }
+            ],
+            databaseModels: [
+                { name: "User", fields: ["username (String)", "email (String)"] }
+            ],
+            integrations: ["Stripe"],
+            importantDependencies: ["react", "express"],
+            environmentVariables: ["PORT", "DATABASE_URL"],
+            architectureConstraints: ["Use Clean Architecture"],
+            runBuildRequirements: {
+                runScript: "npm run dev",
+                buildScript: "npm run build"
+            },
+            deploymentRequirements: "Vercel",
+            assumptions: ["Assume user has internet access for Stripe integration."]
+        };
+        const res = compileProjectSpec(payload);
+        if (!res.success) {
+            throw new Error("Helper getValidProjectSpec failed compilation: " + JSON.stringify(res.errors));
+        }
+        return res.value;
+    };
 
+    test("1. Valid canonical ProjectSpec derives requirements successfully", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.success, true);
+        assert.ok(res.requirements.length > 0);
+        assert.strictEqual(res.errors.length, 0);
+    });
+
+    test("2. Identity API revalidates malformed ProjectSpec", () => {
+        const spec = getValidProjectSpec();
+        // Mutate a copy to bypass validation
+        const malformed = JSON.parse(JSON.stringify(spec));
+        malformed.pagesAndRoutes[0].path = "invalid-path-no-slash";
+        const res = deriveRequirementIdentities(malformed);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.length > 0);
+        assert.strictEqual(res.errors[0].code, identityErrorCodes.REQUIREMENT_ID_VALIDATION_FAILED);
+    });
+
+    test("3. Input is not mutated", () => {
+        const spec = getValidProjectSpec();
+        const originalString = JSON.stringify(spec);
+        deriveRequirementIdentities(spec);
+        assert.strictEqual(JSON.stringify(spec), originalString);
+    });
+
+    test("4. Output shares no mutable nested references with input", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.success, true);
+        // Ensure modifying output has no effect on input (output is frozen anyway, but let's test value isolation)
+        const req = res.requirements.find(r => r.kind === "component");
+        assert.notStrictEqual(req.payload, spec.components[0]);
+    });
+
+    test("5. Output is deeply immutable", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.success, true);
+        assert.throws(() => {
+            res.success = false;
+        });
+        assert.throws(() => {
+            res.requirements[0].displayId = "mod";
+        });
+        assert.throws(() => {
+            res.requirements.push({});
+        });
+    });
+
+    test("6. Identity version exported", () => {
+        assert.strictEqual(REQUIREMENT_IDENTITY_VERSION, "1.0");
+    });
+
+    test("7. Same ProjectSpec produces identical stableIds", () => {
+        const spec1 = getValidProjectSpec();
+        const spec2 = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+        assert.strictEqual(res1.requirements.length, res2.requirements.length);
+        for (let i = 0; i < res1.requirements.length; i++) {
+            assert.strictEqual(res1.requirements[i].stableId, res2.requirements[i].stableId);
+        }
+    });
+
+    test("8. Same ProjectSpec produces identical displayIds", () => {
+        const spec1 = getValidProjectSpec();
+        const spec2 = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+        for (let i = 0; i < res1.requirements.length; i++) {
+            assert.strictEqual(res1.requirements[i].displayId, res2.requirements[i].displayId);
+        }
+    });
+
+    test("9. Repeated derivation result is deterministic", () => {
+        const spec = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec);
+        const res2 = deriveRequirementIdentities(spec);
+        assert.strictEqual(JSON.stringify(res1), JSON.stringify(res2));
+    });
+
+    test("10. Reordering pages changes display order/displayIds as documented", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [
+                { path: "/a", name: "PageA", description: "DescA" },
+                { path: "/b", name: "PageB", description: "DescB" }
+            ],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload).value;
+        
+        const payload2 = JSON.parse(JSON.stringify(payload));
+        payload2.pagesAndRoutes = [payload.pagesAndRoutes[1], payload.pagesAndRoutes[0]];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        assert.strictEqual(res1.requirements[0].payload.path, "/a");
+        assert.strictEqual(res1.requirements[0].displayId, "REQ-001");
+        
+        assert.strictEqual(res2.requirements[0].payload.path, "/b");
+        assert.strictEqual(res2.requirements[0].displayId, "REQ-001");
+    });
+
+    test("11. Reordering pages does not change stableIds", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [
+                { path: "/a", name: "PageA", description: "DescA" },
+                { path: "/b", name: "PageB", description: "DescB" }
+            ],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload).value;
+        
+        const payload2 = JSON.parse(JSON.stringify(payload));
+        payload2.pagesAndRoutes = [payload.pagesAndRoutes[1], payload.pagesAndRoutes[0]];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stableA1 = res1.requirements.find(r => r.payload.path === "/a").stableId;
+        const stableA2 = res2.requirements.find(r => r.payload.path === "/a").stableId;
+        assert.strictEqual(stableA1, stableA2);
+    });
+
+    test("12. Reordering APIs does not change stableIds", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [
+                { method: "GET", path: "/a", purpose: "purposeA" },
+                { method: "POST", path: "/b", purpose: "purposeB" }
+            ],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload).value;
+        const payload2 = JSON.parse(JSON.stringify(payload));
+        payload2.backendApis = [payload.backendApis[1], payload.backendApis[0]];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stableA1 = res1.requirements.find(r => r.payload.path === "/a").stableId;
+        const stableA2 = res2.requirements.find(r => r.payload.path === "/a").stableId;
+        assert.strictEqual(stableA1, stableA2);
+    });
+
+    test("13. Reordering components does not change stableIds", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [
+                { name: "CompA", purpose: "purposeA" },
+                { name: "CompB", purpose: "purposeB" }
+            ],
+            backendApis: [],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload).value;
+        const payload2 = JSON.parse(JSON.stringify(payload));
+        payload2.components = [payload.components[1], payload.components[0]];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stableA1 = res1.requirements.find(r => r.payload.name === "CompA").stableId;
+        const stableA2 = res2.requirements.find(r => r.payload.name === "CompA").stableId;
+        assert.strictEqual(stableA1, stableA2);
+    });
+
+    test("14. Reordering database models does not change stableIds", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [
+                { name: "ModelA", fields: ["f1", "f2"] },
+                { name: "ModelB", fields: ["f3"] }
+            ],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload).value;
+        const payload2 = JSON.parse(JSON.stringify(payload));
+        payload2.databaseModels = [payload.databaseModels[1], payload.databaseModels[0]];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stableA1 = res1.requirements.find(r => r.payload.name === "ModelA").stableId;
+        const stableA2 = res2.requirements.find(r => r.payload.name === "ModelA").stableId;
+        assert.strictEqual(stableA1, stableA2);
+    });
+
+    test("15. Semantic page change changes stableId", () => {
+        const spec1 = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec1);
+
+        const spec2 = JSON.parse(JSON.stringify(spec1));
+        spec2.pagesAndRoutes[0].description = "Different page description";
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stable1 = res1.requirements.find(r => r.kind === "pageRoute").stableId;
+        const stable2 = res2.requirements.find(r => r.kind === "pageRoute").stableId;
+        assert.notStrictEqual(stable1, stable2);
+    });
+
+    test("16. Semantic API change changes stableId", () => {
+        const spec1 = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec1);
+
+        const spec2 = JSON.parse(JSON.stringify(spec1));
+        spec2.backendApis[0].purpose = "Different api purpose";
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stable1 = res1.requirements.find(r => r.kind === "backendApi").stableId;
+        const stable2 = res2.requirements.find(r => r.kind === "backendApi").stableId;
+        assert.notStrictEqual(stable1, stable2);
+    });
+
+    test("17. Semantic component change changes stableId", () => {
+        const spec1 = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec1);
+
+        const spec2 = JSON.parse(JSON.stringify(spec1));
+        spec2.components[0].purpose = "Different comp purpose";
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stable1 = res1.requirements.find(r => r.kind === "component").stableId;
+        const stable2 = res2.requirements.find(r => r.kind === "component").stableId;
+        assert.notStrictEqual(stable1, stable2);
+    });
+
+    test("18. Semantic database model change changes stableId", () => {
+        const spec1 = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec1);
+
+        const spec2 = JSON.parse(JSON.stringify(spec1));
+        spec2.databaseModels[0].fields = ["username (String)", "email (String)", "newField (Type)"];
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stable1 = res1.requirements.find(r => r.kind === "databaseModel").stableId;
+        const stable2 = res2.requirements.find(r => r.kind === "databaseModel").stableId;
+        assert.notStrictEqual(stable1, stable2);
+    });
+
+    test("19. projectName does not create a requirement", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.sourcePath === "projectName" || r.kind === "projectName");
+        assert.strictEqual(req, undefined);
+    });
+
+    test("20. schemaVersion does not create a requirement", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.sourcePath === "schemaVersion" || r.kind === "schemaVersion");
+        assert.strictEqual(req, undefined);
+    });
+
+    test("21. 'None' authentication produces no requirement", () => {
+        const spec = getValidProjectSpec();
+        const specNone = JSON.parse(JSON.stringify(spec));
+        specNone.authentication = "None";
+        const res = deriveRequirementIdentities(specNone);
+        const req = res.requirements.find(r => r.kind === "authentication");
+        assert.strictEqual(req, undefined);
+    });
+
+    test("22. Empty arrays produce no requirements", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec = compileProjectSpec(payload).value;
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.requirements.length, 0);
+    });
+
+    test("23. assumptions follow documented non-requirement policy", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "assumptions" || r.sourcePath.startsWith("assumptions"));
+        assert.strictEqual(req, undefined);
+    });
+
+    test("24. runBuildRequirements follows documented classification", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "runBuildRequirements" || r.sourcePath.startsWith("runBuildRequirements"));
+        assert.strictEqual(req, undefined);
+    });
+
+    test("25. frontend classification behavior", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "frontend");
+        assert.strictEqual(req.sourcePath, "frontend");
+        assert.strictEqual(req.payload, "React (Vite)");
+    });
+
+    test("26. backend classification behavior", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "backend");
+        assert.strictEqual(req.sourcePath, "backend");
+        assert.strictEqual(req.payload, "Express.js");
+    });
+
+    test("27. database classification behavior", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "database");
+        assert.strictEqual(req.sourcePath, "database");
+        assert.strictEqual(req.payload, "MongoDB");
+    });
+
+    test("28. authentication classification behavior", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "authentication");
+        assert.strictEqual(req.sourcePath, "authentication");
+        assert.strictEqual(req.payload, "JWT");
+    });
+
+    test("29. designRequirements classification behavior", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "designRequirements");
+        assert.strictEqual(req.sourcePath, "designRequirements");
+        assert.strictEqual(req.payload, "Tailwind CSS");
+    });
+
+    test("30. deploymentRequirements classification behavior", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "deploymentRequirement");
+        assert.strictEqual(req.sourcePath, "deploymentRequirements");
+        assert.strictEqual(req.payload, "Vercel");
+    });
+
+    test("31. one route produces one route requirement", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const reqs = res.requirements.filter(r => r.kind === "pageRoute");
+        assert.strictEqual(reqs.length, 1);
+        assert.strictEqual(reqs[0].sourcePath, "pagesAndRoutes[0]");
+        assert.strictEqual(reqs[0].semanticKey, "/");
+    });
+
+    test("32. one component produces one component requirement", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const reqs = res.requirements.filter(r => r.kind === "component");
+        assert.strictEqual(reqs.length, 1);
+        assert.strictEqual(reqs[0].sourcePath, "components[0]");
+        assert.strictEqual(reqs[0].semanticKey, "Button");
+    });
+
+    test("33. one API produces one API requirement", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const reqs = res.requirements.filter(r => r.kind === "backendApi");
+        assert.strictEqual(reqs.length, 1);
+        assert.strictEqual(reqs[0].sourcePath, "backendApis[0]");
+        assert.strictEqual(reqs[0].semanticKey, "GET /api/status");
+    });
+
+    test("34. one model produces one model requirement", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const reqs = res.requirements.filter(r => r.kind === "databaseModel");
+        assert.strictEqual(reqs.length, 1);
+        assert.strictEqual(reqs[0].sourcePath, "databaseModels[0]");
+        assert.strictEqual(reqs[0].semanticKey, "User");
+    });
+
+    test("35. one integration produces one integration requirement if classified traceable", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const reqs = res.requirements.filter(r => r.kind === "integration");
+        assert.strictEqual(reqs.length, 1);
+        assert.strictEqual(reqs[0].sourcePath, "integrations[0]");
+        assert.strictEqual(reqs[0].payload, "Stripe");
+    });
+
+    test("36. one architecture constraint produces one requirement if classified traceable", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const reqs = res.requirements.filter(r => r.kind === "architectureConstraint");
+        assert.strictEqual(reqs.length, 1);
+        assert.strictEqual(reqs[0].sourcePath, "architectureConstraints[0]");
+        assert.strictEqual(reqs[0].payload, "Use Clean Architecture");
+    });
+
+    test("37. duplicate same-kind semantic requirements follow duplicate policy", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: ["Stripe", "Stripe"],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec = compileProjectSpec(payload).value;
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.requirements.length, 1); // Only first Stripe
+        assert.strictEqual(res.duplicates.length, 1); // Second Stripe
+        assert.strictEqual(res.requirements[0].payload, "Stripe");
+        assert.strictEqual(res.requirements[0].displayId, "REQ-001");
+        
+        // Duplicate contract assertions
+        assert.strictEqual(res.duplicates[0].stableId, res.requirements[0].stableId);
+        assert.strictEqual(res.duplicates[0].displayId, "REQ-001"); // References canonical displayId
+        assert.strictEqual(res.duplicates[0].canonicalSourcePath, "integrations[0]");
+        assert.strictEqual(res.duplicates[0].duplicateSourcePath, "integrations[1]");
+        assert.strictEqual(res.duplicates[0].payload, undefined); // No payload in duplicate metadata
+    });
+
+    test("38. same semantic payload under different kinds does not accidentally collide", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "Stripe",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: ["Stripe"],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec = compileProjectSpec(payload).value;
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.requirements.length, 2); // frontend 'Stripe' and integration 'Stripe'
+        assert.notStrictEqual(res.requirements[0].stableId, res.requirements[1].stableId);
+    });
+
+    test("39. duplicate metadata preserves source occurrences if policy requires it", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: ["Stripe", "Stripe"],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec = compileProjectSpec(payload).value;
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.duplicates[0].duplicateSourcePath, "integrations[1]");
+    });
+
+    test("40. display IDs are REQ-001 format", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.requirements[0].displayId, "REQ-001");
+    });
+
+    test("41. display IDs continue correctly beyond REQ-999", () => {
+        const spec = getValidProjectSpec();
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: Array.from({ length: 1000 }, (_, i) => `Int${i}`),
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const bigSpec = compileProjectSpec(payload).value;
+        const res = deriveRequirementIdentities(bigSpec);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.requirements[999].displayId, "REQ-1000");
+    });
+
+    test("42. source paths are precise", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const req = res.requirements.find(r => r.kind === "pageRoute");
+        assert.strictEqual(req.sourcePath, "pagesAndRoutes[0]");
+    });
+
+    test("43. sourcePath/index is not part of stableId", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [
+                { path: "/a", name: "PageA", description: "DescA" },
+                { path: "/b", name: "PageB", description: "DescB" }
+            ],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload).value;
+        const payload2 = JSON.parse(JSON.stringify(payload));
+        payload2.pagesAndRoutes = [payload.pagesAndRoutes[1], payload.pagesAndRoutes[0]];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        const stableA1 = res1.requirements.find(r => r.payload.path === "/a").stableId;
+        const stableA2 = res2.requirements.find(r => r.payload.path === "/a").stableId;
+        assert.strictEqual(stableA1, stableA2);
+    });
+
+    test("44. identity version affects stableId namespace/input", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        assert.ok(res.requirements[0].stableId.startsWith("req_v1_"));
+    });
+
+    test("45. no timestamp/randomness", () => {
+        const spec = getValidProjectSpec();
+        const res1 = deriveRequirementIdentities(spec);
+        const res2 = deriveRequirementIdentities(spec);
+        assert.strictEqual(res1.requirements[0].stableId, res2.requirements[0].stableId);
+    });
+
+    test("46. malformed arbitrary JS inputs return structured failures", () => {
+        assert.strictEqual(deriveRequirementIdentities(null).success, false);
+        assert.strictEqual(deriveRequirementIdentities(undefined).success, false);
+        assert.strictEqual(deriveRequirementIdentities(123).success, false);
+        assert.strictEqual(deriveRequirementIdentities("string").success, false);
+        assert.strictEqual(deriveRequirementIdentities([]).success, false);
+    });
+
+    test("47. throwing getter does not unexpectedly escape if safely testable", () => {
+        const spec = getValidProjectSpec();
+        const malicious = JSON.parse(JSON.stringify(spec));
+        Object.defineProperty(malicious, "pagesAndRoutes", {
+            get() { throw new Error("Malicious getter"); },
+            enumerable: true
+        });
+        const res = deriveRequirementIdentities(malicious);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === identityErrorCodes.REQUIREMENT_ID_INTERNAL_ERROR));
+    });
+
+    test("48. circular input returns structured failure", () => {
+        const spec = getValidProjectSpec();
+        const malicious = JSON.parse(JSON.stringify(spec));
+        malicious.self = malicious;
+        const res = deriveRequirementIdentities(malicious);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === identityErrorCodes.REQUIREMENT_ID_INTERNAL_ERROR));
+    });
+
+    test("49. validation errors remain structured", () => {
+        const spec = getValidProjectSpec();
+        const malformed = JSON.parse(JSON.stringify(spec));
+        malformed.pagesAndRoutes[0].path = "invalid-path";
+        const res = deriveRequirementIdentities(malformed);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(typeof res.errors[0].code, "string");
+        assert.strictEqual(typeof res.errors[0].path, "string");
+        assert.strictEqual(typeof res.errors[0].message, "string");
+        assert.strictEqual(typeof res.errors[0].keyword, "string");
+    });
+
+    test("50. identity-layer errors remain structured", () => {
+        const res = deriveRequirementIdentities(null);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(typeof res.errors[0].code, "string");
+        assert.strictEqual(typeof res.errors[0].path, "string");
+        assert.strictEqual(typeof res.errors[0].message, "string");
+        assert.strictEqual(typeof res.errors[0].keyword, "string");
+    });
+
+    test("51. error ordering deterministic", () => {
+        const spec = getValidProjectSpec();
+        const malformed = JSON.parse(JSON.stringify(spec));
+        malformed.pagesAndRoutes[0].path = "invalid-path";
+        malformed.components[0].name = ""; // Another validation error
+        const res1 = deriveRequirementIdentities(malformed);
+        const res2 = deriveRequirementIdentities(malformed);
+        assert.strictEqual(JSON.stringify(res1.errors), JSON.stringify(res2.errors));
+    });
+
+    test("52. full SHA-256 digest format is correct if selected", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const stableId = res.requirements[0].stableId;
+        assert.strictEqual(stableId.length, 7 + 64);
+        assert.ok(/^req_v1_[0-9a-f]{64}$/.test(stableId));
+    });
+
+    test("53. collision-detection branch is testable without weakening production hash algorithm, if practical via internal dependency injection/test seam", () => {
+        const spec = getValidProjectSpec();
+        const res = _deriveRequirementIdentitiesInternal(spec, () => "constant_hash");
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, identityErrorCodes.REQUIREMENT_ID_COLLISION);
+    });
+
+    test("54. semanticKey is deterministically derived and caller-provided semanticKey is not allowed", () => {
+        const spec = getValidProjectSpec();
+        const res = deriveRequirementIdentities(spec);
+        const routeReq = res.requirements.find(r => r.kind === "pageRoute");
+        assert.strictEqual(routeReq.semanticKey, routeReq.payload.path);
+    });
+
+    test("55. databaseModel field sorting preserves stableId, changed fields change stableId, duplicate fields are preserved", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [
+                { name: "User", fields: ["a", "b"] }
+            ],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload).value;
+        
+        const payload2 = JSON.parse(JSON.stringify(payload));
+        payload2.databaseModels[0].fields = ["b", "a"];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        assert.strictEqual(res1.requirements[0].stableId, res2.requirements[0].stableId);
+
+        // Adding field changes stableId
+        const payload3 = JSON.parse(JSON.stringify(payload));
+        payload3.databaseModels[0].fields = ["a", "b", "c"];
+        const spec3 = compileProjectSpec(payload3).value;
+        const res3 = deriveRequirementIdentities(spec3);
+        assert.notStrictEqual(res1.requirements[0].stableId, res3.requirements[0].stableId);
+
+        // Duplicate fields are preserved (not deduplicated)
+        const payload4 = JSON.parse(JSON.stringify(payload));
+        payload4.databaseModels[0].fields = ["a", "a", "b"];
+        const spec4 = compileProjectSpec(payload4).value;
+        const res4 = deriveRequirementIdentities(spec4);
+        assert.strictEqual(res4.requirements[0].payload.fields.length, 3);
+        assert.strictEqual(res4.requirements[0].payload.fields[0], "a");
+        assert.strictEqual(res4.requirements[0].payload.fields[1], "a");
+    });
+
+    test("56. exact None sentinel matches, other case-insensitive or integration none remain requirements", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: ["none", "None", "Stripe"],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec = compileProjectSpec(payload).value;
+        const res = deriveRequirementIdentities(spec);
+        const intReqs = res.requirements.filter(r => r.kind === "integration");
+        assert.strictEqual(intReqs.length, 3);
+    });
+
+    test("57. property insertion order differences in object payloads do not alter stableId", () => {
+        const route1 = {};
+        route1.path = "/test";
+        route1.name = "TestPage";
+        route1.description = "Test page view";
+
+        const route2 = {};
+        route2.description = "Test page view";
+        route2.name = "TestPage";
+        route2.path = "/test";
+
+        const payload1 = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [route1],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: [],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec1 = compileProjectSpec(payload1).value;
+
+        const payload2 = JSON.parse(JSON.stringify(payload1));
+        payload2.pagesAndRoutes = [route2];
+        const spec2 = compileProjectSpec(payload2).value;
+
+        const res1 = deriveRequirementIdentities(spec1);
+        const res2 = deriveRequirementIdentities(spec2);
+
+        assert.strictEqual(res1.requirements[0].stableId, res2.requirements[0].stableId);
+    });
+
+    test("58. duplicate metadata contract checks", () => {
+        const payload = {
+            projectName: "MyTestProject",
+            projectType: "Web Application",
+            frontend: "None",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            designRequirements: "None",
+            pagesAndRoutes: [],
+            components: [],
+            backendApis: [],
+            databaseModels: [],
+            integrations: ["Stripe", "Stripe", "Stripe"],
+            importantDependencies: [],
+            environmentVariables: [],
+            architectureConstraints: [],
+            runBuildRequirements: { runScript: "dev", buildScript: "" },
+            deploymentRequirements: "None",
+            assumptions: []
+        };
+        const spec = compileProjectSpec(payload).value;
+        const res = deriveRequirementIdentities(spec);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.requirements.length, 1);
+        assert.strictEqual(res.duplicates.length, 2);
+        assert.strictEqual(res.requirements[0].displayId, "REQ-001");
+        assert.strictEqual(res.duplicates[0].displayId, "REQ-001");
+        assert.strictEqual(res.duplicates[1].displayId, "REQ-001");
+        assert.strictEqual(res.duplicates[0].stableId, res.requirements[0].stableId);
+        assert.strictEqual(res.duplicates[1].stableId, res.requirements[0].stableId);
+        assert.strictEqual(res.duplicates[0].canonicalSourcePath, "integrations[0]");
+        assert.strictEqual(res.duplicates[0].duplicateSourcePath, "integrations[1]");
+        assert.strictEqual(res.duplicates[1].canonicalSourcePath, "integrations[0]");
+        assert.strictEqual(res.duplicates[1].duplicateSourcePath, "integrations[2]");
+    });
+});
 
 (async () => {
     for (const suite of suites) {

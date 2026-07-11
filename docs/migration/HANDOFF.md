@@ -19,21 +19,23 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 1 (ProjectSpec Foundation + Stable Requirement IDs)
-*   **CURRENT TASK PACK**: 1C (Requirement Analysis &rarr; ProjectSpec Compiler/Adapter)
-*   **LAST COMPLETED TASK PACK**: 1C (Requirement Analysis &rarr; ProjectSpec Compiler/Adapter)
-*   **Overall Status**: DONE (Task Pack 1C completed successfully)
+*   **CURRENT TASK PACK**: 1D (Deterministic Stable Requirement Identity)
+*   **LAST COMPLETED TASK PACK**: 1D (Deterministic Stable Requirement Identity)
+*   **Overall Status**: DONE (Task Pack 1D completed successfully)
 
 ---
 
-## 3. Working Tree State & Uncommitted Changes
 - **Git Branch**: `main`
-- **Working Tree Status**: Modified/Created files present (documentation, new schema module, and test additions).
+- **Working Tree State**: Clean and tested codebase with new requirement identity modules.
 - **PRE-EXISTING UNTRACKED FILES**:
-  - `docs/migration/PHASE_1A_REQUIREMENT_PAYLOAD_CHARACTERIZATION.md`
-- **FILES CHANGED/CREATED BY 1C**:
-  - `backend/core/projectSpec/projectSpecCompiler.js` (New)
-  - `docs/migration/PHASE_1C_PROJECTSPEC_COMPILER_ADAPTER.md` (New)
-  - `backend/core/projectSpec/index.js` (Modified)
+  - `.vscode/`
+  - `discovery_report.md`
+  - `discovery_report.pdf`
+- **FILES CHANGED/CREATED BY 1D**:
+  - `backend/core/requirements/requirementIdentity.js` (New)
+  - `backend/core/requirements/requirementIdentityErrors.js` (New)
+  - `backend/core/requirements/index.js` (New)
+  - `docs/migration/PHASE_1D_REQUIREMENT_IDENTITY.md` (New)
   - `backend/tests/run_tests.js` (Modified)
   - `docs/migration/PHASE_STATUS.md` (Modified)
   - `docs/migration/HANDOFF.md` (Modified)
@@ -42,9 +44,9 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-10T22:52:00+05:30
-- **TEST RESULTS**: 193 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 43 unit tests added under the suite `ProjectSpec Compiler / Adapter (Phase 1C)`, verifying compiler normalization mappings, default fallbacks, circular reference checks, sparse array rejections, input immutability, validator delegation, throwing getters safety, and determinism.
+- **TESTS LAST RUN**: 2026-07-11T18:55:00+05:30
+- **TEST RESULTS**: 251 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 58 unit tests added under the suite `Requirement Identity (Phase 1D)`, verifying stable content hashing, displayId formatting, revalidation, duplicate contract mapping, reordering preservation, recursive canonical serialization, exact None sentinels, and circular/throwing getters safety.
 - **KNOWN FAILURES**: None.
 - **BLOCKERS**: None.
 
@@ -81,16 +83,16 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Review PHASE_1C_PROJECTSPEC_COMPILER_ADAPTER.md, projectSpecCompiler.js, ProjectSpec module exports, and Task Pack 1C tests before designing or executing Task Pack 1D.
+Review PHASE_1D_REQUIREMENT_IDENTITY.md, Requirement Identity module, architecture decisions, and Task Pack 1D tests before designing or executing Task Pack 1E.
 
 **FILES TO READ FIRST**:
-- [PHASE_1C_PROJECTSPEC_COMPILER_ADAPTER.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_1C_PROJECTSPEC_COMPILER_ADAPTER.md)
-- [backend/core/projectSpec/projectSpecCompiler.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/projectSpec/projectSpecCompiler.js)
-- [backend/tests/run_tests.js#L2272](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L2272)
+- [PHASE_1D_REQUIREMENT_IDENTITY.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_1D_REQUIREMENT_IDENTITY.md)
+- [backend/core/requirements/requirementIdentity.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/requirements/requirementIdentity.js)
+- [backend/tests/run_tests.js#L2804](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L2804)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
 - Requirements analysis handlers (`backend/services/projectService.js`).
 - Database models (`backend/models/Project.js`).
 
-**STOP CONDITIONS**: Do not start implementation of Task Pack 1D in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start implementation of Task Pack 1E in this session. Do not commit or push changes.

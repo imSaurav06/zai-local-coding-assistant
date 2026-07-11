@@ -6,8 +6,8 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 ## Migration Status Summary
 
-*   **Current Phase**: PHASE 0 (Migration Control Plane + Safety Baseline)
-*   **Current Task Pack**: None (Phase 0 is complete)
+*   **Current Phase**: PHASE 1 (ProjectSpec Foundation + Stable Requirement IDs)
+*   **Current Task Pack**: 1D (Deterministic Stable Requirement Identity)
 *   **Overall Status**: IN_PROGRESS
 
 ---
@@ -121,7 +121,19 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Next Action**: STOP. Review `PHASE_1C_PROJECTSPEC_COMPILER_ADAPTER.md`, `projectSpecCompiler.js`, ProjectSpec module exports, and Task Pack 1C tests before designing or executing Task Pack 1D.
 
 ### Task Pack 1D: Deterministic Stable Requirement Identity
-- **Status**: NOT_STARTED
+- **Status**: DONE
+- **Started At**: 2026-07-11T18:14:02+05:30
+- **Completed At**: 2026-07-11T18:55:00+05:30
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Files Created**: `backend/core/requirements/requirementIdentity.js`, `backend/core/requirements/requirementIdentityErrors.js`, `backend/core/requirements/index.js`, `docs/migration/PHASE_1D_REQUIREMENT_IDENTITY.md`
+- **Identity API**: `deriveRequirementIdentities(validatedProjectSpec)`
+- **Identity Version**: `REQUIREMENT_IDENTITY_VERSION = "1.0"`
+- **Tests Added**: 58 unit tests covering revalidation, stable ID content hashing, displayId formatting, duplicate contract mapping, reordering preservation, recursive canonical serialization, exact None sentinels, and circular/throwing getters.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 251 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review `PHASE_1D_REQUIREMENT_IDENTITY.md`, Requirement Identity module, architecture decisions, and Task Pack 1D tests before designing or executing Task Pack 1E.
 
 ### Task Pack 1E: Existing Pipeline Compatibility Integration
 - **Status**: NOT_STARTED
@@ -132,7 +144,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 | Phase | Description | Status | Target Completion |
 |---|---|---|---|
-| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | IN_PROGRESS (Task Packs 1A, 1B & 1C DONE) | TBD |
+| **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | IN_PROGRESS (Task Packs 1A, 1B, 1C & 1D DONE) | TBD |
 | **Phase 2** | Requirement Validator + RTM-Lite | NOT_STARTED | TBD |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | NOT_STARTED | TBD |
 | **Phase 4** | TaskGraph / Simple DAG Planner | NOT_STARTED | TBD |
