@@ -356,7 +356,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 357 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review Phase 4B report. Proceed to Task Pack 4C (Planner Pipeline Integration) in the next session.
+- **Next Action**: STOP. Review Phase 4B report. Proceed to Task Pack 4C (Ready Queue Builder).
+
+### Task Pack 4C: Ready Queue Builder
+- **Status**: DONE
+- **Started At**: 2026-07-17T04:26:00+05:30
+- **Completed At**: 2026-07-17T04:36:00+05:30
+- **Files Created**: `backend/core/planner/plannerReadyQueue.js`, `docs/migration/PHASE_4C_READY_QUEUE.md`
+- **Files Changed**: `backend/core/planner/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Ready Queue Builder**: Determines immediately ready PENDING, non-blocked tasks whose dependencies are COMPLETED, sorted by displayId ascending.
+- **Tests Added**: 6 unit tests in `run_tests.js` (Phase 4C suite) verifying root independent readiness, completed dependencies unlocks, blocked exclusions, pending dependency closures, sorting ascending by displayId, and parameter non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 363 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 4C report. Proceed to Task Pack 4D (Planner State Machine) in the next session.
 
 ---
 
@@ -367,7 +381,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | **DONE** (All Task Packs 1A–1E Complete) | 2026-07-17 |
 | **Phase 2** | Requirement Validator + RTM-Lite | **DONE** (All Task Packs 2A–2F Complete) | 2026-07-17 |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
-| **Phase 4** | TaskGraph / Simple DAG Planner | **IN_PROGRESS** (Task Packs 4A & 4B Complete) | TBD |
+| **Phase 4** | TaskGraph / Simple DAG Planner | **IN_PROGRESS** (Task Packs 4A, 4B & 4C Complete) | TBD |
 | **Phase 5** | Durable Checkpoints + Resume | NOT_STARTED | TBD |
 | **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |

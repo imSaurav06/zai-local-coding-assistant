@@ -5678,6 +5678,96 @@ suite("Topological Planner Foundation (Phase 4B)", () => {
     });
 });
 
+suite("Ready Queue Builder (Phase 4C)", () => {
+    const { buildReadyQueue, readyErrorCodes } = require(path.join(backendRoot, "core/planner"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const createMockPlanner = (tasks) => ({
+        version: "1.0",
+        metadata: {
+            plannerVersion: "1.0",
+            graphVersion: "1.0",
+            identityVersion: "1.0",
+            createdBy: "planner"
+        },
+        tasks
+    });
+
+    test("1. Tasks without dependencies are READY if pending and not blocked", () => {
+        const tasks = [
+            { stableId: "t1", displayId: "REQ-001", status: "PENDING", blocked: false, dependencies: [] },
+            { stableId: "t2", displayId: "REQ-002", status: "COMPLETED", blocked: false, dependencies: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = buildReadyQueue(planner);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.readyQueue, ["t1"]);
+    });
+
+    test("2. Completed dependencies unlock tasks", () => {
+        const tasks = [
+            { stableId: "t1", displayId: "REQ-001", status: "COMPLETED", blocked: false, dependencies: [] },
+            { stableId: "t2", displayId: "REQ-002", status: "PENDING", blocked: false, dependencies: ["t1"] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = buildReadyQueue(planner);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.readyQueue, ["t2"]);
+    });
+
+    test("3. Blocked tasks are excluded from ready queue", () => {
+        const tasks = [
+            { stableId: "t1", displayId: "REQ-001", status: "PENDING", blocked: true, dependencies: [] },
+            { stableId: "t2", displayId: "REQ-002", status: "PENDING", blocked: false, dependencies: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = buildReadyQueue(planner);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.readyQueue, ["t2"]);
+    });
+
+    test("4. Pending dependencies block downstream tasks", () => {
+        const tasks = [
+            { stableId: "t1", displayId: "REQ-001", status: "PENDING", blocked: false, dependencies: [] },
+            { stableId: "t2", displayId: "REQ-002", status: "PENDING", blocked: false, dependencies: ["t1"] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = buildReadyQueue(planner);
+        assert.strictEqual(res.success, true);
+        // Only t1 is ready, t2 is blocked by t1 being PENDING
+        assert.deepStrictEqual(res.readyQueue, ["t1"]);
+    });
+
+    test("5. Ordering uses displayId ascending", () => {
+        const tasks = [
+            { stableId: "t2", displayId: "REQ-002", status: "PENDING", blocked: false, dependencies: [] },
+            { stableId: "t1", displayId: "REQ-001", status: "PENDING", blocked: false, dependencies: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = buildReadyQueue(planner);
+        assert.strictEqual(res.success, true);
+        // t1 (REQ-001) must come before t2 (REQ-002)
+        assert.deepStrictEqual(res.readyQueue, ["t1", "t2"]);
+    });
+
+    test("6. Planner input is never mutated, repeated runs are identical and output is frozen", () => {
+        const tasks = [
+            { stableId: "t1", displayId: "REQ-001", status: "PENDING", blocked: false, dependencies: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const originalPlanner = deepClone(planner);
+
+        const res1 = buildReadyQueue(planner);
+        const res2 = buildReadyQueue(planner);
+
+        assert.deepStrictEqual(res1, res2);
+        assert.deepStrictEqual(planner, originalPlanner);
+        assert.ok(Object.isFrozen(res1));
+        assert.ok(Object.isFrozen(res1.readyQueue));
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
