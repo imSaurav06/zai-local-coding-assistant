@@ -19,21 +19,18 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 3 (Architecture / DB / API / Auth / Deployment Contracts)
-*   **CURRENT TASK PACK**: 3E (TaskGraph Pipeline Integration)
-*   **LAST COMPLETED TASK PACK**: 3E (TaskGraph Pipeline Integration)
-*   **Overall Status**: DONE (Task Packs 3A, 3B, 3C, 3D & 3E Complete)
+*   **CURRENT TASK PACK**: 3F (Final Architecture Audit)
+*   **LAST COMPLETED TASK PACK**: 3F (Final Architecture Audit)
+*   **Overall Status**: DONE (All Task Packs 3A–3F Complete)
 
 ---
 
 - **Git Branch**: `main`
-- **Working Tree State**: Unstaged changes in 5 files (no commit or push performed).
-- **FILES CREATED BY 3E**:
-  - `docs/migration/PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md` (Design doc)
-- **FILES CHANGED BY 3E**:
-  - `backend/services/generationOrchestrator.js` (Pipeline integration)
-  - `backend/core/taskGraph/dependencyRules.js` (Plural kind support mappings)
-  - `backend/tests/run_tests.js` (Added 7 Pipeline Integration unit tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 3/3E)
+- **Working Tree State**: Unstaged changes (no commit or push performed).
+- **FILES CREATED BY 3F**:
+  - `docs/migration/PHASE_3_FINAL_ARCHITECTURE_AUDIT.md` (Design doc)
+- **FILES CHANGED BY 3F**:
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 3/3F)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
@@ -105,15 +102,14 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 3E is complete. Review `PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md` before starting the next Phase (such as Contracts, Scheduling, or Executor systems) in the next session.
+Task Pack 3F is complete. Review `PHASE_3_FINAL_ARCHITECTURE_AUDIT.md` before starting the next Phase (Phase 4 TaskGraph / Simple DAG Planner) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md)
-- [generationOrchestrator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js)
-- [run_tests.js Phase 3E suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5309)
+- [PHASE_3_FINAL_ARCHITECTURE_AUDIT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_3_FINAL_ARCHITECTURE_AUDIT.md)
+- [PHASE_STATUS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_STATUS.md)
 
 **DO NOT TOUCH**:
-- Existing generation orchestration (`backend/services/generationOrchestrator.js`) outside of preparation functions.
+- Existing generation orchestration (`backend/services/generationOrchestrator.js`).
 - Requirements analysis handlers (`backend/services/projectService.js`).
 - Database models (`backend/models/Project.js`, `backend/models/History.js`).
 - Stack selection implementation (`backend/services/stackProfiles.js`).
@@ -125,4 +121,4 @@ Task Pack 3E is complete. Review `PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md` be
 - RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
 - TaskGraph structures (`backend/core/taskGraph/`).
 
-**STOP CONDITIONS**: Do not start any subsequent task pack in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Phase 4 in this session. Do not commit or push changes.
