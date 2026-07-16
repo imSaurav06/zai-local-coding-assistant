@@ -7093,6 +7093,116 @@ suite("Symbol-Aware Context Resolution (Phase 6C)", () => {
     });
 });
 
+suite("Transactional VFS Domain Model (Phase 7A)", () => {
+    const { createVirtualFileSystem, VFS_MODEL_VERSION, vfsErrorCodes } = require(path.join(backendRoot, "core/vfs"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleFiles = () => [
+        {
+            path: "src/App.jsx",
+            language: "javascript",
+            content: "export default function App() {}"
+        },
+        {
+            path: "package.json",
+            language: "json",
+            content: "{}",
+            status: "COMMITTED"
+        }
+    ];
+
+    test("1. Reject invalid input", () => {
+        const res = createVirtualFileSystem("not-an-array");
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_INVALID_INPUT);
+
+        // Invalid file type
+        const res2 = createVirtualFileSystem(["string-file"]);
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, vfsErrorCodes.VFS_INVALID_FILE);
+
+        // Missing required fields
+        const res3 = createVirtualFileSystem([{ path: "src/App.jsx", content: "" }]); // missing language
+        assert.strictEqual(res3.success, false);
+        assert.strictEqual(res3.errors[0].code, vfsErrorCodes.VFS_INVALID_FILE);
+    });
+
+    test("2. Reject duplicate paths", () => {
+        const duplicateFiles = [
+            { path: "src/App.jsx", language: "javascript", content: "first" },
+            { path: "src/App.jsx", language: "javascript", content: "second" }
+        ];
+        const res = createVirtualFileSystem(duplicateFiles);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_DUPLICATE_PATH);
+
+        // Windows vs Linux separator duplicates
+        const mixedPathSeparator = [
+            { path: "src\\App.jsx", language: "javascript", content: "first" },
+            { path: "src/App.jsx", language: "javascript", content: "second" }
+        ];
+        const res2 = createVirtualFileSystem(mixedPathSeparator);
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, vfsErrorCodes.VFS_DUPLICATE_PATH);
+    });
+
+    test("3. Correct initialization", () => {
+        const files = getSampleFiles();
+        const res = createVirtualFileSystem(files);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.vfs.version, VFS_MODEL_VERSION);
+        assert.strictEqual(res.vfs.metadata.vfsVersion, VFS_MODEL_VERSION);
+        assert.strictEqual(res.vfs.metadata.createdBy, "vfs");
+        assert.strictEqual(res.vfs.operations.length, 0);
+        assert.strictEqual(res.vfs.transaction.active, true);
+        assert.strictEqual(res.vfs.files.length, 2);
+    });
+
+    test("4. Default status assignment", () => {
+        const files = getSampleFiles();
+        const res = createVirtualFileSystem(files);
+        assert.strictEqual(res.success, true);
+        
+        // Check first file default status
+        assert.strictEqual(res.vfs.files[0].path, "src/App.jsx");
+        assert.strictEqual(res.vfs.files[0].status, "PENDING");
+
+        // Check second file status preserved
+        assert.strictEqual(res.vfs.files[1].path, "package.json");
+        assert.strictEqual(res.vfs.files[1].status, "COMMITTED");
+    });
+
+    test("5. Deep immutability", () => {
+        const files = getSampleFiles();
+        const res = createVirtualFileSystem(files);
+        assert.strictEqual(res.success, true);
+        
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.vfs));
+        assert.ok(Object.isFrozen(res.vfs.metadata));
+        assert.ok(Object.isFrozen(res.vfs.files));
+        assert.ok(Object.isFrozen(res.vfs.files[0]));
+        assert.ok(Object.isFrozen(res.vfs.transaction));
+    });
+
+    test("6. Deterministic creation", () => {
+        const files = getSampleFiles();
+        const res1 = createVirtualFileSystem(files);
+        const res2 = createVirtualFileSystem(files);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("7. No caller mutation", () => {
+        const files = getSampleFiles();
+        const originalFiles = deepClone(files);
+        
+        createVirtualFileSystem(files);
+        
+        assert.deepStrictEqual(files, originalFiles);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
