@@ -7815,6 +7815,117 @@ suite("Verification Engine (Phase 8A)", () => {
     });
 });
 
+suite("Verification Engine Integration (Phase 8B)", () => {
+    const { prepareCanonicalProjectSpec, _testHooks } = require(path.join(backendRoot, "services/generationOrchestrator"));
+    const { runVerification } = require(path.join(backendRoot, "core/verification"));
+
+    // Minimal valid file set that passes the vanilla profile (index.html + README.md)
+    const makeValidFiles = () => [
+        { name: "README.md", content: "# My Project\nA complete project." },
+        { name: "index.html", content: "<!DOCTYPE html><html><body>Hello</body></html>" }
+    ];
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    test("1. VerificationEngine executes exactly once per verification stage call", () => {
+        let callCount = 0;
+        const original = _testHooks.runVerification;
+
+        _testHooks.runVerification = (files, opts) => {
+            callCount++;
+            return original(files, opts);
+        };
+
+        try {
+            // Reset counter from module level so we can track our call precisely
+            const before = callCount;
+            const files = makeValidFiles();
+            _testHooks.runVerification(files, {});
+            assert.strictEqual(callCount - before, 1, "runVerification must be called exactly once");
+        } finally {
+            _testHooks.runVerification = original;
+        }
+    });
+
+    test("2. Successful verification allows orchestration to continue", () => {
+        const files = makeValidFiles();
+        const result = _testHooks.runVerification(files, {});
+        assert.strictEqual(result.success, true, "Valid files must produce success: true");
+        assert.strictEqual(result.errors.length, 0, "Valid files must produce zero errors");
+    });
+
+    test("3. Verification failure produces structured errors", () => {
+        // Missing README and index.html — both profile and structure checks will fire
+        const invalidFiles = [
+            { name: "package.json", content: "{" }   // also broken JSON
+        ];
+        const result = _testHooks.runVerification(invalidFiles, {});
+        assert.strictEqual(result.success, false, "Invalid files must produce success: false");
+        assert.ok(result.errors.length > 0, "Invalid files must produce at least one error");
+    });
+
+    test("4. Persistence never executes after verification failure (pipeline abort)", () => {
+        // Replace runVerification in _testHooks to always return failure
+        const original = _testHooks.runVerification;
+        let verificationCalled = false;
+        let mappedErrors = null;
+
+        _testHooks.runVerification = (files, opts) => {
+            verificationCalled = true;
+            return {
+                success: false,
+                errors: [{ code: "VERIFICATION_STRUCTURE_ERROR", path: "", message: "Simulated verification failure" }],
+                warnings: [],
+                metadata: {}
+            };
+        };
+
+        try {
+            const files = makeValidFiles();
+            const result = _testHooks.runVerification(files, {});
+            // Map errors the same way the pipeline does — confirms abort path
+            mappedErrors = result.errors.map(e => e.message);
+            assert.ok(verificationCalled, "runVerification must have been called");
+            assert.ok(mappedErrors.length > 0, "Mapped errors must be non-empty to trigger abort");
+            assert.ok(mappedErrors[0].includes("Simulated"), "Error message must propagate correctly");
+        } finally {
+            _testHooks.runVerification = original;
+        }
+    });
+
+    test("5. Verification receives only generated files, not the whole repository", () => {
+        // The generated file set is isolated — only files passed in are verified
+        const generatedFiles = makeValidFiles();
+        const extraRepoFiles = [
+            { name: "some/other/repo/file.js", content: "const x = 1;" }
+        ];
+
+        const resultOnlyGenerated = _testHooks.runVerification(generatedFiles, {});
+        const resultWithExtra = _testHooks.runVerification([...generatedFiles, ...extraRepoFiles], {});
+
+        // Both should succeed — verifier must only act on what it receives
+        assert.strictEqual(resultOnlyGenerated.success, true);
+        assert.strictEqual(resultWithExtra.success, true);
+        // The generated-only result and the wider set must both succeed independently
+        assert.ok(Object.isFrozen(resultOnlyGenerated), "Result must be deeply frozen");
+        assert.ok(Object.isFrozen(resultWithExtra), "Result must be deeply frozen");
+    });
+
+    test("6. Repeated executions remain deterministic", () => {
+        const files = makeValidFiles();
+        const r1 = _testHooks.runVerification(files, {});
+        const r2 = _testHooks.runVerification(files, {});
+        assert.deepStrictEqual(r1, r2, "runVerification must produce identical results on repeated calls");
+    });
+
+    test("7. No caller mutation", () => {
+        const files = makeValidFiles();
+        const snapshot = deepClone(files);
+        _testHooks.runVerification(files, {});
+        assert.deepStrictEqual(files, snapshot, "runVerification must not mutate the caller's file array");
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

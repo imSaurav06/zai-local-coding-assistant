@@ -4,6 +4,7 @@ const { buildSharedContracts, buildProjectManifest, isMernStack } = require("./c
 const aiExecutor = require("./aiGenerationExecutor");
 const { mergeFiles } = require("./generationMerger");
 const { validateProjectFiles } = require("./validationProfiles");
+const { runVerification } = require("../core/verification");
 const { repairAffectedFiles } = require("./targetedRepairService");
 const { compileProjectSpec, validateProjectSpec } = require("../core/projectSpec");
 const { deriveRequirementIdentities } = require("../core/requirements");
@@ -27,6 +28,7 @@ const _testHooks = {
     createCheckpoint,
     validateCheckpoint,
     createResumeState,
+    runVerification,
     buildRTMCallCount: 0,
     validateRTMCallCount: 0,
     buildTaskGraphCallCount: 0,
@@ -37,7 +39,8 @@ const _testHooks = {
     validatePlannerCallCount: 0,
     createCheckpointCallCount: 0,
     validateCheckpointCallCount: 0,
-    createResumeStateCallCount: 0
+    createResumeStateCallCount: 0,
+    runVerificationCallCount: 0
 };
 
 /**
@@ -1054,8 +1057,16 @@ ${JSON.stringify(projectSpec, null, 2)}`;
     const syntaxErrors = validateSyntax(finalFiles);
     const syntaxErrorStrings = syntaxErrors.map(e => `SyntaxError in '${e.filePath}': ${e.reason}`);
 
+    // ── INCREMENTAL VERIFICATION ENGINE (Phase 8B) ────────────────────────────
+    // Run VerificationEngine on only the generated files produced in this run.
+    // Maps structured error objects back to strings consumed by the repair loop.
+    _testHooks.runVerificationCallCount++;
+    const verificationResult = _testHooks.runVerification(finalFiles, { projectSpec });
+    const verificationErrorStrings = verificationResult.errors.map(e => e.message);
+    // ─────────────────────────────────────────────────────────────────────────
+
     let validationErrors = [
-        ...validateProjectFiles(finalFiles, projectSpec),
+        ...verificationErrorStrings,
         ...syntaxErrorStrings
     ];
     if (Array.isArray(finalFiles._guardErrors)) {
@@ -1091,8 +1102,14 @@ ${JSON.stringify(projectSpec, null, 2)}`;
             const repairSyntaxErrors = validateSyntax(finalFiles);
             const repairSyntaxErrorStrings = repairSyntaxErrors.map(e => `SyntaxError in '${e.filePath}': ${e.reason}`);
 
+            // ── INCREMENTAL VERIFICATION ENGINE (repair pass) ─────────────────
+            _testHooks.runVerificationCallCount++;
+            const repairVerificationResult = _testHooks.runVerification(finalFiles, { projectSpec });
+            const repairVerificationErrorStrings = repairVerificationResult.errors.map(e => e.message);
+            // ─────────────────────────────────────────────────────────────────
+
             validationErrors = [
-                ...validateProjectFiles(finalFiles, projectSpec),
+                ...repairVerificationErrorStrings,
                 ...repairGuardErrors,
                 ...repairSyntaxErrorStrings
             ];

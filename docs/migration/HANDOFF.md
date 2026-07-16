@@ -19,34 +19,27 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 8 (Incremental Verification Engine)
-*   **CURRENT TASK PACK**: 8A (Checker Modularization)
-*   **LAST COMPLETED TASK PACK**: 8A (Checker Modularization)
-*   **Overall Status**: IN_PROGRESS (Task Pack 8A Complete)
+*   **CURRENT TASK PACK**: 8B (Incremental Verification Integration)
+*   **LAST COMPLETED TASK PACK**: 8B (Incremental Verification Integration)
+*   **Overall Status**: IN_PROGRESS (Task Packs 8A–8B Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 8A**:
-  - `backend/core/verification/index.js`
-  - `backend/core/verification/syntaxChecker.js`
-  - `backend/core/verification/importChecker.js`
-  - `backend/core/verification/dependencyChecker.js`
-  - `backend/core/verification/verificationErrors.js`
-  - `backend/core/verification/verificationResult.js`
-  - `backend/core/verification/verificationEngine.js`
-- **FILES CHANGED BY 8A**:
-  - `backend/services/validationProfiles.js` (Delegated to VerificationEngine)
-  - `backend/tests/run_tests.js` (Added 11 unit tests checking decoupled checkers)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 8/8A)
+- **FILES CREATED BY 8B**: None.
+- **FILES CHANGED BY 8B**:
+  - `backend/services/generationOrchestrator.js` (Wired runVerification into pipeline)
+  - `backend/tests/run_tests.js` (Added 7 integration tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 8/8B)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T08:45:00+05:30
-- **TEST RESULTS**: 485 passed, 0 failed, 0 skipped.
+- **TESTS LAST RUN**: 2026-07-17T09:08:00+05:30
+- **TEST RESULTS**: 492 passed, 0 failed, 0 skipped.
   - Create file succeeds
   - Duplicate path creations rejected
   - Update file succeeds
@@ -196,28 +189,25 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 8A is complete. Proceed to Task Pack 8B (Incremental Verification Integration) in the next session.
+Task Pack 8B is complete. Proceed to Task Pack 8C in the next session.
 
 **FILES TO READ FIRST**:
+- [generationOrchestrator.js L1052–1074](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js#L1052-L1074)
 - [verificationEngine.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/verification/verificationEngine.js)
-- [validationProfiles.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/validationProfiles.js)
-- [run_tests.js Phase 8A suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L7687)
+- [run_tests.js Phase 8B suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L7817)
 
 **DO NOT TOUCH**:
-- Existing generation orchestration (`backend/services/generationOrchestrator.js`).
+- Existing generation orchestration logic outside the verification stage.
 - Requirements analysis handlers (`backend/services/projectService.js`).
 - Database models (`backend/models/Project.js`, `backend/models/History.js`).
 - Stack selection implementation (`backend/services/stackProfiles.js`).
 - ProjectSpec Compiler semantics (`backend/core/projectSpec/projectSpecCompiler.js`).
 - Requirement Identity semantics (`backend/core/requirements/requirementIdentity.js`).
-- Requirement Classification semantics (`backend/core/requirementsClassification/requirementsClassifier.js`).
-- RTM model semantics (`backend/core/rtm/rtmModel.js`).
-- RTM builder semantics (`backend/core/rtm/rtmBuilder.js`).
-- RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
+- RTM model semantics (`backend/core/rtm/`).
 - TaskGraph structures (`backend/core/taskGraph/`).
 - Planner structure (`backend/core/planner/`).
 - Checkpoint structures (`backend/core/checkpoints/`).
 - Context structures (`backend/core/context/`).
 - VFS structures (`backend/core/vfs/`).
 
-**STOP CONDITIONS**: Do not start Task Pack 8B in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 8C in this session. Do not commit or push changes.

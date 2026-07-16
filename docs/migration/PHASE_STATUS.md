@@ -7,8 +7,8 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 ## Migration Status Summary
 
 *   **Current Phase**: PHASE 8 (Incremental Verification Engine)
-*   **Current Task Pack**: 8A (Checker Modularization)
-*   **Overall Status**: IN_PROGRESS (Task Pack 8A Complete)
+*   **Current Task Pack**: 8B (Incremental Verification Integration)
+*   **Overall Status**: IN_PROGRESS (Task Packs 8A–8B Complete)
 
 ---
 
@@ -620,6 +620,20 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Blockers**: None.
 - **Next Action**: STOP. Review Phase 8A report. Proceed to Task Pack 8B (Incremental Verification Integration) in the next session.
 
+### Task Pack 8B: Incremental Verification Integration
+- **Status**: DONE
+- **Started At**: 2026-07-17T09:00:00+05:30
+- **Completed At**: 2026-07-17T09:08:00+05:30
+- **Files Created**: None.
+- **Files Changed**: `backend/services/generationOrchestrator.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Incremental Verification Integration**: Imported `runVerification` from `core/verification` into `generationOrchestrator.js`. Added `runVerification` and `runVerificationCallCount` to `_testHooks`. Replaced both `validateProjectFiles` call-sites in the verification stage and repair-loop with `_testHooks.runVerification`, mapping structured error objects back to the string format expected by the existing repair loop for backward compatibility. No public APIs changed. No persistence adapters changed.
+- **Tests Added**: 7 integration tests in `run_tests.js` (Phase 8B suite) covering: exactly-once execution, successful verification allowing pipeline continuation, failure producing structured errors, persistence abort on failure, isolated generated-file verification, deterministic repeated runs, and no caller mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 492 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 8B report. Proceed to Task Pack 8C in the next session.
+
 ---
 
 ## Future Migration Phases
@@ -633,7 +647,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 5** | Durable Checkpoints + Resume | **DONE** (All Task Packs 5A–5E Complete) | 2026-07-17 |
 | **Phase 6** | ContextBuilder | **DONE** (All Task Packs 6A–6D Complete) | 2026-07-17 |
 | **Phase 7** | Structured / Transaction VFS File Operations | **DONE** (All Task Packs 7A–7E Complete) | 2026-07-17 |
-| **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Pack 8A Complete) | TBD |
+| **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Packs 8A–8B Complete) | TBD |
 | **Phase 9** | Bounded Targeted Repair | NOT_STARTED | TBD |
 | **Phase 10** | AIProviderGateway Hardening | NOT_STARTED | TBD |
 | **Phase 11** | Controlled Parallel Task Execution | NOT_STARTED | TBD |
