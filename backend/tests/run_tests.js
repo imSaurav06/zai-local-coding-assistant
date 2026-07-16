@@ -6317,6 +6317,116 @@ suite("Resume State Foundation (Phase 5B)", () => {
     });
 });
 
+suite("Checkpoint Validator (Phase 5C)", () => {
+    const { createCheckpoint, validateCheckpoint, checkpointErrorCodes } = require(path.join(backendRoot, "core/checkpoints"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const deepFreeze = (obj) => {
+        if (obj === null || typeof obj !== "object") return obj;
+        Object.freeze(obj);
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+            if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object") {
+                deepFreeze(obj[prop]);
+            }
+        });
+        return obj;
+    };
+
+    const getSampleValidCheckpoint = () => {
+        const planner = {
+            version: "1.0",
+            metadata: {
+                plannerVersion: "1.0",
+                graphVersion: "1.0",
+                identityVersion: "1.0",
+                createdBy: "planner"
+            },
+            tasks: [
+                {
+                    stableId: "t1",
+                    displayId: "REQ-001",
+                    kind: "backend",
+                    status: "COMPLETED",
+                    dependencies: [],
+                    dependents: ["t2"]
+                },
+                {
+                    stableId: "t2",
+                    displayId: "REQ-002",
+                    kind: "frontend",
+                    status: "PENDING",
+                    dependencies: ["t1"],
+                    dependents: []
+                }
+            ]
+        };
+        const res = createCheckpoint(planner, "test-user");
+        return res.checkpoint;
+    };
+
+    test("1. Accepts a valid pre-built frozen Checkpoint", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const res = validateCheckpoint(checkpoint);
+        assert.strictEqual(res.success, true);
+    });
+
+    test("2. Rejects invalid root structures", () => {
+        assert.strictEqual(validateCheckpoint(null).success, false);
+        assert.strictEqual(validateCheckpoint(undefined).success, false);
+        assert.strictEqual(validateCheckpoint("string").success, false);
+
+        // Missing metadata or planner
+        const checkpoint = { version: "1.0", tasks: [] };
+        const res = validateCheckpoint(deepFreeze(checkpoint));
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, checkpointErrorCodes.CHECKPOINT_INVALID_STRUCTURE);
+    });
+
+    test("3. Rejects invalid metadata attributes", () => {
+        const raw = deepClone(getSampleValidCheckpoint());
+        delete raw.metadata.checkpointVersion;
+        const checkpoint = deepFreeze(raw);
+        const res = validateCheckpoint(checkpoint);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, checkpointErrorCodes.CHECKPOINT_INVALID_METADATA);
+    });
+
+    test("4. Rejects duplicate task IDs across planner tasks", () => {
+        const raw = deepClone(getSampleValidCheckpoint());
+        raw.planner.tasks[1].stableId = "t1"; // duplicate stableId
+        // Also update executionState arrays to contain only valid elements to test duplicate detection
+        raw.executionState.completedTasks = ["t1"];
+        raw.executionState.pendingTasks = ["t1"]; 
+        const checkpoint = deepFreeze(raw);
+        const res = validateCheckpoint(checkpoint);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, checkpointErrorCodes.CHECKPOINT_DUPLICATE_TASK);
+    });
+
+    test("5. Rejects non-frozen checkpoint configurations", () => {
+        const checkpoint = deepClone(getSampleValidCheckpoint());
+        // Not frozen
+        const res = validateCheckpoint(checkpoint);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === checkpointErrorCodes.CHECKPOINT_INVALID_STRUCTURE));
+    });
+
+    test("6. Validation process is pure, side-effect-free, and deterministic", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const res1 = validateCheckpoint(checkpoint);
+        const res2 = validateCheckpoint(checkpoint);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("7. Input parameters are never mutated", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const original = deepClone(checkpoint);
+        validateCheckpoint(checkpoint);
+        assert.deepStrictEqual(checkpoint, original);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

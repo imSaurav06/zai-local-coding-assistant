@@ -19,31 +19,38 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 5 (Durable Checkpoints + Resume)
-*   **CURRENT TASK PACK**: 5B (Resume State Foundation)
-*   **LAST COMPLETED TASK PACK**: 5B (Resume State Foundation)
-*   **Overall Status**: IN_PROGRESS (Task Packs 5A & 5B Complete)
+*   **CURRENT TASK PACK**: 5C (Checkpoint Validator)
+*   **LAST COMPLETED TASK PACK**: 5C (Checkpoint Validator)
+*   **Overall Status**: IN_PROGRESS (Task Packs 5A, 5B & 5C Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 5B**:
-  - `backend/core/checkpoints/resumeState.js` (Resume state extractor)
-  - `docs/migration/PHASE_5B_RESUME_STATE.md` (Design doc)
-- **FILES CHANGED BY 5B**:
-  - `backend/core/checkpoints/checkpointErrors.js` (Added resume state error codes)
-  - `backend/core/checkpoints/index.js` (Exported createResumeState)
-  - `backend/tests/run_tests.js` (Added 7 Resume State Foundation unit tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 5/5B)
+- **FILES CREATED BY 5C**:
+  - `backend/core/checkpoints/checkpointValidator.js` (Checkpoint validator logic)
+  - `docs/migration/PHASE_5C_CHECKPOINT_VALIDATOR.md` (Design doc)
+- **FILES CHANGED BY 5C**:
+  - `backend/core/checkpoints/checkpointErrors.js` (Added checkpoint validator error codes)
+  - `backend/core/checkpoints/index.js` (Exported validateCheckpoint)
+  - `backend/tests/run_tests.js` (Added 7 Checkpoint Validator unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 5/5C)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T06:11:00+05:30
-- **TEST RESULTS**: 398 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 7 unit tests added under the suite `Resume State Foundation (Phase 5B)`, covering:
+- **TESTS LAST RUN**: 2026-07-17T06:21:00+05:30
+- **TEST RESULTS**: 405 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 7 unit tests added under the suite `Checkpoint Validator (Phase 5C)`, covering:
+  - Accepts a valid pre-built frozen Checkpoint
+  - Rejects invalid root structures
+  - Rejects invalid metadata attributes
+  - Rejects duplicate task IDs across planner tasks
+  - Rejects non-frozen checkpoint configurations
+  - Validation process is pure, side-effect-free, and deterministic
+  - Input parameters are never mutated
   - Rejects invalid non-object checkpoint inputs
   - Rejects malformed checkpoint structure
   - Resume state initializes correctly and preserves metadata
@@ -136,12 +143,12 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 5B is complete. Review `PHASE_5B_RESUME_STATE.md` before starting Task Pack 5C (Durable Checkpoint Service) in the next session.
+Task Pack 5C is complete. Review `PHASE_5C_CHECKPOINT_VALIDATOR.md` before starting Task Pack 5D (Checkpoint Pipeline Integration) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_5B_RESUME_STATE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_5B_RESUME_STATE.md)
-- [resumeState.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/checkpoints/resumeState.js)
-- [run_tests.js Phase 5B suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6214)
+- [PHASE_5C_CHECKPOINT_VALIDATOR.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_5C_CHECKPOINT_VALIDATOR.md)
+- [checkpointValidator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/checkpoints/checkpointValidator.js)
+- [run_tests.js Phase 5C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6320)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
@@ -156,6 +163,6 @@ Task Pack 5B is complete. Review `PHASE_5B_RESUME_STATE.md` before starting Task
 - RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
 - TaskGraph structures (`backend/core/taskGraph/`).
 - Planner structure (`backend/core/planner/`).
-- Checkpoint structures (`backend/core/checkpoints/`) outside of resumeState utility updates.
+- Checkpoint structures (`backend/core/checkpoints/`) outside of checkpointValidator utility updates.
 
-**STOP CONDITIONS**: Do not start Task Pack 5C in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 5D in this session. Do not commit or push changes.

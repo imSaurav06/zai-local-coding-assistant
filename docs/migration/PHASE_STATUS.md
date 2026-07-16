@@ -439,7 +439,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 398 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review Phase 5B report. Proceed to Task Pack 5C (Durable Checkpoint Service) in the next session.
+- **Next Action**: STOP. Review Phase 5B report. Proceed to Task Pack 5C (Checkpoint Validator).
+
+### Task Pack 5C: Checkpoint Validator
+- **Status**: DONE
+- **Started At**: 2026-07-17T06:13:00+05:30
+- **Completed At**: 2026-07-17T06:21:00+05:30
+- **Files Created**: `backend/core/checkpoints/checkpointValidator.js`, `docs/migration/PHASE_5C_CHECKPOINT_VALIDATOR.md`
+- **Files Changed**: `backend/core/checkpoints/checkpointErrors.js`, `backend/core/checkpoints/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Checkpoint Validator**: Deterministically validates checkpoint shape, deep immutability, metadata elements, task ID uniqueness, dependency references, and list status mapping alignment.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 5C suite) verifying valid frozen checkpoint validation, structural integrity checks, invalid metadata fields, duplicate task ID rejections, non-frozen configuration exclusions, validation determinism, and input parameters non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 405 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 5C report. Proceed to Task Pack 5D (Checkpoint Pipeline Integration) in the next session.
 
 ---
 
@@ -451,7 +465,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 2** | Requirement Validator + RTM-Lite | **DONE** (All Task Packs 2A–2F Complete) | 2026-07-17 |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
 | **Phase 4** | TaskGraph / Simple DAG Planner | **DONE** (All Task Packs 4A–4F Complete) | 2026-07-17 |
-| **Phase 5** | Durable Checkpoints + Resume | **IN_PROGRESS** (Task Packs 5A & 5B Complete) | TBD |
+| **Phase 5** | Durable Checkpoints + Resume | **IN_PROGRESS** (Task Packs 5A, 5B & 5C Complete) | TBD |
 | **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |
 | **Phase 8** | Incremental Verification Engine | NOT_STARTED | TBD |
