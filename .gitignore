@@ -22,6 +22,7 @@ backend/dist/
 backend/.env
 frontend/.env
 
+
 # ============================================================
 # Live Preview sandbox workspaces (runtime temp — never commit)
 # ============================================================
