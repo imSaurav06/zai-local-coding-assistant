@@ -19,35 +19,40 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 4 (TaskGraph / Simple DAG Planner)
-*   **CURRENT TASK PACK**: 4C (Ready Queue Builder)
-*   **LAST COMPLETED TASK PACK**: 4C (Ready Queue Builder)
-*   **Overall Status**: IN_PROGRESS (Task Packs 4A, 4B & 4C Complete)
+*   **CURRENT TASK PACK**: 4D (Planner Validator)
+*   **LAST COMPLETED TASK PACK**: 4D (Planner Validator)
+*   **Overall Status**: IN_PROGRESS (Task Packs 4A, 4B, 4C & 4D Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 4C**:
-  - `backend/core/planner/plannerReadyQueue.js` (Ready status evaluation utility)
-  - `docs/migration/PHASE_4C_READY_QUEUE.md` (Design doc)
-- **FILES CHANGED BY 4C**:
-  - `backend/core/planner/index.js` (Exports buildReadyQueue & readyErrorCodes)
-  - `backend/tests/run_tests.js` (Added 6 Ready Queue Builder unit tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4C)
+- **FILES CREATED BY 4D**:
+  - `backend/core/planner/plannerValidator.js` (Structural & consistency validator)
+  - `docs/migration/PHASE_4D_PLANNER_VALIDATOR.md` (Design doc)
+- **FILES CHANGED BY 4D**:
+  - `backend/core/planner/index.js` (Exports validatePlanner & validatorErrorCodes)
+  - `backend/tests/run_tests.js` (Added 10 Planner Validator unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4D)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T04:36:00+05:30
-- **TEST RESULTS**: 363 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 6 unit tests added under the suite `Ready Queue Builder (Phase 4C)`, covering:
-  - Tasks without dependencies are READY if pending and not blocked
-  - Completed dependencies unlock tasks
-  - Blocked tasks are excluded from ready queue
-  - Pending dependencies block downstream tasks
-  - Ordering uses displayId ascending
+- **TESTS LAST RUN**: 2026-07-17T04:40:00+05:30
+- **TEST RESULTS**: 373 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 10 unit tests added under the suite `Planner Validator (Phase 4D)`, covering:
+  - Accepts a valid pre-built frozen Planner
+  - Rejects invalid root structures
+  - Rejects duplicate stableId across tasks
+  - Rejects duplicate displayId across tasks
+  - Rejects broken references in dependencies
+  - Rejects self-dependencies
+  - Rejects asymmetric edges
+  - Rejects invalid statuses
+  - Rejects non-frozen planners
+  - Validation is deterministic, pure, and does not mutate planner parameter
   - Planner input is never mutated, repeated runs are identical and output is frozen
   - Creation is deterministic, pure, and does not mutate planner parameters
   - Populates correct metadata mapping
@@ -109,12 +114,12 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 4C is complete. Review `PHASE_4C_READY_QUEUE.md` before starting the next Task Pack 4D (Planner State Machine) in the next session.
+Task Pack 4D is complete. Review `PHASE_4D_PLANNER_VALIDATOR.md` before starting the next Task Pack 4E (Planner State Machine) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_4C_READY_QUEUE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4C_READY_QUEUE.md)
-- [plannerReadyQueue.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/planner/plannerReadyQueue.js)
-- [run_tests.js Phase 4C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5682)
+- [PHASE_4D_PLANNER_VALIDATOR.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4D_PLANNER_VALIDATOR.md)
+- [plannerValidator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/planner/plannerValidator.js)
+- [run_tests.js Phase 4D suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5770)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
@@ -128,6 +133,6 @@ Task Pack 4C is complete. Review `PHASE_4C_READY_QUEUE.md` before starting the n
 - RTM builder semantics (`backend/core/rtm/rtmBuilder.js`).
 - RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
 - TaskGraph structures (`backend/core/taskGraph/`).
-- Planner structure (`backend/core/planner/`) outside of ready queue utility functions.
+- Planner structure (`backend/core/planner/`) outside of validation functions.
 
-**STOP CONDITIONS**: Do not start Task Pack 4D in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 4E in this session. Do not commit or push changes.

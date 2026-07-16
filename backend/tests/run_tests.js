@@ -5768,6 +5768,153 @@ suite("Ready Queue Builder (Phase 4C)", () => {
     });
 });
 
+suite("Planner Validator (Phase 4D)", () => {
+    const { validatePlanner, validatorErrorCodes } = require(path.join(backendRoot, "core/planner"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const deepFreeze = (obj) => {
+        if (obj === null || typeof obj !== "object") return obj;
+        Object.freeze(obj);
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+            if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object") {
+                deepFreeze(obj[prop]);
+            }
+        });
+        return obj;
+    };
+
+    const getSampleValidPlanner = () => {
+        const planner = {
+            version: "1.0",
+            metadata: {
+                plannerVersion: "1.0",
+                graphVersion: "1.0",
+                identityVersion: "1.0",
+                createdBy: "planner"
+            },
+            tasks: [
+                {
+                    stableId: "t1",
+                    displayId: "REQ-001",
+                    kind: "backend",
+                    status: "PENDING",
+                    dependencies: [],
+                    dependents: ["t2"],
+                    ready: false,
+                    blocked: false,
+                    metadata: { sourcePath: "backend" }
+                },
+                {
+                    stableId: "t2",
+                    displayId: "REQ-002",
+                    kind: "frontend",
+                    status: "PENDING",
+                    dependencies: ["t1"],
+                    dependents: [],
+                    ready: false,
+                    blocked: false,
+                    metadata: { sourcePath: "frontend" }
+                }
+            ]
+        };
+        return deepFreeze(planner);
+    };
+
+    test("1. Accepts a valid pre-built frozen Planner", () => {
+        const planner = getSampleValidPlanner();
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, true);
+    });
+
+    test("2. Rejects invalid root structures", () => {
+        assert.strictEqual(validatePlanner(null).success, false);
+        assert.strictEqual(validatePlanner(undefined).success, false);
+        assert.strictEqual(validatePlanner("string").success, false);
+
+        // Missing metadata or version
+        const planner = { version: "1.0", tasks: [] };
+        const res = validatePlanner(deepFreeze(planner));
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, validatorErrorCodes.PLANNER_INVALID_STRUCTURE);
+    });
+
+    test("3. Rejects duplicate stableId across tasks", () => {
+        const raw = JSON.parse(JSON.stringify(getSampleValidPlanner()));
+        raw.tasks[1].stableId = "t1"; // duplicate stableId
+        const planner = deepFreeze(raw);
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, validatorErrorCodes.PLANNER_DUPLICATE_TASK);
+    });
+
+    test("4. Rejects duplicate displayId across tasks", () => {
+        const raw = JSON.parse(JSON.stringify(getSampleValidPlanner()));
+        raw.tasks[1].displayId = "REQ-001"; // duplicate displayId
+        const planner = deepFreeze(raw);
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, validatorErrorCodes.PLANNER_DUPLICATE_TASK);
+    });
+
+    test("5. Rejects broken references in dependencies", () => {
+        const raw = JSON.parse(JSON.stringify(getSampleValidPlanner()));
+        raw.tasks[1].dependencies.push("non-existent");
+        const planner = deepFreeze(raw);
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === validatorErrorCodes.PLANNER_BROKEN_REFERENCE));
+    });
+
+    test("6. Rejects self-dependencies", () => {
+        const raw = JSON.parse(JSON.stringify(getSampleValidPlanner()));
+        raw.tasks[0].dependencies.push("t1");
+        const planner = deepFreeze(raw);
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === validatorErrorCodes.PLANNER_SELF_DEPENDENCY));
+    });
+
+    test("7. Rejects asymmetric edges", () => {
+        const raw = JSON.parse(JSON.stringify(getSampleValidPlanner()));
+        // Break symmetry: t1 depends on nothing, but let's add t2 as dependent without t2 listing t1 as dependency
+        raw.tasks[0].dependents.push("t2");
+        raw.tasks[1].dependencies = [];
+        const planner = deepFreeze(raw);
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === validatorErrorCodes.PLANNER_ASYMMETRIC_EDGE));
+    });
+
+    test("8. Rejects invalid statuses", () => {
+        const raw = JSON.parse(JSON.stringify(getSampleValidPlanner()));
+        raw.tasks[0].status = "RUNNING"; // invalid status
+        const planner = deepFreeze(raw);
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === validatorErrorCodes.PLANNER_INVALID_STATUS));
+    });
+
+    test("9. Rejects non-frozen planners", () => {
+        const planner = JSON.parse(JSON.stringify(getSampleValidPlanner()));
+        // Not frozen
+        const res = validatePlanner(planner);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === validatorErrorCodes.PLANNER_INVALID_STRUCTURE));
+    });
+
+    test("10. Validation is deterministic, pure, and does not mutate planner parameter", () => {
+        const planner = getSampleValidPlanner();
+        const original = deepClone(planner);
+
+        const res1 = validatePlanner(planner);
+        const res2 = validatePlanner(planner);
+
+        assert.deepStrictEqual(res1, res2);
+        assert.deepStrictEqual(planner, original);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

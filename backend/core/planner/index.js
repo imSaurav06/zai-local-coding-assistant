@@ -4,6 +4,7 @@ const { createPlanner, PLANNER_MODEL_VERSION } = require("./plannerModel");
 const { plannerErrorCodes } = require("./plannerErrors");
 const { createExecutionPlan, topologyErrorCodes } = require("./plannerTopology");
 const { buildReadyQueue, readyErrorCodes } = require("./plannerReadyQueue");
+const { validatePlanner, validatorErrorCodes } = require("./plannerValidator");
 
 module.exports = {
     createPlanner,
@@ -12,5 +13,7 @@ module.exports = {
     createExecutionPlan,
     topologyErrorCodes,
     buildReadyQueue,
-    readyErrorCodes
+    readyErrorCodes,
+    validatePlanner,
+    validatorErrorCodes
 };
