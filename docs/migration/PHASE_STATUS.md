@@ -7,8 +7,8 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 ## Migration Status Summary
 
 *   **Current Phase**: PHASE 7 (VFS File Operations)
-*   **Current Task Pack**: 7A (Transactional VFS Domain Model)
-*   **Overall Status**: IN_PROGRESS (Task Pack 7A Complete)
+*   **Current Task Pack**: 7B (Transaction Management)
+*   **Overall Status**: IN_PROGRESS (Task Packs 7A & 7B Complete)
 
 ---
 
@@ -547,7 +547,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 446 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review Phase 7A report. Proceed to Task Pack 7B (VFS Transaction Management) in the next session.
+- **Next Action**: STOP. Review Phase 7A report. Proceed to Task Pack 7B (Transaction Management) in the next session.
+
+### Task Pack 7B: Transaction Management
+- **Status**: DONE
+- **Started At**: 2026-07-17T07:53:00+05:30
+- **Completed At**: 2026-07-17T08:01:00+05:30
+- **Files Created**: `backend/core/vfs/vfsTransaction.js`, `docs/migration/PHASE_7B_VFS_TRANSACTION.md`
+- **Files Changed**: `backend/core/vfs/vfsModel.js`, `backend/core/vfs/vfsErrors.js`, `backend/core/vfs/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **VFS Transaction Management**: Implemented begin, commit, and rollback transaction operations. Committing clears snapshots and buffered operations. Rolling back restores snapshots and clears operations. All functions clone inputs and deeply freeze outputs.
+- **Tests Added**: 11 unit tests in `run_tests.js` (Phase 7B suite) verifying transaction activation, nested start rejections, successful commits and rollbacks, inactive operation rejections, operations clearing, deep immutability, determinism, and input parameters non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 457 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 7B report. Proceed to Task Pack 7C (VFS File Modification Operations) in the next session.
 
 ---
 
@@ -561,7 +575,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 4** | TaskGraph / Simple DAG Planner | **DONE** (All Task Packs 4A–4F Complete) | 2026-07-17 |
 | **Phase 5** | Durable Checkpoints + Resume | **DONE** (All Task Packs 5A–5E Complete) | 2026-07-17 |
 | **Phase 6** | ContextBuilder | **DONE** (All Task Packs 6A–6D Complete) | 2026-07-17 |
-| **Phase 7** | Structured / Transaction VFS File Operations | **IN_PROGRESS** (Task Pack 7A Complete) | TBD |
+| **Phase 7** | Structured / Transaction VFS File Operations | **IN_PROGRESS** (Task Packs 7A & 7B Complete) | TBD |
 | **Phase 8** | Incremental Verification Engine | NOT_STARTED | TBD |
 | **Phase 9** | Bounded Targeted Repair | NOT_STARTED | TBD |
 | **Phase 10** | AIProviderGateway Hardening | NOT_STARTED | TBD |

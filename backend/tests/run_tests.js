@@ -7155,7 +7155,7 @@ suite("Transactional VFS Domain Model (Phase 7A)", () => {
         assert.strictEqual(res.vfs.metadata.vfsVersion, VFS_MODEL_VERSION);
         assert.strictEqual(res.vfs.metadata.createdBy, "vfs");
         assert.strictEqual(res.vfs.operations.length, 0);
-        assert.strictEqual(res.vfs.transaction.active, true);
+        assert.strictEqual(res.vfs.transaction.active, false);
         assert.strictEqual(res.vfs.files.length, 2);
     });
 
@@ -7200,6 +7200,159 @@ suite("Transactional VFS Domain Model (Phase 7A)", () => {
         createVirtualFileSystem(files);
         
         assert.deepStrictEqual(files, originalFiles);
+    });
+});
+
+suite("VFS Transaction Management (Phase 7B)", () => {
+    const {
+        createVirtualFileSystem,
+        beginTransaction,
+        commitTransaction,
+        rollbackTransaction,
+        vfsErrorCodes
+    } = require(path.join(backendRoot, "core/vfs"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleVfs = () => {
+        const files = [
+            { path: "src/index.js", language: "javascript", content: "console.log(1);" }
+        ];
+        const res = createVirtualFileSystem(files);
+        return res.vfs;
+    };
+
+    test("1. beginTransaction activates transaction", () => {
+        const vfs = getSampleVfs();
+        assert.strictEqual(vfs.transaction.active, false);
+
+        const res = beginTransaction(vfs);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.vfs.transaction.active, true);
+        assert.ok(Array.isArray(res.vfs.transaction.snapshot));
+        assert.deepStrictEqual(res.vfs.transaction.snapshot, vfs.files);
+    });
+
+    test("2. Nested beginTransaction rejected", () => {
+        const vfs = getSampleVfs();
+        const res1 = beginTransaction(vfs);
+        assert.strictEqual(res1.success, true);
+
+        // Try beginning transaction again on active VFS
+        const res2 = beginTransaction(res1.vfs);
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, vfsErrorCodes.VFS_TRANSACTION_ALREADY_ACTIVE);
+    });
+
+    test("3. commitTransaction succeeds", () => {
+        const vfs = getSampleVfs();
+        const resBegin = beginTransaction(vfs);
+        assert.strictEqual(resBegin.success, true);
+
+        const resCommit = commitTransaction(resBegin.vfs);
+        assert.strictEqual(resCommit.success, true);
+        assert.strictEqual(resCommit.vfs.transaction.active, false);
+        assert.strictEqual(resCommit.vfs.transaction.snapshot, undefined);
+    });
+
+    test("4. rollbackTransaction restores snapshot", () => {
+        const vfs = getSampleVfs();
+        const resBegin = beginTransaction(vfs);
+        assert.strictEqual(resBegin.success, true);
+
+        // Mutate files list in a cloned version to simulate edits (VFS operations)
+        const activeVfs = resBegin.vfs;
+        const modifiedVfs = JSON.parse(JSON.stringify(activeVfs));
+        modifiedVfs.files[0].content = "modified content";
+
+        const resRollback = rollbackTransaction(modifiedVfs);
+        assert.strictEqual(resRollback.success, true);
+        assert.strictEqual(resRollback.vfs.transaction.active, false);
+        assert.strictEqual(resRollback.vfs.transaction.snapshot, undefined);
+        assert.deepStrictEqual(resRollback.vfs.files, vfs.files); // restored to original
+    });
+
+    test("5. commit without active transaction rejected", () => {
+        const vfs = getSampleVfs();
+        const res = commitTransaction(vfs);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_TRANSACTION_NOT_ACTIVE);
+    });
+
+    test("6. rollback without active transaction rejected", () => {
+        const vfs = getSampleVfs();
+        const res = rollbackTransaction(vfs);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_TRANSACTION_NOT_ACTIVE);
+    });
+
+    test("7. Buffered operations cleared after commit", () => {
+        const vfs = getSampleVfs();
+        const resBegin = beginTransaction(vfs);
+        assert.strictEqual(resBegin.success, true);
+
+        // Add dummy operations
+        const activeVfs = resBegin.vfs;
+        const modifiedVfs = JSON.parse(JSON.stringify(activeVfs));
+        modifiedVfs.operations = [{ type: "WRITE", path: "src/index.js" }];
+
+        const resCommit = commitTransaction(modifiedVfs);
+        assert.strictEqual(resCommit.success, true);
+        assert.strictEqual(resCommit.vfs.operations.length, 0); // cleared
+    });
+
+    test("8. Buffered operations cleared after rollback", () => {
+        const vfs = getSampleVfs();
+        const resBegin = beginTransaction(vfs);
+        assert.strictEqual(resBegin.success, true);
+
+        // Add dummy operations
+        const activeVfs = resBegin.vfs;
+        const modifiedVfs = JSON.parse(JSON.stringify(activeVfs));
+        modifiedVfs.operations = [{ type: "WRITE", path: "src/index.js" }];
+
+        const resRollback = rollbackTransaction(modifiedVfs);
+        assert.strictEqual(resRollback.success, true);
+        assert.strictEqual(resRollback.vfs.operations.length, 0); // cleared
+    });
+
+    test("9. Deep immutability preserved", () => {
+        const vfs = getSampleVfs();
+        const resBegin = beginTransaction(vfs);
+        assert.ok(Object.isFrozen(resBegin.vfs));
+        assert.ok(Object.isFrozen(resBegin.vfs.transaction));
+        assert.ok(Object.isFrozen(resBegin.vfs.transaction.snapshot));
+
+        const resCommit = commitTransaction(resBegin.vfs);
+        assert.ok(Object.isFrozen(resCommit.vfs));
+
+        const resRollback = rollbackTransaction(resBegin.vfs);
+        assert.ok(Object.isFrozen(resRollback.vfs));
+    });
+
+    test("10. Deterministic behavior", () => {
+        const vfs = getSampleVfs();
+        const resBegin1 = beginTransaction(vfs);
+        const resBegin2 = beginTransaction(vfs);
+        assert.deepStrictEqual(resBegin1, resBegin2);
+    });
+
+    test("11. No caller mutation", () => {
+        const vfs = getSampleVfs();
+        const originalVfs = deepClone(vfs);
+
+        beginTransaction(vfs);
+        assert.deepStrictEqual(vfs, originalVfs);
+
+        const resBegin = beginTransaction(vfs);
+        const activeVfs = resBegin.vfs;
+        const originalActive = deepClone(activeVfs);
+
+        commitTransaction(activeVfs);
+        assert.deepStrictEqual(activeVfs, originalActive);
+
+        rollbackTransaction(activeVfs);
+        assert.deepStrictEqual(activeVfs, originalActive);
     });
 });
 

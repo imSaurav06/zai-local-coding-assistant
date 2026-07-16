@@ -145,7 +145,7 @@ function createVirtualFileSystem(files) {
             files: validatedFiles,
             operations: [],
             transaction: {
-                active: true
+                active: false
             }
         };
 
