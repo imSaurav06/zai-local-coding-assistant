@@ -1,0 +1,12 @@
+"use strict";
+
+const plannerErrorCodes = Object.freeze({
+    PLANNER_INVALID_INPUT: "PLANNER_INVALID_INPUT",
+    PLANNER_INVALID_GRAPH: "PLANNER_INVALID_GRAPH",
+    PLANNER_DUPLICATE_TASK: "PLANNER_DUPLICATE_TASK",
+    PLANNER_INTERNAL_ERROR: "PLANNER_INTERNAL_ERROR"
+});
+
+module.exports = {
+    plannerErrorCodes
+};

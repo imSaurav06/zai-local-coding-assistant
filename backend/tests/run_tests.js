@@ -5446,6 +5446,127 @@ suite("TaskGraph Pipeline Integration (Phase 3E)", () => {
     });
 });
 
+suite("Planner Domain Model (Phase 4A)", () => {
+    const { createPlanner, PLANNER_MODEL_VERSION, plannerErrorCodes } = require(path.join(backendRoot, "core/planner"));
+
+    const getSampleTaskGraph = () => ({
+        graphVersion: "1.0",
+        metadata: {
+            graphVersion: "1.0",
+            identityVersion: "1.0",
+            createdBy: "taskGraphBuilder"
+        },
+        nodes: [
+            {
+                stableId: "req_be",
+                displayId: "REQ-001",
+                kind: "backend",
+                semanticKey: "Express",
+                status: "PENDING",
+                dependencies: [],
+                dependents: ["req_fe"],
+                metadata: { sourcePath: "backend" },
+                payload: {}
+            },
+            {
+                stableId: "req_fe",
+                displayId: "REQ-002",
+                kind: "frontend",
+                semanticKey: "React",
+                status: "PENDING",
+                dependencies: ["req_be"],
+                dependents: [],
+                metadata: { sourcePath: "frontend" },
+                payload: {}
+            }
+        ]
+    });
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    test("1. Rejects invalid non-object inputs", () => {
+        const res1 = createPlanner(null);
+        assert.strictEqual(res1.success, false);
+        assert.strictEqual(res1.errors[0].code, plannerErrorCodes.PLANNER_INVALID_INPUT);
+
+        const res2 = createPlanner(undefined);
+        assert.strictEqual(res2.success, false);
+
+        const res3 = createPlanner("not-a-graph");
+        assert.strictEqual(res3.success, false);
+    });
+
+    test("2. Rejects invalid TaskGraph structures", () => {
+        const invalidGraph = { graphVersion: "1.0" }; // missing nodes & metadata
+        const res = createPlanner(invalidGraph);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, plannerErrorCodes.PLANNER_INVALID_GRAPH);
+    });
+
+    test("3. Rejects duplicate task stableId or displayId keys", () => {
+        const graph = getSampleTaskGraph();
+        graph.nodes[1].stableId = graph.nodes[0].stableId; // duplicate stableId
+        const res = createPlanner(graph);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, plannerErrorCodes.PLANNER_DUPLICATE_TASK);
+    });
+
+    test("4. Instantiates PENDING status, ready=false, and blocked=false by default", () => {
+        const graph = getSampleTaskGraph();
+        const res = createPlanner(graph);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.planner.version, PLANNER_MODEL_VERSION);
+
+        const tasks = res.planner.tasks;
+        assert.strictEqual(tasks.length, 2);
+        
+        tasks.forEach(task => {
+            assert.strictEqual(task.status, "PENDING");
+            assert.strictEqual(task.ready, false);
+            assert.strictEqual(task.blocked, false);
+        });
+    });
+
+    test("5. Populates correct metadata mapping", () => {
+        const graph = getSampleTaskGraph();
+        const res = createPlanner(graph);
+        assert.strictEqual(res.success, true);
+        
+        const metadata = res.planner.metadata;
+        assert.strictEqual(metadata.plannerVersion, PLANNER_MODEL_VERSION);
+        assert.strictEqual(metadata.graphVersion, graph.graphVersion);
+        assert.strictEqual(metadata.identityVersion, graph.metadata.identityVersion);
+        assert.strictEqual(metadata.createdBy, "planner");
+    });
+
+    test("6. Planner data structures are deeply frozen and immutable", () => {
+        const graph = getSampleTaskGraph();
+        const res = createPlanner(graph);
+        assert.strictEqual(res.success, true);
+
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.planner));
+        assert.ok(Object.isFrozen(res.planner.metadata));
+        assert.ok(Object.isFrozen(res.planner.tasks));
+        assert.ok(Object.isFrozen(res.planner.tasks[0]));
+        assert.ok(Object.isFrozen(res.planner.tasks[0].dependencies));
+    });
+
+    test("7. Planner creation is stateless and pure", () => {
+        const graph = getSampleTaskGraph();
+        const res1 = createPlanner(graph);
+        const res2 = createPlanner(graph);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("8. Caller taskGraph input parameters are never mutated", () => {
+        const graph = getSampleTaskGraph();
+        const original = deepClone(graph);
+        createPlanner(graph);
+        assert.deepStrictEqual(graph, original);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

@@ -18,35 +18,40 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ### 2. Current Migration State
 
-*   **CURRENT PHASE**: PHASE 3 (Architecture / DB / API / Auth / Deployment Contracts)
-*   **CURRENT TASK PACK**: 3F (Final Architecture Audit)
-*   **LAST COMPLETED TASK PACK**: 3F (Final Architecture Audit)
-*   **Overall Status**: DONE (All Task Packs 3A–3F Complete)
+*   **CURRENT PHASE**: PHASE 4 (TaskGraph / Simple DAG Planner)
+*   **CURRENT TASK PACK**: 4A (Planner Domain Model)
+*   **LAST COMPLETED TASK PACK**: 4A (Planner Domain Model)
+*   **Overall Status**: IN_PROGRESS (Task Pack 4A Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 3F**:
-  - `docs/migration/PHASE_3_FINAL_ARCHITECTURE_AUDIT.md` (Design doc)
-- **FILES CHANGED BY 3F**:
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 3/3F)
+- **FILES CREATED BY 4A**:
+  - `backend/core/planner/index.js` (Exports createPlanner & PLANNER_MODEL_VERSION)
+  - `backend/core/planner/plannerModel.js` (Creator code and freezer logic)
+  - `backend/core/planner/plannerErrors.js` (Planner error taxonomy)
+  - `docs/migration/PHASE_4A_PLANNER_MODEL.md` (Design doc)
+- **FILES CHANGED BY 4A**:
+  - `backend/tests/run_tests.js` (Added 8 Planner Model unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4A)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T03:45:00+05:30
-- **TEST RESULTS**: 343 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 7 unit tests added under the suite `TaskGraph Pipeline Integration (Phase 3E)`, covering:
-  - TaskGraph Builder executes once in preparation pipeline
-  - TaskGraph Validator executes once in preparation pipeline
-  - Builder failure halts preparation and throws correct error code
-  - Validator failure halts preparation and throws correct error code
-  - TaskGraph remains frozen in preparation result
-  - TaskGraph never reaches persistence adapter
-  - TaskGraph sidecar is not returned by public orchestrateGeneration result
+- **TESTS LAST RUN**: 2026-07-17T04:10:00+05:30
+- **TEST RESULTS**: 351 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 8 unit tests added under the suite `Planner Domain Model (Phase 4A)`, covering:
+  - Rejects invalid non-object inputs
+  - Rejects invalid TaskGraph structures
+  - Rejects duplicate task stableId or displayId keys
+  - Instantiates PENDING status, ready=false, and blocked=false by default
+  - Populates correct metadata mapping
+  - Planner data structures are deeply frozen and immutable
+  - Planner creation is stateless and pure
+  - Caller taskGraph input parameters are never mutated
   - Rejects broken references (dependencies pointing to non-existent nodes)
   - Cycle detection correctly rejects graphs with cyclic dependencies
   - Validation is deterministic and does not mutate graph parameters
@@ -102,11 +107,12 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 3F is complete. Review `PHASE_3_FINAL_ARCHITECTURE_AUDIT.md` before starting the next Phase (Phase 4 TaskGraph / Simple DAG Planner) in the next session.
+Task Pack 4A is complete. Review `PHASE_4A_PLANNER_MODEL.md` before starting the next Task Pack 4B (Simple DAG Planner Builder) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_3_FINAL_ARCHITECTURE_AUDIT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_3_FINAL_ARCHITECTURE_AUDIT.md)
-- [PHASE_STATUS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_STATUS.md)
+- [PHASE_4A_PLANNER_MODEL.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4A_PLANNER_MODEL.md)
+- [plannerModel.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/planner/plannerModel.js)
+- [run_tests.js Phase 4A suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5449)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
@@ -120,5 +126,6 @@ Task Pack 3F is complete. Review `PHASE_3_FINAL_ARCHITECTURE_AUDIT.md` before st
 - RTM builder semantics (`backend/core/rtm/rtmBuilder.js`).
 - RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
 - TaskGraph structures (`backend/core/taskGraph/`).
+- Planner structure (`backend/core/planner/`).
 
-**STOP CONDITIONS**: Do not start Phase 4 in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 4B in this session. Do not commit or push changes.
