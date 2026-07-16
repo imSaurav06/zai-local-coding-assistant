@@ -342,7 +342,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 351 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review Phase 4A report. Proceed to Task Pack 4B (Simple DAG Planner Builder) in the next session.
+- **Next Action**: STOP. Review Phase 4A report. Proceed to Task Pack 4B (Topological Planner Foundation).
+
+### Task Pack 4B: Topological Planner Foundation
+- **Status**: DONE
+- **Started At**: 2026-07-17T04:15:00+05:30
+- **Completed At**: 2026-07-17T04:25:00+05:30
+- **Files Created**: `backend/core/planner/plannerTopology.js`, `docs/migration/PHASE_4B_PLANNER_TOPOLOGY.md`
+- **Files Changed**: `backend/core/planner/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Topological Planner**: Implemented Kahn's Algorithm sorting sibling nodes by displayId to compute deterministic execution orders.
+- **Tests Added**: 6 unit tests in `run_tests.js` (Phase 4B suite) verifying simple DAG ordering, multiple roots displayId resolution, diamond ordering, independent path sorts, cycles rejection, and input non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 357 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 4B report. Proceed to Task Pack 4C (Planner Pipeline Integration) in the next session.
 
 ---
 
@@ -353,7 +367,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | **DONE** (All Task Packs 1A–1E Complete) | 2026-07-17 |
 | **Phase 2** | Requirement Validator + RTM-Lite | **DONE** (All Task Packs 2A–2F Complete) | 2026-07-17 |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
-| **Phase 4** | TaskGraph / Simple DAG Planner | **IN_PROGRESS** (Task Pack 4A Complete) | TBD |
+| **Phase 4** | TaskGraph / Simple DAG Planner | **IN_PROGRESS** (Task Packs 4A & 4B Complete) | TBD |
 | **Phase 5** | Durable Checkpoints + Resume | NOT_STARTED | TBD |
 | **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |

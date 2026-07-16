@@ -19,35 +19,36 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 4 (TaskGraph / Simple DAG Planner)
-*   **CURRENT TASK PACK**: 4A (Planner Domain Model)
-*   **LAST COMPLETED TASK PACK**: 4A (Planner Domain Model)
-*   **Overall Status**: IN_PROGRESS (Task Pack 4A Complete)
+*   **CURRENT TASK PACK**: 4B (Topological Planner Foundation)
+*   **LAST COMPLETED TASK PACK**: 4B (Topological Planner Foundation)
+*   **Overall Status**: IN_PROGRESS (Task Packs 4A & 4B Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 4A**:
-  - `backend/core/planner/index.js` (Exports createPlanner & PLANNER_MODEL_VERSION)
-  - `backend/core/planner/plannerModel.js` (Creator code and freezer logic)
-  - `backend/core/planner/plannerErrors.js` (Planner error taxonomy)
-  - `docs/migration/PHASE_4A_PLANNER_MODEL.md` (Design doc)
-- **FILES CHANGED BY 4A**:
-  - `backend/tests/run_tests.js` (Added 8 Planner Model unit tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4A)
+- **FILES CREATED BY 4B**:
+  - `backend/core/planner/plannerTopology.js` (Deterministic Kahn's algorithm engine)
+  - `docs/migration/PHASE_4B_PLANNER_TOPOLOGY.md` (Design doc)
+- **FILES CHANGED BY 4B**:
+  - `backend/core/planner/index.js` (Exports createExecutionPlan & topologyErrorCodes)
+  - `backend/tests/run_tests.js` (Added 6 Topological Planner unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4B)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T04:10:00+05:30
-- **TEST RESULTS**: 351 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 8 unit tests added under the suite `Planner Domain Model (Phase 4A)`, covering:
-  - Rejects invalid non-object inputs
-  - Rejects invalid TaskGraph structures
-  - Rejects duplicate task stableId or displayId keys
-  - Instantiates PENDING status, ready=false, and blocked=false by default
+- **TESTS LAST RUN**: 2026-07-17T04:25:00+05:30
+- **TEST RESULTS**: 357 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 6 unit tests added under the suite `Topological Planner Foundation (Phase 4B)`, covering:
+  - Correctly orders a simple Directed Acyclic Graph (DAG)
+  - Deterministically resolves sibling branches with multiple roots via displayId sorting
+  - Correctly orders a diamond graph structure
+  - Deterministically schedules multiple independent branches
+  - Rejects graph cycles with PLANNER_TOPOLOGY_CYCLE
+  - Creation is deterministic, pure, and does not mutate planner parameters
   - Populates correct metadata mapping
   - Planner data structures are deeply frozen and immutable
   - Planner creation is stateless and pure
@@ -107,12 +108,12 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 4A is complete. Review `PHASE_4A_PLANNER_MODEL.md` before starting the next Task Pack 4B (Simple DAG Planner Builder) in the next session.
+Task Pack 4B is complete. Review `PHASE_4B_PLANNER_TOPOLOGY.md` before starting the next Task Pack 4C (Planner Pipeline Integration) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_4A_PLANNER_MODEL.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4A_PLANNER_MODEL.md)
-- [plannerModel.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/planner/plannerModel.js)
-- [run_tests.js Phase 4A suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5449)
+- [PHASE_4B_PLANNER_TOPOLOGY.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4B_PLANNER_TOPOLOGY.md)
+- [plannerTopology.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/planner/plannerTopology.js)
+- [run_tests.js Phase 4B suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5570)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
@@ -126,6 +127,6 @@ Task Pack 4A is complete. Review `PHASE_4A_PLANNER_MODEL.md` before starting the
 - RTM builder semantics (`backend/core/rtm/rtmBuilder.js`).
 - RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
 - TaskGraph structures (`backend/core/taskGraph/`).
-- Planner structure (`backend/core/planner/`).
+- Planner structure (`backend/core/planner/`) outside of topological sorting functions.
 
-**STOP CONDITIONS**: Do not start Task Pack 4B in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 4C in this session. Do not commit or push changes.

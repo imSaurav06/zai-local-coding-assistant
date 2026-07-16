@@ -5567,6 +5567,117 @@ suite("Planner Domain Model (Phase 4A)", () => {
     });
 });
 
+suite("Topological Planner Foundation (Phase 4B)", () => {
+    const { createExecutionPlan, topologyErrorCodes } = require(path.join(backendRoot, "core/planner"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    // Helper to construct a basic mock planner structure
+    const createMockPlanner = (tasks) => ({
+        version: "1.0",
+        metadata: {
+            plannerVersion: "1.0",
+            graphVersion: "1.0",
+            identityVersion: "1.0",
+            createdBy: "planner"
+        },
+        tasks
+    });
+
+    test("1. Correctly orders a simple Directed Acyclic Graph (DAG)", () => {
+        const tasks = [
+            { stableId: "req_be", displayId: "REQ-001", kind: "backend", dependencies: [], dependents: ["req_fe"] },
+            { stableId: "req_fe", displayId: "REQ-002", kind: "frontend", dependencies: ["req_be"], dependents: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = createExecutionPlan(planner);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.executionOrder, ["req_be", "req_fe"]);
+    });
+
+    test("2. Deterministically resolves sibling branches with multiple roots via displayId sorting", () => {
+        // req_be1 (REQ-002) and req_be2 (REQ-001) both have 0 in-degree. REQ-001 must come first.
+        const tasks = [
+            { stableId: "req_be1", displayId: "REQ-002", kind: "backend", dependencies: [], dependents: ["req_fe"] },
+            { stableId: "req_be2", displayId: "REQ-001", kind: "backend", dependencies: [], dependents: ["req_fe"] },
+            { stableId: "req_fe", displayId: "REQ-003", kind: "frontend", dependencies: ["req_be1", "req_be2"], dependents: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = createExecutionPlan(planner);
+        assert.strictEqual(res.success, true);
+        // REQ-001 ("req_be2") must precede REQ-002 ("req_be1")
+        assert.deepStrictEqual(res.executionOrder, ["req_be2", "req_be1", "req_fe"]);
+    });
+
+    test("3. Correctly orders a diamond graph structure", () => {
+        //            REQ-001 (Root)
+        //            /            \
+        // REQ-002 (Left)        REQ-003 (Right)
+        //            \            /
+        //            REQ-004 (Sink)
+        const tasks = [
+            { stableId: "root", displayId: "REQ-001", kind: "backend", dependencies: [], dependents: ["left", "right"] },
+            { stableId: "left", displayId: "REQ-002", kind: "backend", dependencies: ["root"], dependents: ["sink"] },
+            { stableId: "right", displayId: "REQ-003", kind: "backend", dependencies: ["root"], dependents: ["sink"] },
+            { stableId: "sink", displayId: "REQ-004", kind: "frontend", dependencies: ["left", "right"], dependents: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = createExecutionPlan(planner);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.executionOrder, ["root", "left", "right", "sink"]);
+    });
+
+    test("4. Deterministically schedules multiple independent branches", () => {
+        // Two independent paths:
+        // Path A: A1 (REQ-002) -> A2 (REQ-004)
+        // Path B: B1 (REQ-001) -> B2 (REQ-003)
+        // Sibling sorting order should sort all ready nodes at any iteration:
+        // Iteration 1: Ready list: [B1 (REQ-001), A1 (REQ-002)]. Sorts to [B1, A1]. Select B1.
+        // Iteration 2: Ready list: [A1 (REQ-002), B2 (REQ-003)]. Sorts to [A1, B2]. Select A1.
+        // Iteration 3: Ready list: [B2 (REQ-003), A2 (REQ-004)]. Sorts to [B2, A2]. Select B2.
+        // Iteration 4: Ready list: [A2 (REQ-004)]. Select A2.
+        // Execution order: [B1, A1, B2, A2] -> ["b1", "a1", "b2", "a2"]
+        const tasks = [
+            { stableId: "a1", displayId: "REQ-002", kind: "backend", dependencies: [], dependents: ["a2"] },
+            { stableId: "a2", displayId: "REQ-004", kind: "frontend", dependencies: ["a1"], dependents: [] },
+            { stableId: "b1", displayId: "REQ-001", kind: "backend", dependencies: [], dependents: ["b2"] },
+            { stableId: "b2", displayId: "REQ-003", kind: "frontend", dependencies: ["b1"], dependents: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = createExecutionPlan(planner);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.executionOrder, ["b1", "a1", "b2", "a2"]);
+    });
+
+    test("5. Rejects graph cycles with PLANNER_TOPOLOGY_CYCLE", () => {
+        // A -> B -> A
+        const tasks = [
+            { stableId: "a", displayId: "REQ-001", kind: "backend", dependencies: ["b"], dependents: ["b"] },
+            { stableId: "b", displayId: "REQ-002", kind: "backend", dependencies: ["a"], dependents: ["a"] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const res = createExecutionPlan(planner);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, topologyErrorCodes.PLANNER_TOPOLOGY_CYCLE);
+    });
+
+    test("6. Creation is deterministic, pure, and does not mutate planner parameters", () => {
+        const tasks = [
+            { stableId: "a", displayId: "REQ-002", kind: "backend", dependencies: [], dependents: [] },
+            { stableId: "b", displayId: "REQ-001", kind: "backend", dependencies: [], dependents: [] }
+        ];
+        const planner = createMockPlanner(tasks);
+        const originalPlanner = deepClone(planner);
+
+        const res1 = createExecutionPlan(planner);
+        const res2 = createExecutionPlan(planner);
+
+        assert.deepStrictEqual(res1, res2);
+        assert.deepStrictEqual(planner, originalPlanner);
+        assert.ok(Object.isFrozen(res1));
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
