@@ -7,55 +7,109 @@ const { validateProjectFiles } = require("./validationProfiles");
 const { repairAffectedFiles } = require("./targetedRepairService");
 const { compileProjectSpec, validateProjectSpec } = require("../core/projectSpec");
 const { deriveRequirementIdentities } = require("../core/requirements");
+const { buildRTM, validateRTM } = require("../core/rtm");
+const { buildTaskGraph, validateTaskGraph } = require("../core/taskGraph");
 
 // Internal tracing hooks for unit testing only
 const _testHooks = {
     compileProjectSpec,
-    deriveRequirementIdentities
+    deriveRequirementIdentities,
+    buildRTM,
+    validateRTM,
+    buildTaskGraph,
+    validateTaskGraph,
+    buildRTMCallCount: 0,
+    validateRTMCallCount: 0,
+    buildTaskGraphCallCount: 0,
+    validateTaskGraphCallCount: 0
 };
 
 /**
- * Orchestrates compilation and identity derivation exactly once per run.
+ * Orchestrates compilation, identity derivation, RTM construction and RTM validation exactly once per run.
  */
 function prepareCanonicalProjectSpec(legacyPayload) {
+    let canonicalSpec;
+    let identityResult;
+
     // If input is already a deeply frozen canonical ProjectSpec, skip compilation to avoid double-compilation.
     if (legacyPayload && Object.isFrozen(legacyPayload) && legacyPayload.schemaVersion === "1.0") {
         const validation = validateProjectSpec(legacyPayload);
         if (validation.success) {
-            const identityResult = _testHooks.deriveRequirementIdentities(legacyPayload);
+            canonicalSpec = legacyPayload;
+            identityResult = _testHooks.deriveRequirementIdentities(legacyPayload);
             if (!identityResult.success) {
                 const err = new Error("Requirement Identity derivation failed: " + (identityResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
                 err.code = "PROJECT_PREPARATION_IDENTITY_FAILED";
                 err.errors = identityResult.errors;
                 throw err;
             }
-            return {
-                projectSpec: legacyPayload,
-                requirementIdentity: identityResult
-            };
         }
     }
 
-    const compilation = _testHooks.compileProjectSpec(legacyPayload);
-    if (!compilation.success) {
-        const err = new Error("ProjectSpec compilation failed: " + (compilation.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
-        err.code = "PROJECT_PREPARATION_COMPILE_FAILED";
-        err.errors = compilation.errors;
+    if (!canonicalSpec) {
+        const compilation = _testHooks.compileProjectSpec(legacyPayload);
+        if (!compilation.success) {
+            const err = new Error("ProjectSpec compilation failed: " + (compilation.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+            err.code = "PROJECT_PREPARATION_COMPILE_FAILED";
+            err.errors = compilation.errors;
+            throw err;
+        }
+
+        canonicalSpec = compilation.value;
+        identityResult = _testHooks.deriveRequirementIdentities(canonicalSpec);
+        if (!identityResult.success) {
+            const err = new Error("Requirement Identity derivation failed: " + (identityResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+            err.code = "PROJECT_PREPARATION_IDENTITY_FAILED";
+            err.errors = identityResult.errors;
+            throw err;
+        }
+    }
+
+    // Connect RTM Builder
+    _testHooks.buildRTMCallCount++;
+    const rtmResult = _testHooks.buildRTM(identityResult.requirements);
+    if (!rtmResult.success) {
+        const err = new Error("RTM construction failed: " + (rtmResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_RTM_BUILD_FAILED";
+        err.errors = rtmResult.errors;
         throw err;
     }
 
-    const canonicalSpec = compilation.value;
-    const identityResult = _testHooks.deriveRequirementIdentities(canonicalSpec);
-    if (!identityResult.success) {
-        const err = new Error("Requirement Identity derivation failed: " + (identityResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
-        err.code = "PROJECT_PREPARATION_IDENTITY_FAILED";
-        err.errors = identityResult.errors;
+    // Connect RTM Validator
+    _testHooks.validateRTMCallCount++;
+    const validationResult = _testHooks.validateRTM(rtmResult);
+    if (!validationResult.success) {
+        const err = new Error("RTM validation failed: " + (validationResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_RTM_VALIDATION_FAILED";
+        err.errors = validationResult.errors;
+        throw err;
+    }
+
+    // Connect TaskGraph Builder
+    _testHooks.buildTaskGraphCallCount++;
+    const taskGraphResult = _testHooks.buildTaskGraph(identityResult.requirements);
+    if (!taskGraphResult.success) {
+        const err = new Error("TaskGraph construction failed: " + (taskGraphResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_TASK_GRAPH_BUILD_FAILED";
+        err.errors = taskGraphResult.errors;
+        throw err;
+    }
+
+    // Connect TaskGraph Validator
+    _testHooks.validateTaskGraphCallCount++;
+    const taskGraphValidationResult = _testHooks.validateTaskGraph(taskGraphResult.graph);
+    if (!taskGraphValidationResult.success) {
+        const err = new Error("TaskGraph validation failed: " + (taskGraphValidationResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_TASK_GRAPH_VALIDATION_FAILED";
+        err.errors = taskGraphValidationResult.errors;
         throw err;
     }
 
     return {
         projectSpec: canonicalSpec,
-        requirementIdentity: identityResult
+        requirementIdentity: identityResult,
+        rtm: rtmResult,
+        taskGraph: taskGraphResult.graph
     };
 }
 

@@ -18,58 +18,46 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ### 2. Current Migration State
 
-*   **CURRENT PHASE**: PHASE 1 (ProjectSpec Foundation + Stable Requirement IDs)
-*   **CURRENT TASK PACK**: 1E (Existing Pipeline Compatibility Integration)
-*   **LAST COMPLETED TASK PACK**: 1E (Existing Pipeline Compatibility Integration)
-*   **Overall Status**: DONE (Phase 1 Complete)
+*   **CURRENT PHASE**: PHASE 3 (Architecture / DB / API / Auth / Deployment Contracts)
+*   **CURRENT TASK PACK**: 3E (TaskGraph Pipeline Integration)
+*   **LAST COMPLETED TASK PACK**: 3E (TaskGraph Pipeline Integration)
+*   **Overall Status**: DONE (Task Packs 3A, 3B, 3C, 3D & 3E Complete)
 
 ---
 
 - **Git Branch**: `main`
-- **Working Tree State**: Unstaged changes in 4 files. No commit or push performed.
-- **PRE-EXISTING MODIFIED FILES**:
-  - `.gitignore` (modified — not related to Phase 1E)
-- **PRE-EXISTING UNTRACKED FILES**:
-  - `.vscode/`
-  - `discovery_report.md`
-  - `discovery_report.pdf`
-- **FILES CHANGED BY 1E**:
-  - `backend/services/generationOrchestrator.js` (Modified — added `prepareCanonicalProjectSpec`, `_testHooks`, 2 new imports, integration call at top of `orchestrateGeneration`, `projectSpec` + `requirementIdentity` in return value)
-  - `backend/controllers/projectController.js` (Modified — added `adaptProjectSpecForPersistence`, changed `Project.create`/`History.create` to use deep-cloned spec, exported adapter)
-  - `backend/tests/run_tests.js` (Modified — added 21 Phase 1E integration tests)
-- **DOCUMENTATION CREATED/UPDATED BY 1E**:
-  - `docs/migration/PHASE_1E_PIPELINE_COMPATIBILITY_INTEGRATION.md` (Created — full integration report)
-  - `docs/migration/PHASE_STATUS.md` (Updated — 1E marked DONE)
-  - `docs/migration/HANDOFF.md` (Updated — this document)
+- **Working Tree State**: Unstaged changes in 5 files (no commit or push performed).
+- **FILES CREATED BY 3E**:
+  - `docs/migration/PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md` (Design doc)
+- **FILES CHANGED BY 3E**:
+  - `backend/services/generationOrchestrator.js` (Pipeline integration)
+  - `backend/core/taskGraph/dependencyRules.js` (Plural kind support mappings)
+  - `backend/tests/run_tests.js` (Added 7 Pipeline Integration unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 3/3E)
+  - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T00:08:00+05:30
-- **TEST RESULTS**: 272 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 21 integration tests added under the suite `Pipeline Integration (Phase 1E)`, covering:
-  - Basic compile/validate/derive flow
-  - Compile failure error code
-  - Immutability and isolation
-  - Consumer compatibility (planner, contracts, manifest)
-  - Stack-selection quirks preservation
-  - Already-canonical bypass (no double-compile)
-  - Exactly-once execution tracking
-  - Compiler failure → zero identity derivation
-  - Persistence adapter strips `schemaVersion`, deep clones
-  - Immutable consumer audit (all production consumers)
-  - Identity failure prevents all side effects
-  - `analyzeRequirements` observable contract unchanged
-  - Pre-1E vs Post-1E `Project.create` shape equivalence
-  - Pre-1E vs Post-1E `History.create` shape equivalence
-  - Public API response shape non-leak
-  - Multi-profile stack selection (MERN, React-Vite, Next.js)
-  - Error propagation: compile failure through `orchestrateGeneration`
-  - Error propagation: identity failure through `orchestrateGeneration`
-  - Requirement Identity sidecar retained in return value
-  - Rollback boundary structural evidence
-  - `adaptProjectSpecForPersistence` null/undefined handling
+- **TESTS LAST RUN**: 2026-07-17T03:45:00+05:30
+- **TEST RESULTS**: 343 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 7 unit tests added under the suite `TaskGraph Pipeline Integration (Phase 3E)`, covering:
+  - TaskGraph Builder executes once in preparation pipeline
+  - TaskGraph Validator executes once in preparation pipeline
+  - Builder failure halts preparation and throws correct error code
+  - Validator failure halts preparation and throws correct error code
+  - TaskGraph remains frozen in preparation result
+  - TaskGraph never reaches persistence adapter
+  - TaskGraph sidecar is not returned by public orchestrateGeneration result
+  - Rejects broken references (dependencies pointing to non-existent nodes)
+  - Cycle detection correctly rejects graphs with cyclic dependencies
+  - Validation is deterministic and does not mutate graph parameters
+  - Builds are stateless, pure, and deterministic
+  - Input parameters are never mutated
+  - Output data structure is deeply frozen and immutable
+  - Creation is stateless, pure, and deterministic
+  - Caller input is never mutated
 - **KNOWN FAILURES**: None.
 - **BLOCKERS**: None.
 
@@ -103,11 +91,11 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ### 6.3 Pipeline Integration
 *   **INTEGRATION FUNCTION**: `prepareCanonicalProjectSpec(legacyPayload)` in `generationOrchestrator.js`
-*   **RETURNS**: `{ projectSpec: frozenCanonicalSpec, requirementIdentity: frozenIdentityResult }`
-*   **ERROR CODES**: `PROJECT_PREPARATION_COMPILE_FAILED`, `PROJECT_PREPARATION_IDENTITY_FAILED`
-*   **PERSISTENCE ADAPTER**: `adaptProjectSpecForPersistence(projectSpec)` in `projectController.js`
+*   **RETURNS**: `{ projectSpec: frozenCanonicalSpec, requirementIdentity: frozenIdentityResult, rtm: frozenRTM }` (RTM is internal-only)
+*   **ERROR CODES**: `PROJECT_PREPARATION_COMPILE_FAILED`, `PROJECT_PREPARATION_IDENTITY_FAILED`, `PROJECT_PREPARATION_RTM_BUILD_FAILED`, `PROJECT_PREPARATION_RTM_VALIDATION_FAILED`
+*   **PERSISTENCE ADAPTER**: `adaptProjectSpecForPersistence(projectSpec)` in `projectController.js` (strips schemaVersion and any sidecar data)
 *   **BOUNDARY**: Top of `orchestrateGeneration()` — before any planning, scaffolding, or AI calls
-*   **SIDECAR**: `requirementIdentity` travels alongside `projectSpec` as a separate return field
+*   **SIDECAR**: `requirementIdentity` and `rtm` travel internally alongside `projectSpec` in memory, but are completely stripped from public database saves and client API responses.
 
 ---
 
@@ -117,20 +105,24 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Phase 1 is complete. Review the full `PHASE_1E_PIPELINE_COMPATIBILITY_INTEGRATION.md` report before designing Phase 2 (Requirement Validator + RTM-Lite).
+Task Pack 3E is complete. Review `PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md` before starting the next Phase (such as Contracts, Scheduling, or Executor systems) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_1E_PIPELINE_COMPATIBILITY_INTEGRATION.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_1E_PIPELINE_COMPATIBILITY_INTEGRATION.md)
-- [generationOrchestrator.js#L1-L60](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js#L1)
-- [projectController.js#L9-L20](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/controllers/projectController.js#L9)
-- [run_tests.js Phase 1E suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L3760)
+- [PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md)
+- [generationOrchestrator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js)
+- [run_tests.js Phase 3E suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5309)
 
 **DO NOT TOUCH**:
-- Existing generation orchestration beyond Phase 1E scope.
+- Existing generation orchestration (`backend/services/generationOrchestrator.js`) outside of preparation functions.
 - Requirements analysis handlers (`backend/services/projectService.js`).
 - Database models (`backend/models/Project.js`, `backend/models/History.js`).
 - Stack selection implementation (`backend/services/stackProfiles.js`).
 - ProjectSpec Compiler semantics (`backend/core/projectSpec/projectSpecCompiler.js`).
 - Requirement Identity semantics (`backend/core/requirements/requirementIdentity.js`).
+- Requirement Classification semantics (`backend/core/requirementsClassification/requirementsClassifier.js`).
+- RTM model semantics (`backend/core/rtm/rtmModel.js`).
+- RTM builder semantics (`backend/core/rtm/rtmBuilder.js`).
+- RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
+- TaskGraph structures (`backend/core/taskGraph/`).
 
-**STOP CONDITIONS**: Do not start Phase 2 in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start any subsequent task pack in this session. Do not commit or push changes.

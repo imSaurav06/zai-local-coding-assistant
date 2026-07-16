@@ -4178,6 +4178,1274 @@ suite("Pipeline Integration (Phase 1E)", () => {
     });
 });
 
+suite("Requirement Classification (Phase 2A)", () => {
+    const { classifyRequirements, classificationErrorCodes } = require(path.join(backendRoot, "core/requirementsClassification"));
+
+    test("1. Rejects invalid non-array input with appropriate error", () => {
+        const results = [
+            classifyRequirements(null),
+            classifyRequirements(undefined),
+            classifyRequirements("not-an-array"),
+            classifyRequirements(123),
+            classifyRequirements({})
+        ];
+
+        results.forEach(res => {
+            assert.strictEqual(res.success, false);
+            assert.strictEqual(res.classifications.length, 0);
+            assert.strictEqual(res.errors[0].code, classificationErrorCodes.CLASSIFICATION_INVALID_INPUT);
+            assert.ok(res.errors[0].message.includes("must be an array"));
+        });
+    });
+
+    test("2. Rejects individual requirements missing critical fields", () => {
+        const input = [
+            { displayId: "REQ-001", stableId: "req_v1_123", kind: "frontend", semanticKey: "key" }, // missing payload
+            { displayId: "REQ-002", stableId: "req_v1_123", kind: "frontend", payload: {} }, // missing semanticKey
+            { displayId: "REQ-003", stableId: "req_v1_123", semanticKey: "key", payload: {} }, // missing kind
+            { displayId: "REQ-004", kind: "frontend", semanticKey: "key", payload: {} }, // missing stableId
+            { stableId: "req_v1_123", kind: "frontend", semanticKey: "key", payload: {} }, // missing displayId
+            null, // null requirement
+            "string-requirement" // invalid type
+        ];
+
+        const res = classifyRequirements(input);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.classifications.length, 0);
+        assert.ok(res.errors.length >= 7);
+        res.errors.forEach(err => {
+            assert.strictEqual(err.code, classificationErrorCodes.CLASSIFICATION_VALIDATION_FAILED);
+        });
+    });
+
+    test("3. Primary category maps strictly by requirement kind", () => {
+        const input = [
+            { stableId: "1", displayId: "REQ-001", kind: "frontend", semanticKey: "key", payload: {} },
+            { stableId: "2", displayId: "REQ-002", kind: "backend", semanticKey: "key", payload: {} },
+            { stableId: "3", displayId: "REQ-003", kind: "database", semanticKey: "key", payload: {} },
+            { stableId: "4", displayId: "REQ-004", kind: "authentication", semanticKey: "key", payload: {} },
+            { stableId: "5", displayId: "REQ-005", kind: "designRequirements", semanticKey: "key", payload: {} },
+            { stableId: "6", displayId: "REQ-006", kind: "deploymentRequirements", semanticKey: "key", payload: {} },
+            { stableId: "7", displayId: "REQ-007", kind: "pageRoute", semanticKey: "key", payload: {} },
+            { stableId: "8", displayId: "REQ-008", kind: "component", semanticKey: "key", payload: {} },
+            { stableId: "9", displayId: "REQ-009", kind: "backendApi", semanticKey: "key", payload: {} },
+            { stableId: "10", displayId: "REQ-010", kind: "integration", semanticKey: "key", payload: {} },
+            { stableId: "11", displayId: "REQ-011", kind: "architectureConstraint", semanticKey: "key", payload: {} },
+            { stableId: "12", displayId: "REQ-012", kind: "unknownKind", semanticKey: "key", payload: {} }
+        ];
+
+        const res = classifyRequirements(input);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.classifications.length, 12);
+        
+        assert.strictEqual(res.classifications[0].primaryCategory, "FRONTEND");
+        assert.strictEqual(res.classifications[1].primaryCategory, "BACKEND");
+        assert.strictEqual(res.classifications[2].primaryCategory, "DATABASE");
+        assert.strictEqual(res.classifications[3].primaryCategory, "AUTH");
+        assert.strictEqual(res.classifications[4].primaryCategory, "DESIGN");
+        assert.strictEqual(res.classifications[5].primaryCategory, "DEPLOYMENT");
+        assert.strictEqual(res.classifications[6].primaryCategory, "ROUTE");
+        assert.strictEqual(res.classifications[7].primaryCategory, "UI");
+        assert.strictEqual(res.classifications[8].primaryCategory, "API");
+        assert.strictEqual(res.classifications[9].primaryCategory, "INTEGRATION");
+        assert.strictEqual(res.classifications[10].primaryCategory, "ARCHITECTURE");
+        assert.strictEqual(res.classifications[11].primaryCategory, "OTHER");
+    });
+
+    test("4. Changing keywords never changes primaryCategory", () => {
+        const input1 = [
+            { stableId: "1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: { purpose: "Display nav bar" } }
+        ];
+        const input2 = [
+            { stableId: "1", displayId: "REQ-001", kind: "component", semanticKey: "LoginForm", payload: { purpose: "Secure auth login with Stripe checkout payment and sendgrid email" } }
+        ];
+
+        const res1 = classifyRequirements(input1);
+        const res2 = classifyRequirements(input2);
+
+        assert.strictEqual(res1.classifications[0].primaryCategory, "UI");
+        assert.strictEqual(res2.classifications[0].primaryCategory, "UI");
+        
+        // However, secondary tags must capture the keywords
+        assert.deepStrictEqual(res1.classifications[0].secondaryTags, []);
+        assert.deepStrictEqual(res2.classifications[0].secondaryTags, ["AUTH", "EMAIL", "PAYMENT"]);
+    });
+
+    test("5. Secondary tags are deterministic, sorted, and unique", () => {
+        // Stripe (PAYMENT), SendGrid (EMAIL), OpenAI (AI), and Login (AUTH)
+        const input = [
+            {
+                stableId: "1",
+                displayId: "REQ-001",
+                kind: "component",
+                semanticKey: "Stripe Payment Banner with sendgrid mailer and login auth and openai gpt chat",
+                payload: {
+                    details: "Stripe, SendGrid, OpenAI GPT, Auth, stripe payment checkout login email sendgrid mail"
+                }
+            }
+        ];
+
+        const res = classifyRequirements(input);
+        assert.strictEqual(res.success, true);
+        
+        const tags = res.classifications[0].secondaryTags;
+        // Verify unique (no duplicates of PAYMENT or EMAIL or AUTH)
+        assert.strictEqual(tags.length, 5); // AUTH, AI, EMAIL, PAYMENT, CHAT (via 'chat')
+        // Verify sorted alphabetically
+        const sortedTags = [...tags].sort();
+        assert.deepStrictEqual(tags, sortedTags);
+    });
+
+    test("6. Output is deeply immutable and frozen", () => {
+        const input = [
+            { stableId: "1", displayId: "REQ-001", kind: "frontend", semanticKey: "React Front", payload: "React" }
+        ];
+
+        const res = classifyRequirements(input);
+        assert.strictEqual(res.success, true);
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.classifications));
+        assert.ok(Object.isFrozen(res.classifications[0]));
+        assert.ok(Object.isFrozen(res.classifications[0].secondaryTags));
+
+        assert.throws(() => {
+            res.success = false;
+        }, TypeError);
+
+        assert.throws(() => {
+            res.classifications.push({});
+        }, TypeError);
+
+        assert.throws(() => {
+            res.classifications[0].primaryCategory = "BACKEND";
+        }, TypeError);
+    });
+
+    test("7. Classification runs are deterministic and identical", () => {
+        const input = [
+            { stableId: "1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: { name: "Navbar", purpose: "Top navigation banner" } },
+            { stableId: "2", displayId: "REQ-002", kind: "backendApi", semanticKey: "POST /api/login", payload: { method: "POST", path: "/api/login", purpose: "Authenticate user" } }
+        ];
+
+        const run1 = classifyRequirements(input);
+        const run2 = classifyRequirements(input);
+
+        assert.deepStrictEqual(run1, run2);
+    });
+});
+
+suite("RTM-Lite Model (Phase 2B)", () => {
+    const { createRTM, rtmErrorCodes, RTM_MODEL_VERSION } = require(path.join(backendRoot, "core/rtm"));
+
+    test("1. Rejects invalid non-array inputs", () => {
+        const results = [
+            createRTM(null),
+            createRTM(undefined),
+            createRTM("string"),
+            createRTM(456),
+            createRTM({})
+        ];
+
+        results.forEach(res => {
+            assert.strictEqual(res.success, false);
+            assert.strictEqual(res.errors[0].code, rtmErrorCodes.RTM_INVALID_INPUT);
+            assert.ok(res.errors[0].message.includes("must be an array"));
+        });
+    });
+
+    test("2. Rejects individual requirements missing required fields", () => {
+        const input = [
+            { displayId: "REQ-001", stableId: "req_1", kind: "component", semanticKey: "Navbar" }, // missing payload
+            { stableId: "req_2", kind: "component", semanticKey: "Navbar", payload: {} } // missing displayId
+        ];
+
+        const res = createRTM(input);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.length >= 2);
+        res.errors.forEach(err => {
+            assert.strictEqual(err.code, rtmErrorCodes.RTM_INVALID_REQUIREMENT);
+            assert.ok(err.message.includes("missing required field"));
+        });
+    });
+
+    test("3. Detects duplicate stableId and rejects creation", () => {
+        const input = [
+            { stableId: "dup_id", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} },
+            { stableId: "dup_id", displayId: "REQ-002", kind: "component", semanticKey: "Button", payload: {} }
+        ];
+
+        const res = createRTM(input);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, rtmErrorCodes.RTM_DUPLICATE_REQUIREMENT);
+        assert.ok(res.errors[0].message.includes("Duplicate requirement stableId"));
+    });
+
+    test("4. Instantiates default status and empty evidence", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+
+        const res = createRTM(input);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.entries.length, 1);
+        
+        const entry = res.entries[0];
+        assert.strictEqual(entry.status, "UNTRACKED");
+        assert.deepStrictEqual(entry.evidence, {
+            generatedFiles: [],
+            generatedApis: [],
+            generatedRoutes: [],
+            generatedComponents: [],
+            notes: []
+        });
+    });
+
+    test("5. Populates correct deterministic metadata structure", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+
+        const res = createRTM(input);
+        assert.strictEqual(res.success, true);
+        
+        const meta = res.metadata;
+        assert.strictEqual(meta.identityVersion, "1.0");
+        assert.strictEqual(meta.classificationVersion, "1.0");
+        assert.strictEqual(meta.createdBy, "rtm-lite");
+        assert.strictEqual(meta.modelVersion, RTM_MODEL_VERSION);
+        assert.strictEqual(meta.totalRequirementsCount, 1);
+
+        const entryMeta = res.entries[0].metadata;
+        assert.strictEqual(entryMeta.identityVersion, "1.0");
+        assert.strictEqual(entryMeta.classificationVersion, "1.0");
+        assert.strictEqual(entryMeta.createdBy, "rtm-lite");
+        assert.strictEqual(entryMeta.modelVersion, RTM_MODEL_VERSION);
+    });
+
+    test("6. Output data structure is deeply frozen and immutable", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+
+        const res = createRTM(input);
+        assert.strictEqual(res.success, true);
+        
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.entries));
+        assert.ok(Object.isFrozen(res.entries[0]));
+        assert.ok(Object.isFrozen(res.entries[0].evidence));
+        assert.ok(Object.isFrozen(res.entries[0].metadata));
+
+        assert.throws(() => {
+            res.entries[0].status = "PLANNED";
+        }, TypeError);
+
+        assert.throws(() => {
+            res.entries[0].evidence.generatedFiles.push("file.js");
+        }, TypeError);
+    });
+
+    test("7. Creation is stateless, pure, and deterministic", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} },
+            { stableId: "req_2", displayId: "REQ-002", kind: "pageRoute", semanticKey: "/home", payload: {} }
+        ];
+
+        const run1 = createRTM(input);
+        const run2 = createRTM(input);
+
+        assert.deepStrictEqual(run1, run2);
+    });
+});
+
+suite("RTM-Lite Builder (Phase 2C)", () => {
+    const { buildRTM, rtmErrorCodes } = require(path.join(backendRoot, "core/rtm"));
+    const classifier = require(path.join(backendRoot, "core/requirementsClassification"));
+
+    test("1. Rejects invalid non-array inputs", () => {
+        const results = [
+            buildRTM(null),
+            buildRTM(undefined),
+            buildRTM("string"),
+            buildRTM(123),
+            buildRTM({})
+        ];
+
+        results.forEach(res => {
+            assert.strictEqual(res.success, false);
+            assert.strictEqual(res.errors[0].code, rtmErrorCodes.RTM_INVALID_INPUT);
+        });
+    });
+
+    test("2. Invokes classifyRequirements and createRTM exactly once", () => {
+        buildRTM._testHooks.reset();
+
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+
+        const res = buildRTM(input);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(buildRTM._testHooks.classifyCalls, 1);
+        assert.strictEqual(buildRTM._testHooks.createRTMCalls, 1);
+    });
+
+    test("3. Classification failure prevents RTM creation and returns error", () => {
+        buildRTM._testHooks.reset();
+
+        // Missing payload to force classification failure
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar" }
+        ];
+
+        const res = buildRTM(input);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(buildRTM._testHooks.classifyCalls, 1);
+        assert.strictEqual(buildRTM._testHooks.createRTMCalls, 0);
+        assert.strictEqual(res.errors[0].code, rtmErrorCodes.RTM_INVALID_REQUIREMENT);
+        assert.ok(res.errors[0].message.includes("Classification failed"));
+    });
+
+    test("4. createRTM failure propagates correctly", () => {
+        buildRTM._testHooks.reset();
+
+        // Duplicate stableIds to force createRTM failure (after successful classification)
+        const input = [
+            { stableId: "dup", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} },
+            { stableId: "dup", displayId: "REQ-002", kind: "component", semanticKey: "Button", payload: {} }
+        ];
+
+        const res = buildRTM(input);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(buildRTM._testHooks.classifyCalls, 1);
+        assert.strictEqual(buildRTM._testHooks.createRTMCalls, 1);
+        assert.strictEqual(res.errors[0].code, rtmErrorCodes.RTM_DUPLICATE_REQUIREMENT);
+    });
+
+    test("5. Builder is deterministic and returns deeply frozen structure", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+
+        const run1 = buildRTM(input);
+        const run2 = buildRTM(input);
+
+        assert.deepStrictEqual(run1, run2);
+        assert.ok(Object.isFrozen(run1));
+        assert.ok(Object.isFrozen(run1.entries));
+        assert.ok(Object.isFrozen(run1.entries[0]));
+    });
+
+    test("6. Caller input is never mutated", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const inputOriginal = JSON.parse(JSON.stringify(input));
+
+        buildRTM(input);
+
+        assert.deepStrictEqual(input, inputOriginal);
+    });
+});
+
+suite("RTM-Lite Validator (Phase 2D)", () => {
+    const { buildRTM, validateRTM, rtmErrorCodes } = require(path.join(backendRoot, "core/rtm"));
+
+    // Deep clone helper that returns a non-frozen plain JS object
+    const deepClonePlain = (obj) => JSON.parse(JSON.stringify(obj));
+
+    // Deep freeze helper to satisfy frozen check in tests
+    function deepFreeze(obj) {
+        if (obj === null || typeof obj !== "object") return obj;
+        Object.freeze(obj);
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+            if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object") {
+                deepFreeze(obj[prop]);
+            }
+        });
+        return obj;
+    }
+
+    test("1. Valid frozen RTM is successfully accepted", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} },
+            { stableId: "req_2", displayId: "REQ-002", kind: "pageRoute", semanticKey: "/dashboard", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        
+        const res = validateRTM(rtm);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.errors.length, 0);
+    });
+
+    test("2. Rejects invalid root structures", () => {
+        assert.strictEqual(validateRTM(null).success, false);
+        assert.strictEqual(validateRTM(undefined).success, false);
+        assert.strictEqual(validateRTM("string").success, false);
+        assert.strictEqual(validateRTM([]).success, false);
+
+        // Missing success/rtmVersion/entries/metadata
+        const badRtm = deepFreeze({ success: true });
+        const res = validateRTM(badRtm);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, rtmErrorCodes.RTM_INVALID_STRUCTURE);
+    });
+
+    test("3. Rejects non-frozen RTM structures", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        
+        // Clone to a non-frozen object
+        const plainRtm = deepClonePlain(rtm);
+        
+        const res = validateRTM(plainRtm);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_STRUCTURE && e.message.includes("must be frozen")));
+    });
+
+    test("4. Rejects invalid status in entries", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        const plainRtm = deepClonePlain(rtm);
+        
+        // Corrupt status
+        plainRtm.entries[0].status = "INVALID_STATUS_VALUE";
+        
+        const frozenCorrupt = deepFreeze(plainRtm);
+        const res = validateRTM(frozenCorrupt);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_STATUS));
+    });
+
+    test("5. Rejects invalid primaryCategory in entries", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        const plainRtm = deepClonePlain(rtm);
+        
+        // Corrupt category
+        plainRtm.entries[0].primaryCategory = "INVALID_CATEGORY_NAME";
+        
+        const frozenCorrupt = deepFreeze(plainRtm);
+        const res = validateRTM(frozenCorrupt);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_CATEGORY));
+    });
+
+    test("6. Rejects invalid secondaryTags array patterns", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        
+        // Case A: lowercase tags
+        const plainA = deepClonePlain(rtm);
+        plainA.entries[0].secondaryTags = ["auth"];
+        const resA = validateRTM(deepFreeze(plainA));
+        assert.strictEqual(resA.success, false);
+        assert.ok(resA.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_TAGS && e.message.includes("must be uppercase")));
+
+        // Case B: duplicate tags
+        const plainB = deepClonePlain(rtm);
+        plainB.entries[0].secondaryTags = ["AUTH", "AUTH"];
+        const resB = validateRTM(deepFreeze(plainB));
+        assert.strictEqual(resB.success, false);
+        assert.ok(resB.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_TAGS && e.message.includes("Duplicate tag element")));
+
+        // Case C: unsorted tags
+        const plainC = deepClonePlain(rtm);
+        plainC.entries[0].secondaryTags = ["PAYMENT", "AUTH"]; // unsorted
+        const resC = validateRTM(deepFreeze(plainC));
+        assert.strictEqual(resC.success, false);
+        assert.ok(resC.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_TAGS && e.message.includes("sorted alphabetically")));
+    });
+
+    test("7. Rejects duplicate stableId across entries", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        const plain = deepClonePlain(rtm);
+        
+        // Push a duplicate stableId entry
+        const dupEntry = deepClonePlain(plain.entries[0]);
+        dupEntry.displayId = "REQ-002"; // change displayId to only trigger stableId check
+        plain.entries.push(dupEntry);
+        plain.metadata.totalRequirementsCount = 2;
+
+        const res = validateRTM(deepFreeze(plain));
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === rtmErrorCodes.RTM_DUPLICATE_STABLE_ID));
+    });
+
+    test("8. Rejects duplicate displayId across entries", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        const plain = deepClonePlain(rtm);
+        
+        // Push duplicate displayId entry
+        const dupEntry = deepClonePlain(plain.entries[0]);
+        dupEntry.stableId = "req_2"; // change stableId to only trigger displayId check
+        plain.entries.push(dupEntry);
+        plain.metadata.totalRequirementsCount = 2;
+
+        const res = validateRTM(deepFreeze(plain));
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_ENTRY && e.message.includes("must be strictly sequential")));
+    });
+
+    test("9. Rejects duplicate semanticKey within same kind", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        const plain = deepClonePlain(rtm);
+        
+        // Duplicate component semanticKey "Navbar"
+        const dupEntry = deepClonePlain(plain.entries[0]);
+        dupEntry.stableId = "req_2";
+        dupEntry.displayId = "REQ-002";
+        plain.entries.push(dupEntry);
+        plain.metadata.totalRequirementsCount = 2;
+
+        const res = validateRTM(deepFreeze(plain));
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === rtmErrorCodes.RTM_INVALID_ENTRY && e.message.includes("Duplicate semanticKey")));
+    });
+
+    test("10. Validation is deterministic and never mutates input", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+        const rtm = buildRTM(input);
+        const rtmOriginal = JSON.parse(JSON.stringify(rtm));
+
+        const run1 = validateRTM(rtm);
+        const run2 = validateRTM(rtm);
+
+        assert.deepStrictEqual(run1, run2);
+        assert.deepStrictEqual(rtm, rtmOriginal);
+    });
+});
+
+suite("RTM Pipeline Integration (Phase 2E)", () => {
+    const { orchestrateGeneration, prepareCanonicalProjectSpec, _testHooks } = require(path.join(backendRoot, "services/generationOrchestrator"));
+    const { adaptProjectSpecForPersistence } = require(path.join(backendRoot, "controllers/projectController"));
+
+    const getSampleLegacyPayload = () => ({
+        projectName: "TestApp",
+        projectType: "Web Application",
+        frontend: "React (Vite)",
+        backend: "Express.js",
+        database: "MongoDB",
+        authentication: "JWT",
+        designRequirements: "Tailwind CSS",
+        pagesAndRoutes: [
+            { path: "/home", name: "Home", description: "Home Page" }
+        ],
+        components: [
+            { name: "Navbar", purpose: "Nav bar component" }
+        ],
+        backendApis: [
+            { path: "/api/status", method: "GET", purpose: "Status check API" }
+        ],
+        databaseModels: [
+            { name: "User", fields: ["email: String (required) - User email"] }
+        ],
+        integrations: [],
+        importantDependencies: [],
+        environmentVariables: [],
+        architectureConstraints: [],
+        runBuildRequirements: { runScript: "npm run dev", buildScript: "" },
+        deploymentRequirements: "None",
+        assumptions: []
+    });
+
+    test("1. RTM builder executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Reset count
+        _testHooks.buildRTMCallCount = 0;
+        
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.buildRTMCallCount, 1);
+        assert.ok(prep.rtm);
+        assert.strictEqual(prep.rtm.success, true);
+    });
+
+    test("2. RTM validator executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Reset count
+        _testHooks.validateRTMCallCount = 0;
+        
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.validateRTMCallCount, 1);
+        assert.ok(prep.rtm);
+    });
+
+    test("3. Builder failure prevents generation and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Mock buildRTM to return failure
+        const originalBuildRTM = _testHooks.buildRTM;
+        _testHooks.buildRTM = () => ({
+            success: false,
+            errors: [{ code: "RTM_MOCK_ERROR", path: "mock", message: "Mocked build failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_RTM_BUILD_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "RTM_MOCK_ERROR");
+            }
+            assert.ok(threw, "Must throw on builder failure");
+        } finally {
+            // Restore mock
+            _testHooks.buildRTM = originalBuildRTM;
+        }
+    });
+
+    test("4. Validator failure prevents generation and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Mock validateRTM to return failure
+        const originalValidateRTM = _testHooks.validateRTM;
+        _testHooks.validateRTM = () => ({
+            success: false,
+            errors: [{ code: "RTM_MOCK_VAL_ERROR", path: "mock", message: "Mocked validation failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_RTM_VALIDATION_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "RTM_MOCK_VAL_ERROR");
+            }
+            assert.ok(threw, "Must throw on validation failure");
+        } finally {
+            // Restore mock
+            _testHooks.validateRTM = originalValidateRTM;
+        }
+    });
+
+    test("5. RTM remains frozen in preparation result", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        
+        assert.ok(prep.rtm);
+        assert.ok(Object.isFrozen(prep.rtm));
+        assert.ok(Object.isFrozen(prep.rtm.entries));
+    });
+
+    test("6. RTM never reaches persistence adapter", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        
+        const dbSpec = adaptProjectSpecForPersistence(prep.projectSpec);
+        assert.strictEqual(dbSpec.rtm, undefined);
+        assert.strictEqual(dbSpec._rtm, undefined);
+    });
+
+    test("7. RTM sidecar is not returned by public orchestrateGeneration result", () => {
+        const orchestratorSource = require("fs").readFileSync(
+            path.join(backendRoot, "services/generationOrchestrator.js"), "utf8"
+        );
+        const returnBlockIndex = orchestratorSource.indexOf("summary: richPlan,");
+        assert.ok(returnBlockIndex !== -1, "Return block of orchestrateGeneration not found");
+        
+        const returnBlock = orchestratorSource.substring(returnBlockIndex, returnBlockIndex + 300);
+        assert.ok(!/\brtm\b/.test(returnBlock), "orchestrateGeneration return block must not leak rtm sidecar");
+    });
+});
+
+suite("TaskGraph Domain Model (Phase 3A)", () => {
+    const { createTaskGraph, taskGraphErrorCodes, TASK_GRAPH_MODEL_VERSION } = require(path.join(backendRoot, "core/taskGraph"));
+
+    test("1. Rejects invalid non-array inputs", () => {
+        const results = [
+            createTaskGraph(null),
+            createTaskGraph(undefined),
+            createTaskGraph("string"),
+            createTaskGraph(123),
+            createTaskGraph({})
+        ];
+
+        results.forEach(res => {
+            assert.strictEqual(res.success, false);
+            assert.strictEqual(res.graph, null);
+            assert.strictEqual(res.errors[0].code, taskGraphErrorCodes.TASK_GRAPH_INVALID_INPUT);
+        });
+    });
+
+    test("2. Rejects individual requirements missing required fields", () => {
+        const input = [
+            { displayId: "REQ-001", stableId: "req_1", kind: "component", semanticKey: "Navbar" }, // missing payload
+            { stableId: "req_2", kind: "component", semanticKey: "Navbar", payload: {} } // missing displayId
+        ];
+
+        const res = createTaskGraph(input);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.graph, null);
+        assert.ok(res.errors.length >= 2);
+        res.errors.forEach(err => {
+            assert.strictEqual(err.code, taskGraphErrorCodes.TASK_GRAPH_INVALID_REQUIREMENT);
+            assert.ok(err.message.includes("missing required field"));
+        });
+    });
+
+    test("3. Detects duplicate stableId and rejects creation", () => {
+        const input = [
+            { stableId: "dup_id", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} },
+            { stableId: "dup_id", displayId: "REQ-002", kind: "component", semanticKey: "Button", payload: {} }
+        ];
+
+        const res = createTaskGraph(input);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.graph, null);
+        assert.strictEqual(res.errors[0].code, taskGraphErrorCodes.TASK_GRAPH_DUPLICATE_NODE);
+        assert.ok(res.errors[0].message.includes("Duplicate requirement stableId"));
+    });
+
+    test("4. Instantiates default status and empty dependencies", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: { some: "payload" } }
+        ];
+
+        const res = createTaskGraph(input);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.graph.nodes.length, 1);
+        
+        const node = res.graph.nodes[0];
+        assert.strictEqual(node.status, "PENDING");
+        assert.deepStrictEqual(node.dependencies, []);
+        assert.deepStrictEqual(node.payload, { some: "payload" });
+        assert.strictEqual(node.stableId, "req_1");
+        assert.strictEqual(node.displayId, "REQ-001");
+        assert.strictEqual(node.kind, "component");
+        assert.strictEqual(node.semanticKey, "Navbar");
+    });
+
+    test("5. Populates correct deterministic metadata structure", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+
+        const res = createTaskGraph(input);
+        assert.strictEqual(res.success, true);
+        
+        const meta = res.graph.metadata;
+        assert.strictEqual(meta.graphVersion, TASK_GRAPH_MODEL_VERSION);
+        assert.strictEqual(meta.identityVersion, "1.0");
+        assert.strictEqual(meta.createdBy, "task-graph");
+        assert.strictEqual(meta.totalNodes, 1);
+
+        const nodeMeta = res.graph.nodes[0].metadata;
+        assert.strictEqual(nodeMeta.graphVersion, TASK_GRAPH_MODEL_VERSION);
+        assert.strictEqual(nodeMeta.identityVersion, "1.0");
+        assert.strictEqual(nodeMeta.createdBy, "task-graph");
+    });
+
+    test("6. Output data structure is deeply frozen and immutable", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: { inner: { value: 10 } } }
+        ];
+
+        const res = createTaskGraph(input);
+        assert.strictEqual(res.success, true);
+        
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.graph));
+        assert.ok(Object.isFrozen(res.graph.nodes));
+        assert.ok(Object.isFrozen(res.graph.nodes[0]));
+        assert.ok(Object.isFrozen(res.graph.nodes[0].payload));
+        assert.ok(Object.isFrozen(res.graph.nodes[0].payload.inner));
+        assert.ok(Object.isFrozen(res.graph.nodes[0].metadata));
+
+        assert.throws(() => {
+            res.graph.nodes[0].status = "RUNNING";
+        }, TypeError);
+
+        assert.throws(() => {
+            res.graph.nodes[0].dependencies.push("dep");
+        }, TypeError);
+    });
+
+    test("7. Creation is stateless, pure, and deterministic", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: {} },
+            { stableId: "req_2", displayId: "REQ-002", kind: "pageRoute", semanticKey: "/home", payload: {} }
+        ];
+
+        const run1 = createTaskGraph(input);
+        const run2 = createTaskGraph(input);
+
+        assert.deepStrictEqual(run1, run2);
+    });
+
+    test("8. Caller input is never mutated", () => {
+        const input = [
+            { stableId: "req_1", displayId: "REQ-001", kind: "component", semanticKey: "Navbar", payload: { some: "data" } }
+        ];
+        const inputOriginal = JSON.parse(JSON.stringify(input));
+
+        createTaskGraph(input);
+
+        assert.deepStrictEqual(input, inputOriginal);
+    });
+});
+
+suite("Dependency Rule Engine (Phase 3B)", () => {
+    const { getDependencyRules, getDependenciesForKind, taskGraphErrorCodes } = require(path.join(backendRoot, "core/taskGraph"));
+
+    test("1. Known kinds return expected dependency arrays", () => {
+        const kinds = [
+            "frontend", "backend", "authentication", "database", "pageRoute",
+            "component", "backendApi", "databaseModel", "integration",
+            "deploymentRequirement", "architectureConstraint", "designRequirement"
+        ];
+
+        kinds.forEach(kind => {
+            const deps = getDependenciesForKind(kind);
+            assert.ok(Array.isArray(deps));
+        });
+
+        // Assert concrete dependency rules
+        assert.deepStrictEqual(getDependenciesForKind("architectureConstraint"), []);
+        assert.deepStrictEqual(getDependenciesForKind("frontend"), ["backend", "architectureConstraint"]);
+        assert.deepStrictEqual(getDependenciesForKind("backendApi"), ["backend", "authentication", "databaseModel", "architectureConstraint"]);
+    });
+
+    test("2. Unknown or empty kinds are rejected with correct error codes", () => {
+        assert.throws(() => {
+            getDependenciesForKind("unknownKind");
+        }, err => {
+            return err.code === taskGraphErrorCodes.TASK_GRAPH_UNKNOWN_KIND;
+        });
+
+        assert.throws(() => {
+            getDependenciesForKind("");
+        }, err => {
+            return err.code === taskGraphErrorCodes.TASK_GRAPH_INVALID_KIND;
+        });
+
+        assert.throws(() => {
+            getDependenciesForKind("   ");
+        }, err => {
+            return err.code === taskGraphErrorCodes.TASK_GRAPH_INVALID_KIND;
+        });
+
+        assert.throws(() => {
+            getDependenciesForKind(null);
+        }, err => {
+            return err.code === taskGraphErrorCodes.TASK_GRAPH_INVALID_KIND;
+        });
+    });
+
+    test("3. Rules structure and returned arrays are deeply immutable and frozen", () => {
+        const rules = getDependencyRules();
+        assert.ok(Object.isFrozen(rules));
+        assert.ok(Object.isFrozen(rules.frontend));
+
+        const pageDeps = getDependenciesForKind("pageRoute");
+        assert.ok(Object.isFrozen(pageDeps));
+
+        assert.throws(() => {
+            pageDeps.push("new_dep");
+        }, TypeError);
+
+        assert.throws(() => {
+            rules.newKind = [];
+        }, TypeError);
+    });
+
+    test("4. Dependency mapping is deterministic and pure", () => {
+        const run1 = getDependenciesForKind("component");
+        const run2 = getDependenciesForKind("component");
+        assert.deepStrictEqual(run1, run2);
+        assert.strictEqual(run1, run2); // Should point to the exact same pre-frozen array reference
+    });
+});
+
+suite("TaskGraph Builder (Phase 3C)", () => {
+    const { buildTaskGraph, taskGraphErrorCodes } = require(path.join(backendRoot, "core/taskGraph"));
+
+    const getSampleRequirements = () => [
+        { stableId: "req_arch", displayId: "REQ-001", kind: "architectureConstraint", semanticKey: "Base", payload: {} },
+        { stableId: "req_db", displayId: "REQ-002", kind: "database", semanticKey: "Postgres", payload: {} },
+        { stableId: "req_be", displayId: "REQ-003", kind: "backend", semanticKey: "Express", payload: {} },
+        { stableId: "req_api", displayId: "REQ-004", kind: "backendApi", semanticKey: "GetUser", payload: {} },
+        { stableId: "req_fe", displayId: "REQ-005", kind: "frontend", semanticKey: "React", payload: {} },
+        { stableId: "req_page", displayId: "REQ-006", kind: "pageRoute", semanticKey: "/dashboard", payload: {} }
+    ];
+
+    test("1. Rejects invalid requirements arrays or elements", () => {
+        const res = buildTaskGraph(null);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.graph, null);
+        assert.strictEqual(res.errors[0].code, taskGraphErrorCodes.TASK_GRAPH_BUILD_FAILED);
+
+        // Missing fields
+        const badReqs = [{ stableId: "req_1", kind: "backend" }];
+        const res2 = buildTaskGraph(badReqs);
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, taskGraphErrorCodes.TASK_GRAPH_INVALID_REQUIREMENT);
+    });
+
+    test("2. Correctly builds dependency edges and maps to stableId only", () => {
+        const reqs = getSampleRequirements();
+        const res = buildTaskGraph(reqs);
+        assert.strictEqual(res.success, true);
+
+        // N: backendApi -> depends on: backend, authentication, databaseModel, architectureConstraint
+        const nodeApi = res.graph.nodes.find(n => n.stableId === "req_api");
+        assert.ok(nodeApi);
+        assert.deepStrictEqual(nodeApi.dependencies, ["req_arch", "req_be"]); // databaseModel & auth missing, so omitted!
+        
+        // Assert only stableIds are in dependency edges
+        nodeApi.dependencies.forEach(depId => {
+            assert.ok(depId.startsWith("req_"));
+            assert.notStrictEqual(depId, "REQ-001");
+            assert.notStrictEqual(depId, "REQ-003");
+        });
+    });
+
+    test("3. Correctly populates dependents map on target nodes", () => {
+        const reqs = getSampleRequirements();
+        const res = buildTaskGraph(reqs);
+        assert.strictEqual(res.success, true);
+
+        // backend (req_be) should be a dependency of backendApi (req_api) and frontend (req_fe)
+        const nodeBe = res.graph.nodes.find(n => n.stableId === "req_be");
+        assert.ok(nodeBe);
+        assert.deepStrictEqual(nodeBe.dependents, ["req_api", "req_fe"]);
+
+        // architectureConstraint (req_arch) should be a dependency of database (req_db), backend (req_be), frontend (req_fe), backendApi (req_api), pageRoute (req_page)
+        const nodeArch = res.graph.nodes.find(n => n.stableId === "req_arch");
+        assert.ok(nodeArch);
+        assert.deepStrictEqual(nodeArch.dependents, ["req_api", "req_be", "req_db", "req_fe", "req_page"]); // sorted alphabetically
+    });
+
+    test("4. Tolerates missing dependency kinds in supplied payload", () => {
+        // Only provide frontend and component, leaving out pageRoute and designRequirement kinds
+        const reqs = [
+            { stableId: "req_fe", displayId: "REQ-001", kind: "frontend", semanticKey: "React", payload: {} },
+            { stableId: "req_comp", displayId: "REQ-002", kind: "component", semanticKey: "Navbar", payload: {} }
+        ];
+
+        const res = buildTaskGraph(reqs);
+        assert.strictEqual(res.success, true);
+
+        const nodeComp = res.graph.nodes.find(n => n.stableId === "req_comp");
+        assert.ok(nodeComp);
+        assert.deepStrictEqual(nodeComp.dependencies, ["req_fe"]); // Omitted designRequirement and pageRoute since missing
+    });
+
+    test("5. Deep freezing guarantees immutable output", () => {
+        const reqs = getSampleRequirements();
+        const res = buildTaskGraph(reqs);
+        assert.strictEqual(res.success, true);
+
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.graph));
+        assert.ok(Object.isFrozen(res.graph.nodes));
+        assert.ok(Object.isFrozen(res.graph.nodes[0]));
+        assert.ok(Object.isFrozen(res.graph.nodes[0].dependencies));
+        assert.ok(Object.isFrozen(res.graph.nodes[0].dependents));
+
+        assert.throws(() => {
+            res.graph.nodes[0].dependencies.push("hack");
+        }, TypeError);
+
+        assert.throws(() => {
+            res.graph.nodes[0].dependents.push("hack");
+        }, TypeError);
+    });
+
+    test("6. Builds are stateless, pure, and deterministic", () => {
+        const reqs = getSampleRequirements();
+        const run1 = buildTaskGraph(reqs);
+        const run2 = buildTaskGraph(reqs);
+
+        assert.deepStrictEqual(run1, run2);
+    });
+
+    test("7. Input parameters are never mutated", () => {
+        const reqs = getSampleRequirements();
+        const originalReqs = JSON.parse(JSON.stringify(reqs));
+
+        buildTaskGraph(reqs);
+
+        assert.deepStrictEqual(reqs, originalReqs);
+    });
+});
+
+suite("TaskGraph Validator (Phase 3D)", () => {
+    const { buildTaskGraph, validateTaskGraph, taskGraphErrorCodes } = require(path.join(backendRoot, "core/taskGraph"));
+
+    const getSampleValidGraph = () => {
+        const reqs = [
+            { stableId: "req_be", displayId: "REQ-001", kind: "backend", semanticKey: "Express", payload: {} },
+            { stableId: "req_fe", displayId: "REQ-002", kind: "frontend", semanticKey: "React", payload: {} }
+        ];
+        const res = buildTaskGraph(reqs);
+        return res.graph;
+    };
+
+    const deepClonePlain = (obj) => JSON.parse(JSON.stringify(obj));
+
+    // Deep freeze utility specifically for testing custom modifications
+    const deepFreeze = (obj) => {
+        if (obj === null || typeof obj !== "object") return obj;
+        Object.freeze(obj);
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+            if (obj[prop] !== null && typeof obj[prop] === "object") {
+                deepFreeze(obj[prop]);
+            }
+        });
+        return obj;
+    };
+
+    test("1. Accepts a valid pre-built frozen TaskGraph", () => {
+        const graph = getSampleValidGraph();
+        const res = validateTaskGraph(graph);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.errors, []);
+    });
+
+    test("2. Rejects root graph structures that are not frozen", () => {
+        const plain = deepClonePlain(getSampleValidGraph());
+        // Do NOT freeze plain
+        const res = validateTaskGraph(plain);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === taskGraphErrorCodes.TASK_GRAPH_INVALID_GRAPH && e.message.includes("must be frozen")));
+    });
+
+    test("3. Rejects nodes containing duplicate stableId or displayId keys", () => {
+        const plain = deepClonePlain(getSampleValidGraph());
+        // Force duplicate stableId
+        plain.nodes[1].stableId = plain.nodes[0].stableId;
+        const frozen = deepFreeze(plain);
+
+        const res = validateTaskGraph(frozen);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === taskGraphErrorCodes.TASK_GRAPH_DUPLICATE_NODE));
+    });
+
+    test("4. Rejects self dependencies (self-loops)", () => {
+        const plain = deepClonePlain(getSampleValidGraph());
+        // Node 0 depends on itself
+        plain.nodes[0].dependencies.push(plain.nodes[0].stableId);
+        const frozen = deepFreeze(plain);
+
+        const res = validateTaskGraph(frozen);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === taskGraphErrorCodes.TASK_GRAPH_SELF_DEPENDENCY));
+    });
+
+    test("5. Rejects asymmetric edges (A depends on B, but B has no dependent edge for A)", () => {
+        const plain = deepClonePlain(getSampleValidGraph());
+        // A depends on B
+        plain.nodes[1].dependencies.push(plain.nodes[0].stableId);
+        // But B (index 0) has NO A in dependents!
+        const frozen = deepFreeze(plain);
+
+        const res = validateTaskGraph(frozen);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === taskGraphErrorCodes.TASK_GRAPH_ASYMMETRIC_EDGE));
+    });
+
+    test("6. Rejects broken references (dependencies pointing to non-existent nodes)", () => {
+        const plain = deepClonePlain(getSampleValidGraph());
+        // A depends on non-existent node
+        plain.nodes[0].dependencies.push("non_existent_id");
+        // Maintain symmetry for validator checks: non_existent_id has A as dependent (can't, since it doesn't exist)
+        const frozen = deepFreeze(plain);
+
+        const res = validateTaskGraph(frozen);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === taskGraphErrorCodes.TASK_GRAPH_BROKEN_REFERENCE));
+    });
+
+    test("7. Cycle detection correctly rejects graphs with cyclic dependencies", () => {
+        const plain = deepClonePlain(getSampleValidGraph());
+        // Force cycle: make req_be depend on req_fe
+        plain.nodes[0].dependencies.push(plain.nodes[1].stableId);
+        plain.nodes[1].dependents.push(plain.nodes[0].stableId);
+
+        const frozen = deepFreeze(plain);
+        const res = validateTaskGraph(frozen);
+        assert.strictEqual(res.success, false);
+        assert.ok(res.errors.some(e => e.code === taskGraphErrorCodes.TASK_GRAPH_CYCLE && e.message.includes("Cyclic dependency detected")));
+    });
+
+    test("8. Validation is deterministic and does not mutate graph parameters", () => {
+        const graph = getSampleValidGraph();
+        const graphOriginal = deepClonePlain(graph);
+
+        const run1 = validateTaskGraph(graph);
+        const run2 = validateTaskGraph(graph);
+
+        assert.deepStrictEqual(run1, run2);
+        assert.deepStrictEqual(deepClonePlain(graph), graphOriginal);
+    });
+});
+
+suite("TaskGraph Pipeline Integration (Phase 3E)", () => {
+    const { orchestrateGeneration, prepareCanonicalProjectSpec, _testHooks } = require(path.join(backendRoot, "services/generationOrchestrator"));
+    const { adaptProjectSpecForPersistence } = require(path.join(backendRoot, "controllers/projectController"));
+
+    const getSampleLegacyPayload = () => ({
+        projectName: "TestApp",
+        projectType: "Web Application",
+        frontend: "React (Vite)",
+        backend: "Express.js",
+        database: "MongoDB",
+        authentication: "JWT",
+        designRequirements: "Tailwind CSS",
+        pagesAndRoutes: [
+            { path: "/home", name: "Home", description: "Home Page" }
+        ],
+        components: [
+            { name: "Navbar", purpose: "Nav bar component" }
+        ],
+        backendApis: [
+            { path: "/api/status", method: "GET", purpose: "Status check API" }
+        ],
+        databaseModels: [
+            { name: "User", fields: ["email: String (required) - User email"] }
+        ],
+        integrations: [],
+        importantDependencies: [],
+        environmentVariables: [],
+        architectureConstraints: [],
+        runBuildRequirements: { runScript: "npm run dev", buildScript: "" },
+        deploymentRequirements: "None",
+        assumptions: []
+    });
+
+    test("1. TaskGraph Builder executes once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Reset count
+        _testHooks.buildTaskGraphCallCount = 0;
+        
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.buildTaskGraphCallCount, 1);
+        assert.ok(prep.taskGraph);
+    });
+
+    test("2. TaskGraph Validator executes once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Reset count
+        _testHooks.validateTaskGraphCallCount = 0;
+        
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.validateTaskGraphCallCount, 1);
+        assert.ok(prep.taskGraph);
+    });
+
+    test("3. Builder failure halts preparation and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Mock buildTaskGraph to return failure
+        const originalBuildTaskGraph = _testHooks.buildTaskGraph;
+        _testHooks.buildTaskGraph = () => ({
+            success: false,
+            errors: [{ code: "TASK_GRAPH_MOCK_ERROR", path: "mock", message: "Mocked build failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_TASK_GRAPH_BUILD_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "TASK_GRAPH_MOCK_ERROR");
+            }
+            assert.ok(threw, "Must throw on builder failure");
+        } finally {
+            // Restore mock
+            _testHooks.buildTaskGraph = originalBuildTaskGraph;
+        }
+    });
+
+    test("4. Validator failure halts preparation and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        
+        // Mock validateTaskGraph to return failure
+        const originalValidateTaskGraph = _testHooks.validateTaskGraph;
+        _testHooks.validateTaskGraph = () => ({
+            success: false,
+            errors: [{ code: "TASK_GRAPH_MOCK_VAL_ERROR", path: "mock", message: "Mocked validation failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_TASK_GRAPH_VALIDATION_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "TASK_GRAPH_MOCK_VAL_ERROR");
+            }
+            assert.ok(threw, "Must throw on validation failure");
+        } finally {
+            // Restore mock
+            _testHooks.validateTaskGraph = originalValidateTaskGraph;
+        }
+    });
+
+    test("5. TaskGraph remains frozen in preparation result", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        
+        assert.ok(prep.taskGraph);
+        assert.ok(Object.isFrozen(prep.taskGraph));
+        assert.ok(Object.isFrozen(prep.taskGraph.nodes));
+    });
+
+    test("6. TaskGraph never reaches persistence adapter", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        
+        const dbSpec = adaptProjectSpecForPersistence(prep.projectSpec);
+        assert.strictEqual(dbSpec.taskGraph, undefined);
+        assert.strictEqual(dbSpec._taskGraph, undefined);
+    });
+
+    test("7. TaskGraph sidecar is not returned by public orchestrateGeneration result", () => {
+        const orchestratorSource = require("fs").readFileSync(
+            path.join(backendRoot, "services/generationOrchestrator.js"), "utf8"
+        );
+        const returnBlockIndex = orchestratorSource.indexOf("summary: richPlan,");
+        assert.ok(returnBlockIndex !== -1, "Return block of orchestrateGeneration not found");
+        
+        const returnBlock = orchestratorSource.substring(returnBlockIndex, returnBlockIndex + 300);
+        assert.ok(!/\btaskGraph\b/.test(returnBlock), "orchestrateGeneration return block must not leak taskGraph sidecar");
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

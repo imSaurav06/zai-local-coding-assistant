@@ -151,13 +151,181 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 ---
 
+## Phase 2: Requirement Validator + RTM-Lite
+- **Goal**: Build stable requirement classifications, validate requirement completeness against code, and implement a lightweight Requirements Traceability Matrix (RTM) trace engine.
+- **Dependencies**: Phase 1.
+
+### Task Pack 2A: Requirement Classification Foundation
+- **Status**: DONE
+- **Started At**: 2026-07-17T00:15:00+05:30
+- **Completed At**: 2026-07-17T00:42:00+05:30
+- **Files Created**: `backend/core/requirementsClassification/index.js`, `backend/core/requirementsClassification/requirementsClassifier.js`, `backend/core/requirementsClassification/requirementsClassifierErrors.js`, `docs/migration/PHASE_2A_REQUIREMENT_CLASSIFICATION.md`
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Classification Engine**: Hardened deterministic classification model using a 1-to-1 `primaryCategory` kind map and alphabetically sorted, unique `secondaryTags` derived from keywords.
+- **Output contract**: Conforms to `{ success, classifications: [{ stableId, displayId, kind, semanticKey, primaryCategory, secondaryTags }], errors }`.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 2A suite) verifying invalid inputs, properties validation, primaryCategory mapping, primaryCategory immutability under keyword changes, secondary tags uniqueness/sorting, deep freezing, and execution determinism.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 279 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 2A report and code. Proceed to Task Pack 2B (RTM-Lite Data Model).
+
+### Task Pack 2B: RTM-Lite Data Model
+- **Status**: DONE
+- **Started At**: 2026-07-17T00:45:00+05:30
+- **Completed At**: 2026-07-17T01:10:00+05:30
+- **Files Created**: `backend/core/rtm/index.js`, `backend/core/rtm/rtmModel.js`, `backend/core/rtm/rtmErrors.js`, `docs/migration/PHASE_2B_RTM_MODEL.md`
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **RTM-Lite Entry Model**: Instantiates the RTM data structure containing `stableId`, `displayId`, `kind`, `semanticKey`, `primaryCategory`, `secondaryTags`, `status` (UNTRACKED | PLANNED | GENERATED | VERIFIED | FAILED), `evidence`, and `metadata`.
+- **API**: Exposes `createRTM(requirements)`, `RTM_MODEL_VERSION`, and `rtmErrorCodes`. Output is deeply frozen.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 2B suite) verifying invalid inputs, properties verification, duplicate stableId detection, default status/evidence, metadata defaults, deep freezing, and determinism.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 286 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 2B report and code. Proceed to Task Pack 2C (RTM-Lite Builder).
+
+### Task Pack 2C: RTM-Lite Builder
+- **Status**: DONE
+- **Started At**: 2026-07-17T01:15:00+05:30
+- **Completed At**: 2026-07-17T01:30:00+05:30
+- **Files Created**: `backend/core/rtm/rtmBuilder.js`, `docs/migration/PHASE_2C_RTM_BUILDER.md`
+- **Files Changed**: `backend/core/rtm/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **RTM-Lite Builder Flow**: Provides the coordinator logic: Requirements &rarr; Requirement Classification &rarr; RTM Creation &rarr; Frozen RTM. Calls `classifyRequirements` exactly once and `createRTM` exactly once.
+- **API**: Exposes `buildRTM(requirements)`, `RTM_MODEL_VERSION`, and `rtmErrorCodes`. Output is deeply frozen.
+- **Tests Added**: 6 unit tests in `run_tests.js` (Phase 2C suite) verifying invalid inputs, invocation tracking (both classification and creation called exactly once), classification failure halts creation, creation failures propagate, determinism, and immutability.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 292 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 2C report and code. Proceed to Task Pack 2D (RTM-Lite Validator).
+
+### Task Pack 2D: RTM-Lite Validator
+- **Status**: DONE
+- **Started At**: 2026-07-17T01:35:00+05:30
+- **Completed At**: 2026-07-17T01:50:00+05:30
+- **Files Created**: `backend/core/rtm/rtmValidator.js`, `docs/migration/PHASE_2D_RTM_VALIDATOR.md`
+- **Files Changed**: `backend/core/rtm/index.js`, `backend/core/rtm/rtmErrors.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **RTM-Lite Validator**: Provides structural validation, metadata checks, entries array schema enforcement, duplicate stableId/displayId tracking, duplicate semanticKey checks per kind, category/status enum safety checks, secondaryTags sorting/uniqueness/casing checks, evidence schema checks, and deep immutability verification.
+- **API**: Exposes `validateRTM(rtm)`, `RTM_MODEL_VERSION`, and `rtmErrorCodes`. Output is NOT mutated.
+- **Tests Added**: 10 unit tests in `run_tests.js` (Phase 2D suite) verifying valid RTM acceptance, bad structures rejection, non-frozen structure rejection, invalid status/category, bad secondary tags (casing, duplicate, unsorted), duplicate stableId, sequential check of displayIds, duplicate semanticKeys, determinism, and zero mutation checks.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 302 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 2D report and code. Proceed to Task Pack 2E (RTM Pipeline Integration).
+
+### Task Pack 2E: RTM Pipeline Integration
+- **Status**: DONE
+- **Started At**: 2026-07-17T01:55:00+05:30
+- **Completed At**: 2026-07-17T02:15:00+05:30
+- **Files Created**: `docs/migration/PHASE_2E_RTM_PIPELINE_INTEGRATION.md`
+- **Files Changed**: `backend/services/generationOrchestrator.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **RTM Pipeline Integration**: Integrated RTM construction (`buildRTM`) and validation (`validateRTM`) inside `prepareCanonicalProjectSpec` immediately after Requirement Identity derivation. Failed construction throws `PROJECT_PREPARATION_RTM_BUILD_FAILED` and failed validation throws `PROJECT_PREPARATION_RTM_VALIDATION_FAILED`, halting the generation process. Returns RTM as an internal sidecar.
+- **Persistence & API isolation**: Verified that RTM sidecar is not persisted to MongoDB (stripped by `adaptProjectSpecForPersistence`) and is not leaked in the public return shape of `orchestrateGeneration` to clients.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 2E suite) verifying builder executes exactly once, validator executes exactly once, builder failures throw and halt, validator failures throw and halt, RTM remains frozen in memory, RTM is excluded by persistence adapter, and RTM is omitted from public orchestrator returns.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 309 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Phase 2 is complete. Proceed to Task Pack 2F (Final RTM Architecture Review & Hardening).
+
+### Task Pack 2F: Final RTM Architecture Review & Hardening
+- **Status**: DONE
+- **Started At**: 2026-07-17T02:20:00+05:30
+- **Completed At**: 2026-07-17T02:30:00+05:30
+- **Files Created**: `docs/migration/PHASE_2_FINAL_ARCHITECTURE_AUDIT.md`
+- **Files Changed**: `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Audit Findings**: Verified that the classification, models, and validator boundaries are isolated, stateless, and deterministic. No persistence leak or REST/SSE drift detected. Minor technical debt regarding helper duplication was documented. GO recommendation granted.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 309 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Phase 2 is fully audited and complete. Proceed to Task Pack 3A (TaskGraph Domain Model).
+
+---
+
+## Phase 3 — Architecture / DB / API / Auth / Deployment Contracts
+
+### Task Pack 3A: TaskGraph Domain Model
+- **Status**: DONE
+- **Started At**: 2026-07-17T02:35:00+05:30
+- **Completed At**: 2026-07-17T02:45:00+05:30
+- **Files Created**: `backend/core/taskGraph/index.js`, `backend/core/taskGraph/taskGraphModel.js`, `backend/core/taskGraph/taskGraphErrors.js`, `docs/migration/PHASE_3A_TASKGRAPH_MODEL.md`
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **TaskGraph Domain Model**: Designed and implemented the immutable TaskGraph model mappings from canonical requirement identities. Node states start as `PENDING` with empty `dependencies` lists.
+- **Tests Added**: 8 unit tests in `run_tests.js` (Phase 3A suite) verifying invalid inputs, required field validators, duplicate stableId node check, defaults mapping, versioned metadata, deep frozen immutability, determinism, and input non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 317 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 3A report. Proceed to Task Pack 3B (Dependency Inference Rules).
+
+### Task Pack 3B: Dependency Rule Engine
+- **Status**: DONE
+- **Started At**: 2026-07-17T02:50:00+05:30
+- **Completed At**: 2026-07-17T03:00:00+05:30
+- **Files Created**: `backend/core/taskGraph/dependencyRules.js`, `docs/migration/PHASE_3B_DEPENDENCY_RULE_ENGINE.md`
+- **Files Changed**: `backend/core/taskGraph/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Dependency Rule Engine**: Implemented the immutable and deterministic rule query map and getDependenciesForKind helper.
+- **Tests Added**: 4 unit tests in `run_tests.js` (Phase 3B suite) verifying kind mapping validation, unknown kind rejection, frozen immutability, and determinism.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 321 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 3B report. Proceed to Task Pack 3C (TaskGraph Builder).
+
+### Task Pack 3C: TaskGraph (DAG) Builder
+- **Status**: DONE
+- **Started At**: 2026-07-17T03:05:00+05:30
+- **Completed At**: 2026-07-17T03:15:00+05:30
+- **Files Created**: `backend/core/taskGraph/taskGraphBuilder.js`, `docs/migration/PHASE_3C_TASKGRAPH_BUILDER.md`
+- **Files Changed**: `backend/core/taskGraph/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **TaskGraph Builder**: Implemented edge resolution, node linking, dependencies and dependents mapping, missing kind tolerance, and stableId-only edge definitions.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 3C suite) verifying invalid input handling, dependency edge construction, dependents mapping, missing kind tolerance, immutability, determinism, and input non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 328 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 3C report. Proceed to Task Pack 3D (TaskGraph Validator).
+
+### Task Pack 3D: TaskGraph Validator
+- **Status**: DONE
+- **Started At**: 2026-07-17T03:20:00+05:30
+- **Completed At**: 2026-07-17T03:30:00+05:30
+- **Files Created**: `backend/core/taskGraph/taskGraphValidator.js`, `docs/migration/PHASE_3D_TASKGRAPH_VALIDATOR.md`
+- **Files Changed**: `backend/core/taskGraph/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **TaskGraph Validator**: Implemented graph structural validations, deep freeze verifications, stableId/displayId uniqueness checks, self-dependency blocks, edge reference audits, edge symmetry checks, and cycle detection.
+- **Tests Added**: 8 unit tests in `run_tests.js` (Phase 3D suite) verifying valid graph acceptance, non-frozen root/nodes rejections, duplicate stableId/displayId rejections, self-loop rejections, asymmetric edge rejections, broken reference rejections, cycle detection, and determinism.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 336 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 3D report. Proceed to Task Pack 3E (TaskGraph Pipeline Integration).
+
+### Task Pack 3E: TaskGraph Pipeline Integration
+- **Status**: DONE
+- **Started At**: 2026-07-17T03:35:00+05:30
+- **Completed At**: 2026-07-17T03:45:00+05:30
+- **Files Created**: `docs/migration/PHASE_3E_TASKGRAPH_PIPELINE_INTEGRATION.md`
+- **Files Changed**: `backend/services/generationOrchestrator.js`, `backend/core/taskGraph/dependencyRules.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **TaskGraph Pipeline Integration**: Connected TaskGraph builder and validator into the preparation pipeline in `prepareCanonicalProjectSpec` with fail-fast exception boundaries.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 3E suite) verifying builder/validator execute once, builder/validator failure boundaries halt execution, TaskGraph frozen state, no persistence, and no API leakage.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 343 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Phase 3 task graph engine is fully completed. Review handoff files before beginning Phase 3 Contracts work in the next session.
+
+---
+
 ## Future Migration Phases
 
 | Phase | Description | Status | Target Completion |
 |---|---|---|---|
 | **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | **DONE** (All Task Packs 1A–1E Complete) | 2026-07-17 |
-| **Phase 2** | Requirement Validator + RTM-Lite | NOT_STARTED | TBD |
-| **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | NOT_STARTED | TBD |
+| **Phase 2** | Requirement Validator + RTM-Lite | **DONE** (All Task Packs 2A–2F Complete) | 2026-07-17 |
+| **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (Task Packs 3A–3E Complete) | 2026-07-17 |
 | **Phase 4** | TaskGraph / Simple DAG Planner | NOT_STARTED | TBD |
 | **Phase 5** | Durable Checkpoints + Resume | NOT_STARTED | TBD |
 | **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
