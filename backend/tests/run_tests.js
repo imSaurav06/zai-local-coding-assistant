@@ -7356,6 +7356,151 @@ suite("VFS Transaction Management (Phase 7B)", () => {
     });
 });
 
+suite("VFS File Modification Operations (Phase 7C)", () => {
+    const {
+        createVirtualFileSystem,
+        beginTransaction,
+        createFile,
+        updateFile,
+        deleteFile,
+        vfsErrorCodes
+    } = require(path.join(backendRoot, "core/vfs"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleActiveVfs = () => {
+        const files = [
+            { path: "src/index.js", language: "javascript", content: "console.log(1);" }
+        ];
+        const res = createVirtualFileSystem(files);
+        const resBegin = beginTransaction(res.vfs);
+        return resBegin.vfs;
+    };
+
+    test("1. Create succeeds", () => {
+        const vfs = getSampleActiveVfs();
+        const newFile = { path: "src/utils.js", language: "javascript", content: "export const val = 42;" };
+        const res = createFile(vfs, newFile);
+
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.vfs.files.length, 2);
+        // Sorted lexicographically
+        assert.strictEqual(res.vfs.files[0].path, "src/index.js");
+        assert.strictEqual(res.vfs.files[1].path, "src/utils.js");
+        assert.strictEqual(res.vfs.files[1].status, "PENDING");
+        // Operation log
+        assert.strictEqual(res.vfs.operations.length, 1);
+        assert.strictEqual(res.vfs.operations[0].type, "CREATE");
+        assert.strictEqual(res.vfs.operations[0].path, "src/utils.js");
+    });
+
+    test("2. Duplicate rejected", () => {
+        const vfs = getSampleActiveVfs();
+        const newFile = { path: "src/index.js", language: "javascript", content: "console.log(2);" };
+        const res = createFile(vfs, newFile);
+
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_FILE_ALREADY_EXISTS);
+    });
+
+    test("3. Update succeeds", () => {
+        const vfs = getSampleActiveVfs();
+        const res = updateFile(vfs, "src/index.js", "console.log(100);");
+
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.vfs.files[0].content, "console.log(100);");
+        // Operation log
+        assert.strictEqual(res.vfs.operations.length, 1);
+        assert.strictEqual(res.vfs.operations[0].type, "UPDATE");
+        assert.strictEqual(res.vfs.operations[0].path, "src/index.js");
+    });
+
+    test("4. Update non-existent rejected", () => {
+        const vfs = getSampleActiveVfs();
+        const res = updateFile(vfs, "src/non-existent.js", "content");
+
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_FILE_NOT_FOUND);
+    });
+
+    test("5. Delete succeeds", () => {
+        const vfs = getSampleActiveVfs();
+        const res = deleteFile(vfs, "src/index.js");
+
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.vfs.files.length, 0);
+        // Operation log
+        assert.strictEqual(res.vfs.operations.length, 1);
+        assert.strictEqual(res.vfs.operations[0].type, "DELETE");
+        assert.strictEqual(res.vfs.operations[0].path, "src/index.js");
+    });
+
+    test("6. Delete non-existent rejected", () => {
+        const vfs = getSampleActiveVfs();
+        const res = deleteFile(vfs, "src/non-existent.js");
+
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_FILE_NOT_FOUND);
+    });
+
+    test("7. Transaction required", () => {
+        // Inactive VFS
+        const files = [{ path: "src/index.js", language: "javascript", content: "console.log(1);" }];
+        const inactiveVfs = createVirtualFileSystem(files).vfs;
+
+        const resCreate = createFile(inactiveVfs, { path: "src/utils.js", language: "javascript", content: "" });
+        assert.strictEqual(resCreate.success, false);
+        assert.strictEqual(resCreate.errors[0].code, vfsErrorCodes.VFS_TRANSACTION_REQUIRED);
+
+        const resUpdate = updateFile(inactiveVfs, "src/index.js", "content");
+        assert.strictEqual(resUpdate.success, false);
+        assert.strictEqual(resUpdate.errors[0].code, vfsErrorCodes.VFS_TRANSACTION_REQUIRED);
+
+        const resDelete = deleteFile(inactiveVfs, "src/index.js");
+        assert.strictEqual(resDelete.success, false);
+        assert.strictEqual(resDelete.errors[0].code, vfsErrorCodes.VFS_TRANSACTION_REQUIRED);
+    });
+
+    test("8. Deterministic ordering", () => {
+        const vfs = getSampleActiveVfs();
+        
+        // Add multiple files in random order
+        const res1 = createFile(vfs, { path: "z.js", language: "javascript", content: "" });
+        const res2 = createFile(res1.vfs, { path: "a.js", language: "javascript", content: "" });
+
+        assert.strictEqual(res2.success, true);
+        assert.strictEqual(res2.vfs.files[0].path, "a.js");
+        assert.strictEqual(res2.vfs.files[1].path, "src/index.js");
+        assert.strictEqual(res2.vfs.files[2].path, "z.js");
+
+        // Operations sorted deterministically:
+        // CREATE a.js and CREATE z.js sorted by type then path
+        assert.strictEqual(res2.vfs.operations[0].path, "a.js");
+        assert.strictEqual(res2.vfs.operations[1].path, "z.js");
+    });
+
+    test("9. Deep immutability", () => {
+        const vfs = getSampleActiveVfs();
+        const res = createFile(vfs, { path: "src/utils.js", language: "javascript", content: "" });
+        assert.ok(Object.isFrozen(res.vfs));
+        assert.ok(Object.isFrozen(res.vfs.files));
+        assert.ok(Object.isFrozen(res.vfs.files[0]));
+        assert.ok(Object.isFrozen(res.vfs.operations));
+    });
+
+    test("10. Caller input unchanged", () => {
+        const vfs = getSampleActiveVfs();
+        const originalVfs = deepClone(vfs);
+
+        const newFile = { path: "src/utils.js", language: "javascript", content: "" };
+        const originalFile = deepClone(newFile);
+
+        createFile(vfs, newFile);
+        assert.deepStrictEqual(vfs, originalVfs);
+        assert.deepStrictEqual(newFile, originalFile);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
