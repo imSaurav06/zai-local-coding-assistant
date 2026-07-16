@@ -4,6 +4,7 @@ const { createVirtualFileSystem, VFS_MODEL_VERSION } = require("./vfsModel");
 const { vfsErrorCodes } = require("./vfsErrors");
 const { beginTransaction, commitTransaction, rollbackTransaction } = require("./vfsTransaction");
 const { createFile, updateFile, deleteFile } = require("./vfsOperations");
+const { synchronizeVfs, verifyCanonicalVfs } = require("./vfsSync");
 
 module.exports = {
     createVirtualFileSystem,
@@ -14,5 +15,7 @@ module.exports = {
     rollbackTransaction,
     createFile,
     updateFile,
-    deleteFile
+    deleteFile,
+    synchronizeVfs,
+    verifyCanonicalVfs
 };

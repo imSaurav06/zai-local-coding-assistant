@@ -7501,6 +7501,192 @@ suite("VFS File Modification Operations (Phase 7C)", () => {
     });
 });
 
+suite("VFS State Sync & Verification (Phase 7D)", () => {
+    const {
+        createVirtualFileSystem,
+        synchronizeVfs,
+        verifyCanonicalVfs,
+        vfsErrorCodes
+    } = require(path.join(backendRoot, "core/vfs"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    test("1. Canonical synchronization succeeds", () => {
+        // Construct non-canonical VFS manually (not frozen, has backslashes, duplicates, not sorted)
+        const rawVfs = {
+            version: "1.0",
+            metadata: { vfsVersion: "1.0", createdBy: "test" },
+            files: [
+                { path: "src\\index.js", language: "javascript", content: "console.log(1);", status: "PENDING" },
+                { path: "z.js", language: "javascript", content: "let z = 10;", status: "PENDING" },
+                { path: "src/index.js", language: "javascript", content: "console.log(2);", status: "COMMITTED" } // duplicate path, overwrite
+            ],
+            operations: [
+                { type: "UPDATE", path: "src\\index.js" },
+                { type: "CREATE", path: "z.js" }
+            ],
+            transaction: {
+                active: true,
+                snapshot: [
+                    { path: "src\\index.js", language: "javascript", content: "console.log(1);" }
+                ]
+            }
+        };
+
+        const res = synchronizeVfs(rawVfs);
+        assert.strictEqual(res.success, true);
+        
+        // Assert deep freeze
+        assert.ok(Object.isFrozen(res.vfs));
+        assert.ok(Object.isFrozen(res.vfs.files));
+        assert.ok(Object.isFrozen(res.vfs.files[0]));
+
+        // Assert deduplication and path normalization
+        assert.strictEqual(res.vfs.files.length, 2);
+        
+        // File 0: src/index.js (overwritten with latest representation)
+        assert.strictEqual(res.vfs.files[0].path, "src/index.js");
+        assert.strictEqual(res.vfs.files[0].content, "console.log(2);");
+        assert.strictEqual(res.vfs.files[0].status, "COMMITTED");
+
+        // File 1: z.js
+        assert.strictEqual(res.vfs.files[1].path, "z.js");
+
+        // Operations normalized and sorted deterministically
+        assert.strictEqual(res.vfs.operations.length, 2);
+        assert.strictEqual(res.vfs.operations[0].type, "CREATE");
+        assert.strictEqual(res.vfs.operations[0].path, "z.js");
+        assert.strictEqual(res.vfs.operations[1].type, "UPDATE");
+        assert.strictEqual(res.vfs.operations[1].path, "src/index.js");
+
+        // Snapshot synchronized
+        assert.strictEqual(res.vfs.transaction.snapshot[0].path, "src/index.js");
+    });
+
+    test("2. Duplicate canonical paths rejected", () => {
+        // Build a VFS structure that has duplicate canonical paths
+        const vfs = {
+            version: "1.0",
+            metadata: { vfsVersion: "1.0", createdBy: "test" },
+            files: [
+                { path: "src/index.js", language: "javascript", content: "" },
+                { path: "src/index.js", language: "javascript", content: "" }
+            ],
+            operations: [],
+            transaction: { active: false }
+        };
+        // Freeze it
+        const deepFreeze = (obj) => {
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj[prop] && typeof obj[prop] === "object") deepFreeze(obj[prop]);
+            });
+            return obj;
+        };
+        deepFreeze(vfs);
+
+        const res = verifyCanonicalVfs(vfs);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, vfsErrorCodes.VFS_CANONICAL_VALIDATION_FAILED);
+    });
+
+    test("3. Verification succeeds on valid VFS", () => {
+        const files = [
+            { path: "a.js", language: "javascript", content: "" },
+            { path: "b.js", language: "javascript", content: "" }
+        ];
+        const res = createVirtualFileSystem(files);
+        assert.strictEqual(res.success, true);
+
+        const resVerify = verifyCanonicalVfs(res.vfs);
+        assert.strictEqual(resVerify.success, true);
+    });
+
+    test("4. Malformed VFS rejected", () => {
+        const nonFrozenVfs = {
+            version: "1.0",
+            metadata: { vfsVersion: "1.0", createdBy: "test" },
+            files: [],
+            operations: [],
+            transaction: { active: false }
+        };
+        
+        // Non-frozen VFS
+        const res1 = verifyCanonicalVfs(nonFrozenVfs);
+        assert.strictEqual(res1.success, false);
+        assert.strictEqual(res1.errors[0].code, vfsErrorCodes.VFS_CANONICAL_VALIDATION_FAILED);
+
+        // Out-of-order files
+        const outOfOrderVfs = {
+            version: "1.0",
+            metadata: { vfsVersion: "1.0", createdBy: "test" },
+            files: [
+                { path: "z.js", language: "javascript", content: "" },
+                { path: "a.js", language: "javascript", content: "" }
+            ],
+            operations: [],
+            transaction: { active: false }
+        };
+        const deepFreeze = (obj) => {
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj[prop] && typeof obj[prop] === "object") deepFreeze(obj[prop]);
+            });
+            return obj;
+        };
+        deepFreeze(outOfOrderVfs);
+
+        const res2 = verifyCanonicalVfs(outOfOrderVfs);
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, vfsErrorCodes.VFS_CANONICAL_VALIDATION_FAILED);
+    });
+
+    test("5. Deterministic output", () => {
+        const rawVfs = {
+            version: "1.0",
+            metadata: { vfsVersion: "1.0", createdBy: "test" },
+            files: [
+                { path: "b.js", language: "javascript", content: "" },
+                { path: "a.js", language: "javascript", content: "" }
+            ],
+            operations: [],
+            transaction: { active: false }
+        };
+
+        const res1 = synchronizeVfs(rawVfs);
+        const res2 = synchronizeVfs(rawVfs);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("6. Immutable output", () => {
+        const rawVfs = {
+            version: "1.0",
+            metadata: { vfsVersion: "1.0", createdBy: "test" },
+            files: [],
+            operations: [],
+            transaction: { active: false }
+        };
+        const res = synchronizeVfs(rawVfs);
+        assert.ok(Object.isFrozen(res.vfs));
+    });
+
+    test("7. Caller input unchanged", () => {
+        const rawVfs = {
+            version: "1.0",
+            metadata: { vfsVersion: "1.0", createdBy: "test" },
+            files: [
+                { path: "src\\index.js", language: "javascript", content: "" }
+            ],
+            operations: [],
+            transaction: { active: false }
+        };
+        const original = deepClone(rawVfs);
+
+        synchronizeVfs(rawVfs);
+        assert.deepStrictEqual(rawVfs, original);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
