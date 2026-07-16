@@ -19,20 +19,18 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 4 (TaskGraph / Simple DAG Planner)
-*   **CURRENT TASK PACK**: 4E (Planner Pipeline Integration)
-*   **LAST COMPLETED TASK PACK**: 4E (Planner Pipeline Integration)
-*   **Overall Status**: IN_PROGRESS (Task Packs 4A, 4B, 4C, 4D & 4E Complete)
+*   **CURRENT TASK PACK**: 4F (Final Architecture Audit)
+*   **LAST COMPLETED TASK PACK**: 4F (Final Architecture Audit)
+*   **Overall Status**: DONE (All Task Packs 4A–4F Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 4E**:
-  - `docs/migration/PHASE_4E_PLANNER_PIPELINE_INTEGRATION.md` (Design doc)
-- **FILES CHANGED BY 4E**:
-  - `backend/services/generationOrchestrator.js` (Pipeline integration updates)
-  - `backend/tests/run_tests.js` (Added 11 Planner Pipeline Integration unit tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4E)
+- **FILES CREATED BY 4F**:
+  - `docs/migration/PHASE_4_FINAL_ARCHITECTURE_AUDIT.md` (Design doc)
+- **FILES CHANGED BY 4F**:
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4F)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
@@ -119,15 +117,14 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 4E is complete. Review `PHASE_4E_PLANNER_PIPELINE_INTEGRATION.md` before starting the next Task Pack 4F (Final Architecture Review & Hardening) in the next session.
+Task Pack 4F is complete. Review `PHASE_4_FINAL_ARCHITECTURE_AUDIT.md` before starting Phase 5 (Durable Checkpoints + Resume) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_4E_PLANNER_PIPELINE_INTEGRATION.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4E_PLANNER_PIPELINE_INTEGRATION.md)
-- [generationOrchestrator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js)
-- [run_tests.js Phase 4E suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L5916)
+- [PHASE_4_FINAL_ARCHITECTURE_AUDIT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4_FINAL_ARCHITECTURE_AUDIT.md)
+- [PHASE_STATUS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_STATUS.md)
 
 **DO NOT TOUCH**:
-- Existing generation orchestration (`backend/services/generationOrchestrator.js`) outside of preparation functions.
+- Existing generation orchestration (`backend/services/generationOrchestrator.js`).
 - Requirements analysis handlers (`backend/services/projectService.js`).
 - Database models (`backend/models/Project.js`, `backend/models/History.js`).
 - Stack selection implementation (`backend/services/stackProfiles.js`).
@@ -140,4 +137,4 @@ Task Pack 4E is complete. Review `PHASE_4E_PLANNER_PIPELINE_INTEGRATION.md` befo
 - TaskGraph structures (`backend/core/taskGraph/`).
 - Planner structure (`backend/core/planner/`).
 
-**STOP CONDITIONS**: Do not start Task Pack 4F in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Phase 5 in this session. Do not commit or push changes.
