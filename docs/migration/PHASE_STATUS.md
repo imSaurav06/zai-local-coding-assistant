@@ -425,7 +425,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 391 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review Phase 5A report. Proceed to Task Pack 5B (Checkpoint Registry) in the next session.
+- **Next Action**: STOP. Review Phase 5A report. Proceed to Task Pack 5B (Resume State Foundation).
+
+### Task Pack 5B: Resume State Foundation
+- **Status**: DONE
+- **Started At**: 2026-07-17T06:03:00+05:30
+- **Completed At**: 2026-07-17T06:11:00+05:30
+- **Files Created**: `backend/core/checkpoints/resumeState.js`, `docs/migration/PHASE_5B_RESUME_STATE.md`
+- **Files Changed**: `backend/core/checkpoints/checkpointErrors.js`, `backend/core/checkpoints/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Resume State Foundation**: Extracts minimal state (completed, pending, failed, running lists) from checkpoint metadata and returns frozen resume state models.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 5B suite) verifying invalid checkpoint inputs, malformed structures, metadata mappings, list preservations, deep freezing, determinism, and parameters non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 398 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 5B report. Proceed to Task Pack 5C (Durable Checkpoint Service) in the next session.
 
 ---
 
@@ -437,7 +451,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 2** | Requirement Validator + RTM-Lite | **DONE** (All Task Packs 2A–2F Complete) | 2026-07-17 |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
 | **Phase 4** | TaskGraph / Simple DAG Planner | **DONE** (All Task Packs 4A–4F Complete) | 2026-07-17 |
-| **Phase 5** | Durable Checkpoints + Resume | **IN_PROGRESS** (Task Pack 5A Complete) | TBD |
+| **Phase 5** | Durable Checkpoints + Resume | **IN_PROGRESS** (Task Packs 5A & 5B Complete) | TBD |
 | **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |
 | **Phase 8** | Incremental Verification Engine | NOT_STARTED | TBD |

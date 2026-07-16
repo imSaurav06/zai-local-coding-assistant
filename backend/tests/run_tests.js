@@ -6211,6 +6211,112 @@ suite("Checkpoint Domain Model (Phase 5A)", () => {
     });
 });
 
+suite("Resume State Foundation (Phase 5B)", () => {
+    const { createCheckpoint, createResumeState, checkpointErrorCodes } = require(path.join(backendRoot, "core/checkpoints"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleValidCheckpoint = () => {
+        const planner = {
+            version: "1.0",
+            metadata: {
+                plannerVersion: "1.0",
+                graphVersion: "1.0",
+                identityVersion: "1.0",
+                createdBy: "planner"
+            },
+            tasks: [
+                {
+                    stableId: "t1",
+                    displayId: "REQ-001",
+                    kind: "backend",
+                    status: "COMPLETED",
+                    dependencies: [],
+                    dependents: ["t2"]
+                },
+                {
+                    stableId: "t2",
+                    displayId: "REQ-002",
+                    kind: "frontend",
+                    status: "PENDING",
+                    dependencies: ["t1"],
+                    dependents: []
+                }
+            ]
+        };
+        const checkpointRes = createCheckpoint(planner, "test-user");
+        return checkpointRes.checkpoint;
+    };
+
+    test("1. Rejects invalid non-object checkpoint inputs", () => {
+        const res1 = createResumeState(null);
+        assert.strictEqual(res1.success, false);
+        assert.strictEqual(res1.errors[0].code, checkpointErrorCodes.RESUME_INVALID_INPUT);
+
+        const res2 = createResumeState(undefined);
+        assert.strictEqual(res2.success, false);
+
+        const res3 = createResumeState("not-a-checkpoint");
+        assert.strictEqual(res3.success, false);
+    });
+
+    test("2. Rejects malformed checkpoint structure", () => {
+        const malformed = { version: "1.0", planner: {} }; // missing metadata & executionState
+        const res = createResumeState(malformed);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, checkpointErrorCodes.RESUME_INVALID_CHECKPOINT);
+    });
+
+    test("3. Resume state initializes correctly and preserves metadata", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const res = createResumeState(checkpoint);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.resumeState.version, "1.0");
+
+        const metadata = res.resumeState.metadata;
+        assert.strictEqual(metadata.checkpointVersion, checkpoint.metadata.checkpointVersion);
+        assert.strictEqual(metadata.plannerVersion, checkpoint.metadata.plannerVersion);
+        assert.strictEqual(metadata.createdBy, "test-user");
+    });
+
+    test("4. Completed/pending/running/failed tasks arrays are correctly preserved", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const res = createResumeState(checkpoint);
+        assert.strictEqual(res.success, true);
+        
+        assert.deepStrictEqual(res.resumeState.completedTasks, ["t1"]);
+        assert.deepStrictEqual(res.resumeState.pendingTasks, ["t2"]);
+        assert.deepStrictEqual(res.resumeState.runningTasks, []);
+        assert.deepStrictEqual(res.resumeState.failedTasks, []);
+    });
+
+    test("5. Resume state output is deeply frozen and immutable", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const res = createResumeState(checkpoint);
+        assert.strictEqual(res.success, true);
+
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.resumeState));
+        assert.ok(Object.isFrozen(res.resumeState.metadata));
+        assert.ok(Object.isFrozen(res.resumeState.completedTasks));
+        assert.ok(Object.isFrozen(res.resumeState.pendingTasks));
+    });
+
+    test("6. Resume state creation is stateless, pure, and deterministic", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const res1 = createResumeState(checkpoint);
+        const res2 = createResumeState(checkpoint);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("7. Input parameters are never mutated", () => {
+        const checkpoint = getSampleValidCheckpoint();
+        const original = deepClone(checkpoint);
+        createResumeState(checkpoint);
+        assert.deepStrictEqual(checkpoint, original);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
