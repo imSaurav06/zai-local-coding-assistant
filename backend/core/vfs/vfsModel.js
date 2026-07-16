@@ -29,9 +29,8 @@ function deepFreeze(obj) {
  * Creates a deterministic, deeply frozen Virtual File System domain model.
  * 
  * @param {Array} [files] Optional initial files array
- * @param {Object} [options] Optional configuration object
  */
-function createVirtualFileSystem(files, options) {
+function createVirtualFileSystem(files) {
     try {
         if (files === undefined || files === null) {
             files = [];
