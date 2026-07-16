@@ -9,6 +9,7 @@ const { compileProjectSpec, validateProjectSpec } = require("../core/projectSpec
 const { deriveRequirementIdentities } = require("../core/requirements");
 const { buildRTM, validateRTM } = require("../core/rtm");
 const { buildTaskGraph, validateTaskGraph } = require("../core/taskGraph");
+const { createPlanner, createExecutionPlan, buildReadyQueue, validatePlanner } = require("../core/planner");
 
 // Internal tracing hooks for unit testing only
 const _testHooks = {
@@ -18,10 +19,18 @@ const _testHooks = {
     validateRTM,
     buildTaskGraph,
     validateTaskGraph,
+    createPlanner,
+    createExecutionPlan,
+    buildReadyQueue,
+    validatePlanner,
     buildRTMCallCount: 0,
     validateRTMCallCount: 0,
     buildTaskGraphCallCount: 0,
-    validateTaskGraphCallCount: 0
+    validateTaskGraphCallCount: 0,
+    createPlannerCallCount: 0,
+    createExecutionPlanCallCount: 0,
+    buildReadyQueueCallCount: 0,
+    validatePlannerCallCount: 0
 };
 
 /**
@@ -105,11 +114,52 @@ function prepareCanonicalProjectSpec(legacyPayload) {
         throw err;
     }
 
+    // Connect Planner Model Builder
+    _testHooks.createPlannerCallCount++;
+    const plannerModelResult = _testHooks.createPlanner(taskGraphResult.graph);
+    if (!plannerModelResult.success) {
+        const err = new Error("Planner model creation failed: " + (plannerModelResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_PLANNER_BUILD_FAILED";
+        err.errors = plannerModelResult.errors;
+        throw err;
+    }
+
+    // Connect Planner Topology Builder
+    _testHooks.createExecutionPlanCallCount++;
+    const plannerTopologyResult = _testHooks.createExecutionPlan(plannerModelResult.planner);
+    if (!plannerTopologyResult.success) {
+        const err = new Error("Planner topology creation failed: " + (plannerTopologyResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_PLANNER_TOPOLOGY_FAILED";
+        err.errors = plannerTopologyResult.errors;
+        throw err;
+    }
+
+    // Connect Planner Ready Queue Builder
+    _testHooks.buildReadyQueueCallCount++;
+    const readyQueueResult = _testHooks.buildReadyQueue(plannerModelResult.planner);
+    if (!readyQueueResult.success) {
+        const err = new Error("Planner ready queue creation failed: " + (readyQueueResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_PLANNER_READY_FAILED";
+        err.errors = readyQueueResult.errors;
+        throw err;
+    }
+
+    // Connect Planner Validator
+    _testHooks.validatePlannerCallCount++;
+    const plannerValidationResult = _testHooks.validatePlanner(plannerModelResult.planner);
+    if (!plannerValidationResult.success) {
+        const err = new Error("Planner validation failed: " + (plannerValidationResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_PLANNER_VALIDATION_FAILED";
+        err.errors = plannerValidationResult.errors;
+        throw err;
+    }
+
     return {
         projectSpec: canonicalSpec,
         requirementIdentity: identityResult,
         rtm: rtmResult,
-        taskGraph: taskGraphResult.graph
+        taskGraph: taskGraphResult.graph,
+        planner: plannerModelResult.planner
     };
 }
 

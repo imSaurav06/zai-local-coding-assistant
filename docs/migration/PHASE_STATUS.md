@@ -384,7 +384,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 373 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review Phase 4D report. Proceed to Task Pack 4E (Planner State Machine) in the next session.
+- **Next Action**: STOP. Review Phase 4D report. Proceed to Task Pack 4E (Planner Pipeline Integration).
+
+### Task Pack 4E: Planner Pipeline Integration
+- **Status**: DONE
+- **Started At**: 2026-07-17T04:42:00+05:30
+- **Completed At**: 2026-07-17T04:52:00+05:30
+- **Files Created**: `docs/migration/PHASE_4E_PLANNER_PIPELINE_INTEGRATION.md`
+- **Files Changed**: `backend/services/generationOrchestrator.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Planner Pipeline Integration**: Integrated Planner creation, Topological ordering, Ready Queue evaluation, and Validator checks into the `prepareCanonicalProjectSpec` preparation pipeline with fail-fast bounds.
+- **Tests Added**: 11 unit tests in `run_tests.js` (Phase 4E suite) verifying that Model, Topology, Ready Queue, and Validator execute exactly once; failures correctly halt preparation; sidecar is never persisted or leaked via API endpoints; and the returned structure remains frozen.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 384 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Phase 4 Simple DAG Planner engine foundation is fully completed. Review handoff files before beginning Phase 4F (Final Architecture Review & Hardening) in the next session.
 
 ---
 
@@ -395,7 +409,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 1** | ProjectSpec Foundation + Stable Requirement IDs | **DONE** (All Task Packs 1A–1E Complete) | 2026-07-17 |
 | **Phase 2** | Requirement Validator + RTM-Lite | **DONE** (All Task Packs 2A–2F Complete) | 2026-07-17 |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
-| **Phase 4** | TaskGraph / Simple DAG Planner | **IN_PROGRESS** (Task Packs 4A, 4B, 4C & 4D Complete) | TBD |
+| **Phase 4** | TaskGraph / Simple DAG Planner | **IN_PROGRESS** (Task Packs 4A, 4B, 4C, 4D & 4E Complete) | TBD |
 | **Phase 5** | Durable Checkpoints + Resume | NOT_STARTED | TBD |
 | **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |

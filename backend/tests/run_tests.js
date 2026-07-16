@@ -5915,6 +5915,196 @@ suite("Planner Validator (Phase 4D)", () => {
     });
 });
 
+suite("Planner Pipeline Integration (Phase 4E)", () => {
+    const { orchestrateGeneration, prepareCanonicalProjectSpec, _testHooks } = require(path.join(backendRoot, "services/generationOrchestrator"));
+    const { adaptProjectSpecForPersistence } = require(path.join(backendRoot, "controllers/projectController"));
+
+    const getSampleLegacyPayload = () => ({
+        projectName: "TestApp",
+        projectType: "Web Application",
+        frontend: "React (Vite)",
+        backend: "Express.js",
+        database: "MongoDB",
+        authentication: "JWT",
+        designRequirements: "Tailwind CSS",
+        pagesAndRoutes: [
+            { path: "/home", name: "Home", description: "Home Page" }
+        ],
+        components: [
+            { name: "Navbar", purpose: "Nav bar component" }
+        ],
+        backendApis: [
+            { path: "/api/status", method: "GET", purpose: "Status check API" }
+        ],
+        databaseModels: [
+            { name: "User", fields: ["email: String (required) - User email"] }
+        ],
+        integrations: [],
+        importantDependencies: [],
+        environmentVariables: [],
+        architectureConstraints: [],
+        runBuildRequirements: { runScript: "npm run dev", buildScript: "" },
+        deploymentRequirements: "None",
+        assumptions: []
+    });
+
+    test("1. Planner Model executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        _testHooks.createPlannerCallCount = 0;
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.createPlannerCallCount, 1);
+        assert.ok(prep.planner);
+    });
+
+    test("2. Planner Topology executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        _testHooks.createExecutionPlanCallCount = 0;
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.createExecutionPlanCallCount, 1);
+        assert.ok(prep.planner);
+    });
+
+    test("3. Ready Queue Builder executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        _testHooks.buildReadyQueueCallCount = 0;
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.buildReadyQueueCallCount, 1);
+        assert.ok(prep.planner);
+    });
+
+    test("4. Planner Validator executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        _testHooks.validatePlannerCallCount = 0;
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.validatePlannerCallCount, 1);
+        assert.ok(prep.planner);
+    });
+
+    test("5. Planner Model failure prevents planning and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        const originalCreatePlanner = _testHooks.createPlanner;
+        _testHooks.createPlanner = () => ({
+            success: false,
+            errors: [{ code: "MOCK_PLANNER_BUILD_ERROR", path: "mock", message: "Mocked build failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_PLANNER_BUILD_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "MOCK_PLANNER_BUILD_ERROR");
+            }
+            assert.ok(threw, "Must throw on model builder failure");
+        } finally {
+            _testHooks.createPlanner = originalCreatePlanner;
+        }
+    });
+
+    test("6. Planner Topology failure prevents planning and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        const originalCreateExecutionPlan = _testHooks.createExecutionPlan;
+        _testHooks.createExecutionPlan = () => ({
+            success: false,
+            executionOrder: [],
+            errors: [{ code: "MOCK_PLANNER_TOPOLOGY_ERROR", path: "mock", message: "Mocked topology failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_PLANNER_TOPOLOGY_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "MOCK_PLANNER_TOPOLOGY_ERROR");
+            }
+            assert.ok(threw, "Must throw on topology sorting failure");
+        } finally {
+            _testHooks.createExecutionPlan = originalCreateExecutionPlan;
+        }
+    });
+
+    test("7. Ready Queue failure prevents planning and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        const originalBuildReadyQueue = _testHooks.buildReadyQueue;
+        _testHooks.buildReadyQueue = () => ({
+            success: false,
+            readyQueue: [],
+            errors: [{ code: "MOCK_PLANNER_READY_ERROR", path: "mock", message: "Mocked ready failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_PLANNER_READY_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "MOCK_PLANNER_READY_ERROR");
+            }
+            assert.ok(threw, "Must throw on ready queue building failure");
+        } finally {
+            _testHooks.buildReadyQueue = originalBuildReadyQueue;
+        }
+    });
+
+    test("8. Planner validation failure prevents planning and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        const originalValidatePlanner = _testHooks.validatePlanner;
+        _testHooks.validatePlanner = () => ({
+            success: false,
+            errors: [{ code: "MOCK_PLANNER_VAL_ERROR", path: "mock", message: "Mocked validation failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_PLANNER_VALIDATION_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "MOCK_PLANNER_VAL_ERROR");
+            }
+            assert.ok(threw, "Must throw on validation failure");
+        } finally {
+            _testHooks.validatePlanner = originalValidatePlanner;
+        }
+    });
+
+    test("9. Planner remains frozen in preparation result", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.ok(prep.planner);
+        assert.ok(Object.isFrozen(prep.planner));
+        assert.ok(Object.isFrozen(prep.planner.tasks));
+    });
+
+    test("10. Planner never reaches persistence adapter", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        const dbSpec = adaptProjectSpecForPersistence(prep.projectSpec);
+        assert.strictEqual(dbSpec.planner, undefined);
+        assert.strictEqual(dbSpec._planner, undefined);
+    });
+
+    test("11. Planner sidecar is not returned by public orchestrateGeneration result", () => {
+        const orchestratorSource = require("fs").readFileSync(
+            path.join(backendRoot, "services/generationOrchestrator.js"), "utf8"
+        );
+        const returnBlockIndex = orchestratorSource.indexOf("summary: richPlan,");
+        assert.ok(returnBlockIndex !== -1, "Return block of orchestrateGeneration not found");
+        const returnBlock = orchestratorSource.substring(returnBlockIndex, returnBlockIndex + 300);
+        assert.ok(!/\bplanner\b/.test(returnBlock), "orchestrateGeneration return block must not leak planner sidecar");
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
