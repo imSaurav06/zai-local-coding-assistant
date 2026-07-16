@@ -6589,6 +6589,271 @@ suite("Checkpoint Pipeline Integration (Phase 5D)", () => {
     });
 });
 
+suite("Context Builder Foundation (Phase 6A)", () => {
+    const { buildContext, CONTEXT_MODEL_VERSION, contextErrorCodes } = require(path.join(backendRoot, "core/context"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleInputs = () => {
+        const projectSpec = {
+            projectName: "MyApplication",
+            projectType: "Fullstack Web App",
+            frontend: "React"
+        };
+        const requirement = {
+            stableId: "req-1",
+            displayId: "REQ-001",
+            kind: "backend",
+            description: "Build status API endpoint"
+        };
+        const plannerTask = {
+            stableId: "req-1",
+            displayId: "REQ-001",
+            status: "PENDING",
+            dependencies: [],
+            dependents: []
+        };
+        return { projectSpec, requirement, plannerTask };
+    };
+
+    test("1. Rejects invalid non-object inputs", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+
+        // Null checks
+        assert.strictEqual(buildContext(null, requirement, plannerTask).success, false);
+        assert.strictEqual(buildContext(projectSpec, null, plannerTask).success, false);
+        assert.strictEqual(buildContext(projectSpec, requirement, null).success, false);
+
+        // Error code check
+        const res = buildContext(null, requirement, plannerTask);
+        assert.strictEqual(res.errors[0].code, contextErrorCodes.CONTEXT_INVALID_INPUT);
+    });
+
+    test("2. Rejects malformed projectSpec", () => {
+        const { requirement, plannerTask } = getSampleInputs();
+        const malformedSpec = { frontend: "React" }; // Missing projectName & projectType
+        const res = buildContext(malformedSpec, requirement, plannerTask);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, contextErrorCodes.CONTEXT_INVALID_PROJECT_SPEC);
+    });
+
+    test("3. Rejects malformed requirement", () => {
+        const { projectSpec, plannerTask } = getSampleInputs();
+        const malformedReq = { displayId: "REQ-001" }; // Missing stableId, kind, description
+        const res = buildContext(projectSpec, malformedReq, plannerTask);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, contextErrorCodes.CONTEXT_INVALID_REQUIREMENT);
+    });
+
+    test("4. Rejects malformed plannerTask", () => {
+        const { projectSpec, requirement } = getSampleInputs();
+        const malformedTask = { stableId: "req-1", displayId: "REQ-001", status: "PENDING" }; // Missing dependencies & dependents
+        const res = buildContext(projectSpec, requirement, malformedTask);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, contextErrorCodes.CONTEXT_INVALID_TASK);
+    });
+
+    test("5. Rejects mismatched requirement/task identifiers", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        plannerTask.stableId = "mismatched-id";
+        const res = buildContext(projectSpec, requirement, plannerTask);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, contextErrorCodes.CONTEXT_INVALID_INPUT);
+    });
+
+    test("6. Context initializes correctly with metadata and fields", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const res = buildContext(projectSpec, requirement, plannerTask);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.context.version, CONTEXT_MODEL_VERSION);
+        assert.strictEqual(res.context.metadata.contextVersion, CONTEXT_MODEL_VERSION);
+        assert.strictEqual(res.context.metadata.createdBy, "contextBuilder");
+        
+        assert.deepStrictEqual(res.context.projectSpec, projectSpec);
+        assert.deepStrictEqual(res.context.requirement, requirement);
+        assert.deepStrictEqual(res.context.plannerTask, plannerTask);
+    });
+
+    test("7. Context output is deeply frozen and immutable", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const res = buildContext(projectSpec, requirement, plannerTask);
+        assert.strictEqual(res.success, true);
+
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.context));
+        assert.ok(Object.isFrozen(res.context.metadata));
+        assert.ok(Object.isFrozen(res.context.projectSpec));
+        assert.ok(Object.isFrozen(res.context.requirement));
+        assert.ok(Object.isFrozen(res.context.plannerTask));
+    });
+
+    test("8. Context creation is stateless, pure, and deterministic", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const res1 = buildContext(projectSpec, requirement, plannerTask);
+        const res2 = buildContext(projectSpec, requirement, plannerTask);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("9. Input parameters are never mutated", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const originalSpec = deepClone(projectSpec);
+        const originalReq = deepClone(requirement);
+        const originalTask = deepClone(plannerTask);
+
+        buildContext(projectSpec, requirement, plannerTask);
+
+        assert.deepStrictEqual(projectSpec, originalSpec);
+        assert.deepStrictEqual(requirement, originalReq);
+        assert.deepStrictEqual(plannerTask, originalTask);
+    });
+});
+
+suite("Repository-Aware Context (Phase 6B)", () => {
+    const { buildContext, contextErrorCodes } = require(path.join(backendRoot, "core/context"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleInputs = () => {
+        const projectSpec = {
+            projectName: "RepoApp",
+            projectType: "Fullstack App"
+        };
+        const requirement = {
+            stableId: "req-navbar",
+            displayId: "REQ-002",
+            kind: "component",
+            description: "Navbar layout",
+            targetFile: "frontend/src/components/layout/Navbar.jsx"
+        };
+        const plannerTask = {
+            stableId: "req-navbar",
+            displayId: "REQ-002",
+            status: "PENDING",
+            dependencies: [],
+            dependents: [],
+            targetFile: "frontend/src/components/layout/Navbar.jsx"
+        };
+        return { projectSpec, requirement, plannerTask };
+    };
+
+    const getSampleRepository = () => [
+        {
+            path: "frontend/src/components/layout/Navbar.jsx",
+            language: "javascript",
+            imports: [
+                "./ThemeToggle",
+                "../../hooks/useAuth",
+                "react",
+                "axios"
+            ]
+        },
+        {
+            path: "frontend/src/components/layout/ThemeToggle.jsx",
+            language: "javascript",
+            imports: []
+        },
+        {
+            path: "frontend/src/hooks/useAuth.js",
+            language: "javascript",
+            imports: ["react"]
+        },
+        {
+            path: "frontend/src/components/common/Button.jsx",
+            language: "javascript",
+            imports: []
+        }
+    ];
+
+    test("1. Rejects invalid repository (not an array)", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const res = buildContext(projectSpec, requirement, plannerTask, "not-an-array");
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, contextErrorCodes.CONTEXT_INVALID_REPOSITORY);
+    });
+
+    test("2. Rejects missing target file in repository", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        plannerTask.targetFile = "nonexistent/file.js";
+        requirement.targetFile = "nonexistent/file.js";
+        const repository = getSampleRepository();
+        const res = buildContext(projectSpec, requirement, plannerTask, repository);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, contextErrorCodes.CONTEXT_TARGET_NOT_FOUND);
+    });
+
+    test("3. Resolves direct relative imports correctly", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repository = getSampleRepository();
+        const res = buildContext(projectSpec, requirement, plannerTask, repository);
+        
+        assert.strictEqual(res.success, true);
+        const { targetFile, importedFiles } = res.context.repositoryContext;
+        assert.strictEqual(targetFile.path, "frontend/src/components/layout/Navbar.jsx");
+        
+        // Should resolve ThemeToggle.jsx and useAuth.js, but NOT Button.jsx
+        assert.strictEqual(importedFiles.length, 2);
+        assert.strictEqual(importedFiles[0].path, "frontend/src/components/layout/ThemeToggle.jsx");
+        assert.strictEqual(importedFiles[1].path, "frontend/src/hooks/useAuth.js");
+    });
+
+    test("4. Only direct imports resolved (no recursion)", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repository = getSampleRepository();
+        
+        // Add an import to ThemeToggle that targets Button.jsx
+        repository[1].imports = ["../common/Button"];
+        
+        const res = buildContext(projectSpec, requirement, plannerTask, repository);
+        assert.strictEqual(res.success, true);
+        const { importedFiles } = res.context.repositoryContext;
+        
+        // Button.jsx should not be in importedFiles since we do not recurse
+        assert.ok(!importedFiles.some(f => f.path.includes("Button.jsx")));
+    });
+
+    test("5. Ordering of importedFiles is deterministic (sorted by path)", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repository = getSampleRepository();
+        
+        // Re-order repository to verify sort
+        const shuffledRepo = [repository[2], repository[0], repository[1], repository[3]];
+        const res = buildContext(projectSpec, requirement, plannerTask, shuffledRepo);
+        
+        assert.strictEqual(res.success, true);
+        const { importedFiles } = res.context.repositoryContext;
+        assert.strictEqual(importedFiles[0].path, "frontend/src/components/layout/ThemeToggle.jsx");
+        assert.strictEqual(importedFiles[1].path, "frontend/src/hooks/useAuth.js");
+    });
+
+    test("6. Output repositoryContext is deeply frozen", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repository = getSampleRepository();
+        const res = buildContext(projectSpec, requirement, plannerTask, repository);
+        
+        assert.strictEqual(res.success, true);
+        assert.ok(Object.isFrozen(res.context.repositoryContext));
+        assert.ok(Object.isFrozen(res.context.repositoryContext.targetFile));
+        assert.ok(Object.isFrozen(res.context.repositoryContext.importedFiles));
+    });
+
+    test("7. Input parameters are never mutated", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repository = getSampleRepository();
+        
+        const originalSpec = deepClone(projectSpec);
+        const originalReq = deepClone(requirement);
+        const originalTask = deepClone(plannerTask);
+        const originalRepo = deepClone(repository);
+
+        buildContext(projectSpec, requirement, plannerTask, repository);
+
+        assert.deepStrictEqual(projectSpec, originalSpec);
+        assert.deepStrictEqual(requirement, originalReq);
+        assert.deepStrictEqual(plannerTask, originalTask);
+        assert.deepStrictEqual(repository, originalRepo);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

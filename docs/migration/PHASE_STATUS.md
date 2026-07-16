@@ -480,7 +480,35 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 414 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review `PHASE_5_FINAL_ARCHITECTURE_AUDIT.md`. Proceed to subsequent task packs in next session.
+- **Next Action**: STOP. Review `PHASE_5_FINAL_ARCHITECTURE_AUDIT.md`. Proceed to Phase 6A (Context Builder Foundation).
+
+### Task Pack 6A: Context Builder Foundation
+- **Status**: DONE
+- **Started At**: 2026-07-17T06:43:00+05:30
+- **Completed At**: 2026-07-17T06:51:00+05:30
+- **Files Created**: `backend/core/context/contextErrors.js`, `backend/core/context/contextBuilder.js`, `backend/core/context/index.js`, `docs/migration/PHASE_6A_CONTEXT_BUILDER.md`
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Context Builder Foundation**: Creates the canonical Context Builder domain model that aggregates ProjectSpec, requirement identity, and planner task into a deeply frozen, isolated model.
+- **Tests Added**: 9 unit tests in `run_tests.js` (Phase 6A suite) verifying invalid input rejections, malformed structures (ProjectSpec, requirement, plannerTask), mismatched identifier rejections, correct context instantiation, deep-freeze immutability, determinism, and input parameters non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 423 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 6A report. Proceed to Task Pack 6B (Repository-Aware Context Builder).
+
+### Task Pack 6B: Repository-Aware Context Builder
+- **Status**: DONE
+- **Started At**: 2026-07-17T07:15:00+05:30
+- **Completed At**: 2026-07-17T07:21:00+05:30
+- **Files Created**: `docs/migration/PHASE_6B_REPOSITORY_CONTEXT.md`
+- **Files Changed**: `backend/core/context/contextErrors.js`, `backend/core/context/contextBuilder.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Repository-Aware Context Builder**: Extends buildContext to accept an optional repository list of file descriptors, resolves direct relative imports relative to the target file's directory, filters node_modules/external packages, sorts the resolved importedFiles lexicographically, and deep freezes the sub-graph context output.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 6B suite) verifying invalid repository rejections, target file mismatches, direct relative import resolutions, no recursion, path sorting determinism, deep freezing, and parameter non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 430 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 6B report. Proceed to Task Pack 6C (Context Validator) in the next session.
 
 ---
 
@@ -493,7 +521,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
 | **Phase 4** | TaskGraph / Simple DAG Planner | **DONE** (All Task Packs 4A–4F Complete) | 2026-07-17 |
 | **Phase 5** | Durable Checkpoints + Resume | **DONE** (All Task Packs 5A–5E Complete) | 2026-07-17 |
-| **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
+| **Phase 6** | ContextBuilder | **IN_PROGRESS** (Task Packs 6A & 6B Complete) | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |
 | **Phase 8** | Incremental Verification Engine | NOT_STARTED | TBD |
 | **Phase 9** | Bounded Targeted Repair | NOT_STARTED | TBD |

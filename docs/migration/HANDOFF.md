@@ -18,28 +18,31 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ### 2. Current Migration State
 
-*   **CURRENT PHASE**: PHASE 5 (Durable Checkpoints + Resume)
-*   **CURRENT TASK PACK**: 5E (Final Architecture Audit)
-*   **LAST COMPLETED TASK PACK**: 5E (Final Architecture Audit)
-*   **Overall Status**: DONE (All Task Packs 5A–5E Complete)
+*   **CURRENT PHASE**: PHASE 6 (ContextBuilder)
+*   **CURRENT TASK PACK**: 6B (Repository-Aware Context Builder)
+*   **LAST COMPLETED TASK PACK**: 6B (Repository-Aware Context Builder)
+*   **Overall Status**: IN_PROGRESS (Task Packs 6A & 6B Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 5E**:
-  - `docs/migration/PHASE_5_FINAL_ARCHITECTURE_AUDIT.md` (Design doc)
-- **FILES CHANGED BY 5E**:
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 5/5E)
+- **FILES CREATED BY 6B**:
+  - `docs/migration/PHASE_6B_REPOSITORY_CONTEXT.md` (Design doc)
+- **FILES CHANGED BY 6B**:
+  - `backend/core/context/contextErrors.js` (Added repo errors)
+  - `backend/core/context/contextBuilder.js` (Implemented import resolution)
+  - `backend/tests/run_tests.js` (Added 7 Repository-Aware Context Builder unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 6/6B)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T06:31:00+05:30
-- **TEST RESULTS**: 414 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 9 unit tests added under the suite `Checkpoint Pipeline Integration (Phase 5D)`, covering:
+- **TESTS LAST RUN**: 2026-07-17T07:21:00+05:30
+- **TEST RESULTS**: 430 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 7 unit tests added under the suite `Repository-Aware Context (Phase 6B)`, covering:
   - Checkpoint Builder executes exactly once in preparation pipeline
   - Checkpoint Validator executes exactly once in preparation pipeline
   - Resume State Builder executes exactly once in preparation pipeline
@@ -148,11 +151,12 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 5E is complete. Review `PHASE_5_FINAL_ARCHITECTURE_AUDIT.md` before starting Phase 6 (ContextBuilder) in the next session.
+Task Pack 6B is complete. Review `PHASE_6B_REPOSITORY_CONTEXT.md` before starting Task Pack 6C (Context Validator) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_5_FINAL_ARCHITECTURE_AUDIT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_5_FINAL_ARCHITECTURE_AUDIT.md)
-- [PHASE_STATUS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_STATUS.md)
+- [PHASE_6B_REPOSITORY_CONTEXT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_6B_REPOSITORY_CONTEXT.md)
+- [contextBuilder.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/context/contextBuilder.js)
+- [run_tests.js Phase 6B suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6711)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
@@ -168,5 +172,6 @@ Task Pack 5E is complete. Review `PHASE_5_FINAL_ARCHITECTURE_AUDIT.md` before st
 - TaskGraph structures (`backend/core/taskGraph/`).
 - Planner structure (`backend/core/planner/`).
 - Checkpoint structures (`backend/core/checkpoints/`).
+- Context structures (`backend/core/context/`) outside of buildContext parameter extensions.
 
-**STOP CONDITIONS**: Do not start Phase 6 in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 6C in this session. Do not commit or push changes.
