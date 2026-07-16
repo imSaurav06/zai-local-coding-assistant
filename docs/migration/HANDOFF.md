@@ -19,31 +19,38 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 5 (Durable Checkpoints + Resume)
-*   **CURRENT TASK PACK**: 5C (Checkpoint Validator)
-*   **LAST COMPLETED TASK PACK**: 5C (Checkpoint Validator)
-*   **Overall Status**: IN_PROGRESS (Task Packs 5A, 5B & 5C Complete)
+*   **CURRENT TASK PACK**: 5D (Checkpoint Pipeline Integration)
+*   **LAST COMPLETED TASK PACK**: 5D (Checkpoint Pipeline Integration)
+*   **Overall Status**: IN_PROGRESS (Task Packs 5A, 5B, 5C & 5D Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 5C**:
-  - `backend/core/checkpoints/checkpointValidator.js` (Checkpoint validator logic)
-  - `docs/migration/PHASE_5C_CHECKPOINT_VALIDATOR.md` (Design doc)
-- **FILES CHANGED BY 5C**:
-  - `backend/core/checkpoints/checkpointErrors.js` (Added checkpoint validator error codes)
-  - `backend/core/checkpoints/index.js` (Exported validateCheckpoint)
-  - `backend/tests/run_tests.js` (Added 7 Checkpoint Validator unit tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 5/5C)
+- **FILES CREATED BY 5D**:
+  - `docs/migration/PHASE_5D_CHECKPOINT_PIPELINE_INTEGRATION.md` (Design doc)
+- **FILES CHANGED BY 5D**:
+  - `backend/services/generationOrchestrator.js` (Pipeline integration updates)
+  - `backend/tests/run_tests.js` (Added 9 Checkpoint Pipeline Integration unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 5/5D)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T06:21:00+05:30
-- **TEST RESULTS**: 405 passed, 0 failed, 0 skipped.
-- **New Tests Added**: 7 unit tests added under the suite `Checkpoint Validator (Phase 5C)`, covering:
+- **TESTS LAST RUN**: 2026-07-17T06:31:00+05:30
+- **TEST RESULTS**: 414 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 9 unit tests added under the suite `Checkpoint Pipeline Integration (Phase 5D)`, covering:
+  - Checkpoint Builder executes exactly once in preparation pipeline
+  - Checkpoint Validator executes exactly once in preparation pipeline
+  - Resume State Builder executes exactly once in preparation pipeline
+  - Checkpoint creation failure halts preparation and throws correct error code
+  - Checkpoint validation failure halts preparation and throws correct error code
+  - Resume state creation failure halts preparation and throws correct error code
+  - Checkpoint and ResumeState remain frozen in preparation result
+  - Checkpoint and ResumeState never reach persistence adapter
+  - Checkpoint and ResumeState sidecars are not returned by public orchestrateGeneration result
   - Accepts a valid pre-built frozen Checkpoint
   - Rejects invalid root structures
   - Rejects invalid metadata attributes
@@ -129,8 +136,8 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ### 6.3 Pipeline Integration
 *   **INTEGRATION FUNCTION**: `prepareCanonicalProjectSpec(legacyPayload)` in `generationOrchestrator.js`
-*   **RETURNS**: `{ projectSpec: frozenCanonicalSpec, requirementIdentity: frozenIdentityResult, rtm: frozenRTM, taskGraph: frozenTaskGraph, planner: frozenPlanner }` (RTM, TaskGraph, Planner are internal-only)
-*   **ERROR CODES**: `PROJECT_PREPARATION_COMPILE_FAILED`, `PROJECT_PREPARATION_IDENTITY_FAILED`, `PROJECT_PREPARATION_RTM_BUILD_FAILED`, `PROJECT_PREPARATION_RTM_VALIDATION_FAILED`, `PROJECT_PREPARATION_TASK_GRAPH_BUILD_FAILED`, `PROJECT_PREPARATION_TASK_GRAPH_VALIDATION_FAILED`, `PROJECT_PREPARATION_PLANNER_BUILD_FAILED`, `PROJECT_PREPARATION_PLANNER_TOPOLOGY_FAILED`, `PROJECT_PREPARATION_PLANNER_READY_FAILED`, `PROJECT_PREPARATION_PLANNER_VALIDATION_FAILED`
+*   **RETURNS**: `{ projectSpec: frozenCanonicalSpec, requirementIdentity: frozenIdentityResult, rtm: frozenRTM, taskGraph: frozenTaskGraph, planner: frozenPlanner, checkpoint: frozenCheckpoint, resumeState: frozenResumeState }` (RTM, TaskGraph, Planner, Checkpoint, ResumeState are internal-only sidecars)
+*   **ERROR CODES**: `PROJECT_PREPARATION_COMPILE_FAILED`, `PROJECT_PREPARATION_IDENTITY_FAILED`, `PROJECT_PREPARATION_RTM_BUILD_FAILED`, `PROJECT_PREPARATION_RTM_VALIDATION_FAILED`, `PROJECT_PREPARATION_TASK_GRAPH_BUILD_FAILED`, `PROJECT_PREPARATION_TASK_GRAPH_VALIDATION_FAILED`, `PROJECT_PREPARATION_PLANNER_BUILD_FAILED`, `PROJECT_PREPARATION_PLANNER_TOPOLOGY_FAILED`, `PROJECT_PREPARATION_PLANNER_READY_FAILED`, `PROJECT_PREPARATION_PLANNER_VALIDATION_FAILED`, `PROJECT_PREPARATION_CHECKPOINT_BUILD_FAILED`, `PROJECT_PREPARATION_CHECKPOINT_VALIDATION_FAILED`, `PROJECT_PREPARATION_RESUME_STATE_FAILED`
 *   **PERSISTENCE ADAPTER**: `adaptProjectSpecForPersistence(projectSpec)` in `projectController.js` (strips schemaVersion and any sidecar data)
 *   **BOUNDARY**: Top of `orchestrateGeneration()` — before any planning, scaffolding, or AI calls
 *   **SIDECAR**: `requirementIdentity` and `rtm` travel internally alongside `projectSpec` in memory, but are completely stripped from public database saves and client API responses.
@@ -143,15 +150,15 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 5C is complete. Review `PHASE_5C_CHECKPOINT_VALIDATOR.md` before starting Task Pack 5D (Checkpoint Pipeline Integration) in the next session.
+Task Pack 5D is complete. Review `PHASE_5D_CHECKPOINT_PIPELINE_INTEGRATION.md` before starting Task Pack 5E (Final Architecture Audit) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_5C_CHECKPOINT_VALIDATOR.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_5C_CHECKPOINT_VALIDATOR.md)
-- [checkpointValidator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/checkpoints/checkpointValidator.js)
-- [run_tests.js Phase 5C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6320)
+- [PHASE_5D_CHECKPOINT_PIPELINE_INTEGRATION.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_5D_CHECKPOINT_PIPELINE_INTEGRATION.md)
+- [generationOrchestrator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js)
+- [run_tests.js Phase 5D suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6429)
 
 **DO NOT TOUCH**:
-- Existing generation orchestration (`backend/services/generationOrchestrator.js`).
+- Existing generation orchestration (`backend/services/generationOrchestrator.js`) outside of preparation functions.
 - Requirements analysis handlers (`backend/services/projectService.js`).
 - Database models (`backend/models/Project.js`, `backend/models/History.js`).
 - Stack selection implementation (`backend/services/stackProfiles.js`).
@@ -163,6 +170,6 @@ Task Pack 5C is complete. Review `PHASE_5C_CHECKPOINT_VALIDATOR.md` before start
 - RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
 - TaskGraph structures (`backend/core/taskGraph/`).
 - Planner structure (`backend/core/planner/`).
-- Checkpoint structures (`backend/core/checkpoints/`) outside of checkpointValidator utility updates.
+- Checkpoint structures (`backend/core/checkpoints/`).
 
-**STOP CONDITIONS**: Do not start Task Pack 5D in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 5E in this session. Do not commit or push changes.

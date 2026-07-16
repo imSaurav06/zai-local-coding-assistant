@@ -6427,6 +6427,168 @@ suite("Checkpoint Validator (Phase 5C)", () => {
     });
 });
 
+suite("Checkpoint Pipeline Integration (Phase 5D)", () => {
+    const { orchestrateGeneration, prepareCanonicalProjectSpec, _testHooks } = require(path.join(backendRoot, "services/generationOrchestrator"));
+    const { adaptProjectSpecForPersistence } = require(path.join(backendRoot, "controllers/projectController"));
+
+    const getSampleLegacyPayload = () => ({
+        projectName: "CheckpointApp",
+        projectType: "Web Application",
+        frontend: "React (Vite)",
+        backend: "Express.js",
+        database: "MongoDB",
+        authentication: "JWT",
+        designRequirements: "Tailwind CSS",
+        pagesAndRoutes: [
+            { path: "/home", name: "Home", description: "Home Page" }
+        ],
+        components: [
+            { name: "Navbar", purpose: "Nav bar component" }
+        ],
+        backendApis: [
+            { path: "/api/status", method: "GET", purpose: "Status check API" }
+        ],
+        databaseModels: [
+            { name: "User", fields: ["email: String (required) - User email"] }
+        ],
+        integrations: [],
+        importantDependencies: [],
+        environmentVariables: [],
+        architectureConstraints: [],
+        runBuildRequirements: { runScript: "npm run dev", buildScript: "" },
+        deploymentRequirements: "None",
+        assumptions: []
+    });
+
+    test("1. Checkpoint Builder executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        _testHooks.createCheckpointCallCount = 0;
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.createCheckpointCallCount, 1);
+        assert.ok(prep.checkpoint);
+    });
+
+    test("2. Checkpoint Validator executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        _testHooks.validateCheckpointCallCount = 0;
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.validateCheckpointCallCount, 1);
+        assert.ok(prep.checkpoint);
+    });
+
+    test("3. Resume State Builder executes exactly once in preparation pipeline", () => {
+        const payload = getSampleLegacyPayload();
+        _testHooks.createResumeStateCallCount = 0;
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(_testHooks.createResumeStateCallCount, 1);
+        assert.ok(prep.resumeState);
+    });
+
+    test("4. Checkpoint creation failure halts preparation and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        const originalCreateCheckpoint = _testHooks.createCheckpoint;
+        _testHooks.createCheckpoint = () => ({
+            success: false,
+            checkpoint: null,
+            errors: [{ code: "MOCK_CHECKPOINT_BUILD_ERROR", path: "mock", message: "Mocked creation failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_CHECKPOINT_BUILD_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "MOCK_CHECKPOINT_BUILD_ERROR");
+            }
+            assert.ok(threw, "Must throw on checkpoint creation failure");
+        } finally {
+            _testHooks.createCheckpoint = originalCreateCheckpoint;
+        }
+    });
+
+    test("5. Checkpoint validation failure halts preparation and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        const originalValidateCheckpoint = _testHooks.validateCheckpoint;
+        _testHooks.validateCheckpoint = () => ({
+            success: false,
+            errors: [{ code: "MOCK_CHECKPOINT_VAL_ERROR", path: "mock", message: "Mocked validation failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_CHECKPOINT_VALIDATION_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "MOCK_CHECKPOINT_VAL_ERROR");
+            }
+            assert.ok(threw, "Must throw on checkpoint validation failure");
+        } finally {
+            _testHooks.validateCheckpoint = originalValidateCheckpoint;
+        }
+    });
+
+    test("6. Resume state creation failure halts preparation and throws correct error code", () => {
+        const payload = getSampleLegacyPayload();
+        const originalCreateResumeState = _testHooks.createResumeState;
+        _testHooks.createResumeState = () => ({
+            success: false,
+            resumeState: null,
+            errors: [{ code: "MOCK_RESUME_ERROR", path: "mock", message: "Mocked resume state failure" }]
+        });
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_RESUME_STATE_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.strictEqual(err.errors[0].code, "MOCK_RESUME_ERROR");
+            }
+            assert.ok(threw, "Must throw on resume state creation failure");
+        } finally {
+            _testHooks.createResumeState = originalCreateResumeState;
+        }
+    });
+
+    test("7. Checkpoint and ResumeState remain frozen in preparation result", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.ok(prep.checkpoint);
+        assert.ok(Object.isFrozen(prep.checkpoint));
+        assert.ok(prep.resumeState);
+        assert.ok(Object.isFrozen(prep.resumeState));
+    });
+
+    test("8. Checkpoint and ResumeState never reach persistence adapter", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        const dbSpec = adaptProjectSpecForPersistence(prep.projectSpec);
+        assert.strictEqual(dbSpec.checkpoint, undefined);
+        assert.strictEqual(dbSpec.resumeState, undefined);
+        assert.strictEqual(dbSpec._checkpoint, undefined);
+        assert.strictEqual(dbSpec._resumeState, undefined);
+    });
+
+    test("9. Checkpoint and ResumeState sidecars are not returned by public orchestrateGeneration result", () => {
+        const orchestratorSource = require("fs").readFileSync(
+            path.join(backendRoot, "services/generationOrchestrator.js"), "utf8"
+        );
+        const returnBlockIndex = orchestratorSource.indexOf("summary: richPlan,");
+        assert.ok(returnBlockIndex !== -1, "Return block of orchestrateGeneration not found");
+        const returnBlock = orchestratorSource.substring(returnBlockIndex, returnBlockIndex + 300);
+        assert.ok(!/\bcheckpoint\b/.test(returnBlock), "orchestrateGeneration return block must not leak checkpoint sidecar");
+        assert.ok(!/\bresumeState\b/.test(returnBlock), "orchestrateGeneration return block must not leak resumeState sidecar");
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

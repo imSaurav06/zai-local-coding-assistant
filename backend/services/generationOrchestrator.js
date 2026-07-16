@@ -10,6 +10,7 @@ const { deriveRequirementIdentities } = require("../core/requirements");
 const { buildRTM, validateRTM } = require("../core/rtm");
 const { buildTaskGraph, validateTaskGraph } = require("../core/taskGraph");
 const { createPlanner, createExecutionPlan, buildReadyQueue, validatePlanner } = require("../core/planner");
+const { createCheckpoint, validateCheckpoint, createResumeState } = require("../core/checkpoints");
 
 // Internal tracing hooks for unit testing only
 const _testHooks = {
@@ -23,6 +24,9 @@ const _testHooks = {
     createExecutionPlan,
     buildReadyQueue,
     validatePlanner,
+    createCheckpoint,
+    validateCheckpoint,
+    createResumeState,
     buildRTMCallCount: 0,
     validateRTMCallCount: 0,
     buildTaskGraphCallCount: 0,
@@ -30,7 +34,10 @@ const _testHooks = {
     createPlannerCallCount: 0,
     createExecutionPlanCallCount: 0,
     buildReadyQueueCallCount: 0,
-    validatePlannerCallCount: 0
+    validatePlannerCallCount: 0,
+    createCheckpointCallCount: 0,
+    validateCheckpointCallCount: 0,
+    createResumeStateCallCount: 0
 };
 
 /**
@@ -154,12 +161,44 @@ function prepareCanonicalProjectSpec(legacyPayload) {
         throw err;
     }
 
+    // Connect Checkpoint Builder
+    _testHooks.createCheckpointCallCount++;
+    const checkpointResult = _testHooks.createCheckpoint(plannerModelResult.planner, "planner");
+    if (!checkpointResult.success) {
+        const err = new Error("Checkpoint creation failed: " + (checkpointResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_CHECKPOINT_BUILD_FAILED";
+        err.errors = checkpointResult.errors;
+        throw err;
+    }
+
+    // Connect Checkpoint Validator
+    _testHooks.validateCheckpointCallCount++;
+    const checkpointValidationResult = _testHooks.validateCheckpoint(checkpointResult.checkpoint);
+    if (!checkpointValidationResult.success) {
+        const err = new Error("Checkpoint validation failed: " + (checkpointValidationResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_CHECKPOINT_VALIDATION_FAILED";
+        err.errors = checkpointValidationResult.errors;
+        throw err;
+    }
+
+    // Connect Resume State Builder
+    _testHooks.createResumeStateCallCount++;
+    const resumeStateResult = _testHooks.createResumeState(checkpointResult.checkpoint);
+    if (!resumeStateResult.success) {
+        const err = new Error("Resume state derivation failed: " + (resumeStateResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_RESUME_STATE_FAILED";
+        err.errors = resumeStateResult.errors;
+        throw err;
+    }
+
     return {
         projectSpec: canonicalSpec,
         requirementIdentity: identityResult,
         rtm: rtmResult,
         taskGraph: taskGraphResult.graph,
-        planner: plannerModelResult.planner
+        planner: plannerModelResult.planner,
+        checkpoint: checkpointResult.checkpoint,
+        resumeState: resumeStateResult.resumeState
     };
 }
 
