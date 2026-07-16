@@ -411,7 +411,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 384 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review `PHASE_4_FINAL_ARCHITECTURE_AUDIT.md`. Proceed to subsequent task packs in next session.
+- **Next Action**: STOP. Review `PHASE_4_FINAL_ARCHITECTURE_AUDIT.md`. Proceed to Phase 5A (Checkpoint Domain Model).
+
+### Task Pack 5A: Checkpoint Domain Model
+- **Status**: DONE
+- **Started At**: 2026-07-17T05:53:00+05:30
+- **Completed At**: 2026-07-17T06:01:00+05:30
+- **Files Created**: `backend/core/checkpoints/checkpointErrors.js`, `backend/core/checkpoints/checkpointModel.js`, `backend/core/checkpoints/index.js`, `docs/migration/PHASE_5A_CHECKPOINT_MODEL.md`
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Checkpoint Domain Model**: Instantiates complete offline, pure, deeply frozen execution states mapping completed, running, pending, and failed tasks with alphabetical displayId sorting determinism.
+- **Tests Added**: 7 unit tests in `run_tests.js` (Phase 5A suite) verifying invalid input rejections, structure validations, duplicate stableId/displayId rejections, execution status group sortings, deep-freeze immutability, determinism, and input parameters non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 391 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 5A report. Proceed to Task Pack 5B (Checkpoint Registry) in the next session.
 
 ---
 
@@ -423,7 +437,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 2** | Requirement Validator + RTM-Lite | **DONE** (All Task Packs 2A–2F Complete) | 2026-07-17 |
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
 | **Phase 4** | TaskGraph / Simple DAG Planner | **DONE** (All Task Packs 4A–4F Complete) | 2026-07-17 |
-| **Phase 5** | Durable Checkpoints + Resume | NOT_STARTED | TBD |
+| **Phase 5** | Durable Checkpoints + Resume | **IN_PROGRESS** (Task Pack 5A Complete) | TBD |
 | **Phase 6** | ContextBuilder | NOT_STARTED | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |
 | **Phase 8** | Incremental Verification Engine | NOT_STARTED | TBD |

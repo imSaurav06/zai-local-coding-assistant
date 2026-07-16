@@ -6105,6 +6105,112 @@ suite("Planner Pipeline Integration (Phase 4E)", () => {
     });
 });
 
+suite("Checkpoint Domain Model (Phase 5A)", () => {
+    const { createCheckpoint, CHECKPOINT_MODEL_VERSION, checkpointErrorCodes } = require(path.join(backendRoot, "core/checkpoints"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleValidPlanner = () => ({
+        version: "1.0",
+        metadata: {
+            plannerVersion: "1.0",
+            graphVersion: "1.0",
+            identityVersion: "1.0",
+            createdBy: "planner"
+        },
+        tasks: [
+            {
+                stableId: "t1",
+                displayId: "REQ-001",
+                kind: "backend",
+                status: "COMPLETED",
+                dependencies: [],
+                dependents: ["t2"]
+            },
+            {
+                stableId: "t2",
+                displayId: "REQ-002",
+                kind: "frontend",
+                status: "PENDING",
+                dependencies: ["t1"],
+                dependents: []
+            }
+        ]
+    });
+
+    test("1. Rejects invalid non-object planner inputs", () => {
+        const res1 = createCheckpoint(null);
+        assert.strictEqual(res1.success, false);
+        assert.strictEqual(res1.errors[0].code, checkpointErrorCodes.CHECKPOINT_INVALID_INPUT);
+
+        const res2 = createCheckpoint(undefined);
+        assert.strictEqual(res2.success, false);
+
+        const res3 = createCheckpoint("not-a-planner");
+        assert.strictEqual(res3.success, false);
+    });
+
+    test("2. Rejects invalid planner structures", () => {
+        const invalidPlanner = { version: "1.0" }; // missing tasks & metadata
+        const res = createCheckpoint(invalidPlanner);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER);
+    });
+
+    test("3. Rejects duplicate task IDs", () => {
+        const planner = getSampleValidPlanner();
+        planner.tasks[1].stableId = "t1"; // duplicate stableId
+        const res = createCheckpoint(planner);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, checkpointErrorCodes.CHECKPOINT_DUPLICATE_TASK);
+    });
+
+    test("4. Checkpoint initializes correctly and populates executionState groups", () => {
+        const planner = getSampleValidPlanner();
+        const res = createCheckpoint(planner, "test-runner");
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.checkpoint.version, CHECKPOINT_MODEL_VERSION);
+        
+        const metadata = res.checkpoint.metadata;
+        assert.strictEqual(metadata.checkpointVersion, CHECKPOINT_MODEL_VERSION);
+        assert.strictEqual(metadata.plannerVersion, planner.version);
+        assert.strictEqual(metadata.createdBy, "test-runner");
+
+        const state = res.checkpoint.executionState;
+        assert.deepStrictEqual(state.completedTasks, ["t1"]);
+        assert.deepStrictEqual(state.pendingTasks, ["t2"]);
+        assert.deepStrictEqual(state.runningTasks, []);
+        assert.deepStrictEqual(state.failedTasks, []);
+    });
+
+    test("5. Checkpoint is deeply frozen and immutable", () => {
+        const planner = getSampleValidPlanner();
+        const res = createCheckpoint(planner);
+        assert.strictEqual(res.success, true);
+
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.checkpoint));
+        assert.ok(Object.isFrozen(res.checkpoint.metadata));
+        assert.ok(Object.isFrozen(res.checkpoint.executionState));
+        assert.ok(Object.isFrozen(res.checkpoint.executionState.completedTasks));
+        assert.ok(Object.isFrozen(res.checkpoint.planner));
+    });
+
+    test("6. Creation is stateless, pure, and deterministic", () => {
+        const planner = getSampleValidPlanner();
+        const res1 = createCheckpoint(planner);
+        const res2 = createCheckpoint(planner);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("7. Input parameters are never mutated", () => {
+        const planner = getSampleValidPlanner();
+        const original = deepClone(planner);
+        createCheckpoint(planner);
+        assert.deepStrictEqual(planner, original);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

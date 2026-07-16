@@ -18,27 +18,39 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ### 2. Current Migration State
 
-*   **CURRENT PHASE**: PHASE 4 (TaskGraph / Simple DAG Planner)
-*   **CURRENT TASK PACK**: 4F (Final Architecture Audit)
-*   **LAST COMPLETED TASK PACK**: 4F (Final Architecture Audit)
-*   **Overall Status**: DONE (All Task Packs 4A–4F Complete)
+*   **CURRENT PHASE**: PHASE 5 (Durable Checkpoints + Resume)
+*   **CURRENT TASK PACK**: 5A (Checkpoint Domain Model)
+*   **LAST COMPLETED TASK PACK**: 5A (Checkpoint Domain Model)
+*   **Overall Status**: IN_PROGRESS (Task Pack 5A Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 4F**:
-  - `docs/migration/PHASE_4_FINAL_ARCHITECTURE_AUDIT.md` (Design doc)
-- **FILES CHANGED BY 4F**:
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 4/4F)
+- **FILES CREATED BY 5A**:
+  - `backend/core/checkpoints/checkpointErrors.js` (Checkpoint error codes)
+  - `backend/core/checkpoints/checkpointModel.js` (Checkpoint builder)
+  - `backend/core/checkpoints/index.js` (Exports createCheckpoint, etc)
+  - `docs/migration/PHASE_5A_CHECKPOINT_MODEL.md` (Design doc)
+- **FILES CHANGED BY 5A**:
+  - `backend/tests/run_tests.js` (Added 7 Checkpoint Domain Model unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 5/5A)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T04:52:00+05:30
-- **TEST RESULTS**: 384 passed, 0 failed, 0 skipped.
+- **TESTS LAST RUN**: 2026-07-17T06:01:00+05:30
+- **TEST RESULTS**: 391 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 7 unit tests added under the suite `Checkpoint Domain Model (Phase 5A)`, covering:
+  - Rejects invalid non-object planner inputs
+  - Rejects invalid planner structures
+  - Rejects duplicate task IDs
+  - Checkpoint initializes correctly and populates executionState groups
+  - Checkpoint is deeply frozen and immutable
+  - Creation is stateless, pure, and deterministic
+  - Input parameters are never mutated
 - **New Tests Added**: 11 unit tests added under the suite `Planner Pipeline Integration (Phase 4E)`, covering:
   - Planner Model executes exactly once in preparation pipeline
   - Planner Topology executes exactly once in preparation pipeline
@@ -117,11 +129,12 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 4F is complete. Review `PHASE_4_FINAL_ARCHITECTURE_AUDIT.md` before starting Phase 5 (Durable Checkpoints + Resume) in the next session.
+Task Pack 5A is complete. Review `PHASE_5A_CHECKPOINT_MODEL.md` before starting Task Pack 5B (Checkpoint Registry) in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_4_FINAL_ARCHITECTURE_AUDIT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_4_FINAL_ARCHITECTURE_AUDIT.md)
-- [PHASE_STATUS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_STATUS.md)
+- [PHASE_5A_CHECKPOINT_MODEL.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_5A_CHECKPOINT_MODEL.md)
+- [checkpointModel.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/checkpoints/checkpointModel.js)
+- [run_tests.js Phase 5A suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6108)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
@@ -136,5 +149,6 @@ Task Pack 4F is complete. Review `PHASE_4_FINAL_ARCHITECTURE_AUDIT.md` before st
 - RTM validator semantics (`backend/core/rtm/rtmValidator.js`).
 - TaskGraph structures (`backend/core/taskGraph/`).
 - Planner structure (`backend/core/planner/`).
+- Checkpoint structures (`backend/core/checkpoints/`) outside of domain model updates.
 
-**STOP CONDITIONS**: Do not start Phase 5 in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 5B in this session. Do not commit or push changes.
