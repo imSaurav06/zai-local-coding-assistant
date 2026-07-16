@@ -59,8 +59,9 @@ function resolveRelativePath(fromPath, importPath) {
  * @param {Object} plannerTask Active execution PlannerTask
  * @param {Array} [repository] Optional list of canonical file descriptors
  */
-function buildContext(projectSpec, requirement, plannerTask, repository) {
+function buildContext(projectSpec, requirement, plannerTask, repository, options) {
     try {
+        options = options || {};
         // 1. General non-null inputs validation
         if (
             projectSpec === null || projectSpec === undefined ||
@@ -191,6 +192,40 @@ function buildContext(projectSpec, requirement, plannerTask, repository) {
                         }]
                     });
                 }
+
+                if (file.hasOwnProperty("importMetadata") && file.importMetadata !== undefined && file.importMetadata !== null) {
+                    if (!Array.isArray(file.importMetadata)) {
+                        return deepFreeze({
+                            success: false,
+                            context: null,
+                            errors: [{
+                                code: contextErrorCodes.CONTEXT_INVALID_IMPORT_METADATA,
+                                path: `repository[${i}].importMetadata`,
+                                message: "importMetadata must be an array."
+                            }]
+                        });
+                    }
+
+                    for (let j = 0; j < file.importMetadata.length; j++) {
+                        const meta = file.importMetadata[j];
+                        if (
+                            typeof meta !== "object" || meta === null ||
+                            typeof meta.source !== "string" || !meta.source.trim() ||
+                            typeof meta.symbol !== "string" || !meta.symbol.trim() ||
+                            typeof meta.importType !== "string" || !meta.importType.trim()
+                        ) {
+                            return deepFreeze({
+                                success: false,
+                                context: null,
+                                errors: [{
+                                    code: contextErrorCodes.CONTEXT_INVALID_IMPORT_METADATA,
+                                    path: `repository[${i}].importMetadata[${j}]`,
+                                    message: "Each importMetadata entry must be an object with source (string), symbol (string), and importType (string)."
+                                }]
+                            });
+                        }
+                    }
+                }
             }
 
             // Find target file path using any of our candidate lookup fields
@@ -272,6 +307,60 @@ function buildContext(projectSpec, requirement, plannerTask, repository) {
                 targetFile: JSON.parse(JSON.stringify(targetFileObj)),
                 importedFiles: JSON.parse(JSON.stringify(importedFiles))
             };
+
+            if (options && options.includeImportedSymbols === true) {
+                const importedSymbols = [];
+                if (Array.isArray(targetFileObj.importMetadata)) {
+                    for (const entry of targetFileObj.importMetadata) {
+                        const source = entry.source;
+                        // Skip if not relative import path (starts with ./ or ../)
+                        if (!source.startsWith("./") && !source.startsWith("../")) {
+                            continue;
+                        }
+
+                        // Ignore unsupported import styles
+                        if (
+                            entry.importType !== "default" &&
+                            entry.importType !== "named" &&
+                            entry.importType !== "namespace"
+                        ) {
+                            continue;
+                        }
+
+                        // Resolve source path relative to target file path
+                        const resolved = resolveRelativePath(targetFileObj.path, source);
+
+                        // Find the matching file in repository
+                        const matchedFile = repository.find(file => {
+                            const fPath = file.path.replace(/\\/g, "/");
+                            if (fPath === resolved) return true;
+                            const extensions = [".js", ".jsx", ".ts", ".tsx", ".css", ".json"];
+                            for (const ext of extensions) {
+                                if (fPath === resolved + ext) return true;
+                                if (fPath === resolved + "/index" + ext) return true;
+                            }
+                            return false;
+                        });
+
+                        if (matchedFile) {
+                            importedSymbols.push({
+                                file: matchedFile.path,
+                                symbol: entry.symbol,
+                                importType: entry.importType
+                            });
+                        }
+                    }
+                }
+
+                // Sort importedSymbols by: file ascending, then symbol ascending
+                importedSymbols.sort((a, b) => {
+                    const fileComp = a.file.localeCompare(b.file);
+                    if (fileComp !== 0) return fileComp;
+                    return a.symbol.localeCompare(b.symbol);
+                });
+
+                repositoryContext.importedSymbols = JSON.parse(JSON.stringify(importedSymbols));
+            }
         }
 
         // 7. Deep clone and return frozen context

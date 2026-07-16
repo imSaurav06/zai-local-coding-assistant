@@ -6,9 +6,9 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 ## Migration Status Summary
 
-*   **Current Phase**: PHASE 1 (ProjectSpec Foundation + Stable Requirement IDs)
-*   **Current Task Pack**: 1E (Existing Pipeline Compatibility Integration)
-*   **Overall Status**: DONE (Phase 1 Complete)
+*   **Current Phase**: PHASE 6 (ContextBuilder)
+*   **Current Task Pack**: 6C (Symbol-Aware Context Resolution)
+*   **Overall Status**: IN_PROGRESS (Task Packs 6A–6C Complete)
 
 ---
 
@@ -508,7 +508,21 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Test Result**: 430 Passed, 0 Failed, 0 Skipped.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Next Action**: STOP. Review Phase 6B report. Proceed to Task Pack 6C (Context Validator) in the next session.
+- **Next Action**: STOP. Review Phase 6B report. Proceed to Task Pack 6C (Symbol-Aware Context Resolution) in the next session.
+
+### Task Pack 6C: Symbol-Aware Context Resolution
+- **Status**: DONE
+- **Started At**: 2026-07-17T07:23:00+05:30
+- **Completed At**: 2026-07-17T07:31:00+05:30
+- **Files Created**: `docs/migration/PHASE_6C_SYMBOL_CONTEXT.md`
+- **Files Changed**: `backend/core/context/contextErrors.js`, `backend/core/context/contextBuilder.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Symbol-Aware Context Resolution**: Extended Context Builder with symbol-level context extraction mapping default, named, and namespace imports of relative resolved paths, ignoring external modules and unsupported styles.
+- **Tests Added**: 9 unit tests in `run_tests.js` (Phase 6C suite) verifying invalid import metadata rejection, default/named/namespace extraction, style ignoring, deterministic sorting, deep freeze immutability, parameter non-mutation, and backward compatibility.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 439 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 6C report. Proceed to Phase 6D (Final Architecture Audit) or Phase 7 in the next session.
 
 ---
 
@@ -521,7 +535,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 3** | Architecture / DB / API / Auth / Deployment Contracts | **DONE** (All Task Packs 3A–3F Complete) | 2026-07-17 |
 | **Phase 4** | TaskGraph / Simple DAG Planner | **DONE** (All Task Packs 4A–4F Complete) | 2026-07-17 |
 | **Phase 5** | Durable Checkpoints + Resume | **DONE** (All Task Packs 5A–5E Complete) | 2026-07-17 |
-| **Phase 6** | ContextBuilder | **IN_PROGRESS** (Task Packs 6A & 6B Complete) | TBD |
+| **Phase 6** | ContextBuilder | **IN_PROGRESS** (Task Packs 6A–6C Complete) | TBD |
 | **Phase 7** | Structured / Transaction VFS File Operations | NOT_STARTED | TBD |
 | **Phase 8** | Incremental Verification Engine | NOT_STARTED | TBD |
 | **Phase 9** | Bounded Targeted Repair | NOT_STARTED | TBD |

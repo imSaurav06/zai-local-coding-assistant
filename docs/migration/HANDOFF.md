@@ -19,29 +19,39 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 6 (ContextBuilder)
-*   **CURRENT TASK PACK**: 6B (Repository-Aware Context Builder)
-*   **LAST COMPLETED TASK PACK**: 6B (Repository-Aware Context Builder)
-*   **Overall Status**: IN_PROGRESS (Task Packs 6A & 6B Complete)
+*   **CURRENT TASK PACK**: 6C (Symbol-Aware Context Resolution)
+*   **LAST COMPLETED TASK PACK**: 6C (Symbol-Aware Context Resolution)
+*   **Overall Status**: IN_PROGRESS (Task Packs 6A–6C Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 6B**:
-  - `docs/migration/PHASE_6B_REPOSITORY_CONTEXT.md` (Design doc)
-- **FILES CHANGED BY 6B**:
-  - `backend/core/context/contextErrors.js` (Added repo errors)
-  - `backend/core/context/contextBuilder.js` (Implemented import resolution)
-  - `backend/tests/run_tests.js` (Added 7 Repository-Aware Context Builder unit tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 6/6B)
+- **FILES CREATED BY 6C**:
+  - `docs/migration/PHASE_6C_SYMBOL_CONTEXT.md` (Design doc)
+- **FILES CHANGED BY 6C**:
+  - `backend/core/context/contextErrors.js` (Added CONTEXT_INVALID_IMPORT_METADATA error code)
+  - `backend/core/context/contextBuilder.js` (Implemented symbol validation and extraction)
+  - `backend/tests/run_tests.js` (Added 9 Symbol-Aware Context Resolution unit tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 6/6C)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T07:21:00+05:30
-- **TEST RESULTS**: 430 passed, 0 failed, 0 skipped.
+- **TESTS LAST RUN**: 2026-07-17T07:31:00+05:30
+- **TEST RESULTS**: 439 passed, 0 failed, 0 skipped.
+- **New Tests Added**: 9 unit tests added under the suite `Symbol-Aware Context Resolution (Phase 6C)`, covering:
+  - Reject malformed import metadata
+  - Correct extraction of default imports
+  - Correct extraction of named imports
+  - Correct extraction of namespace imports
+  - Ignore unsupported import styles
+  - Deterministic ordering
+  - Deep immutability
+  - No caller mutation
+  - Existing repository context remains unchanged
 - **New Tests Added**: 7 unit tests added under the suite `Repository-Aware Context (Phase 6B)`, covering:
   - Checkpoint Builder executes exactly once in preparation pipeline
   - Checkpoint Validator executes exactly once in preparation pipeline
@@ -151,12 +161,12 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 6B is complete. Review `PHASE_6B_REPOSITORY_CONTEXT.md` before starting Task Pack 6C (Context Validator) in the next session.
+Task Pack 6C is complete. Review `PHASE_6C_SYMBOL_CONTEXT.md` before starting Phase 6D (Final Architecture Audit) or Phase 7 in the next session.
 
 **FILES TO READ FIRST**:
-- [PHASE_6B_REPOSITORY_CONTEXT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_6B_REPOSITORY_CONTEXT.md)
+- [PHASE_6C_SYMBOL_CONTEXT.md](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/docs/migration/PHASE_6C_SYMBOL_CONTEXT.md)
 - [contextBuilder.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/context/contextBuilder.js)
-- [run_tests.js Phase 6B suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6711)
+- [run_tests.js Phase 6C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L6854)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration (`backend/services/generationOrchestrator.js`).
@@ -174,4 +184,4 @@ Task Pack 6B is complete. Review `PHASE_6B_REPOSITORY_CONTEXT.md` before startin
 - Checkpoint structures (`backend/core/checkpoints/`).
 - Context structures (`backend/core/context/`) outside of buildContext parameter extensions.
 
-**STOP CONDITIONS**: Do not start Task Pack 6C in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Task Pack 6D or Phase 7 in this session. Do not commit or push changes.

@@ -6854,6 +6854,245 @@ suite("Repository-Aware Context (Phase 6B)", () => {
     });
 });
 
+suite("Symbol-Aware Context Resolution (Phase 6C)", () => {
+    const { buildContext, contextErrorCodes } = require(path.join(backendRoot, "core/context"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const getSampleInputs = () => {
+        const projectSpec = {
+            projectName: "SymbolApp",
+            projectType: "Fullstack App"
+        };
+        const requirement = {
+            stableId: "req-nav",
+            displayId: "REQ-003",
+            kind: "component",
+            description: "Navbar layout with user profile",
+            targetFile: "frontend/src/components/layout/Navbar.jsx"
+        };
+        const plannerTask = {
+            stableId: "req-nav",
+            displayId: "REQ-003",
+            status: "PENDING",
+            dependencies: [],
+            dependents: [],
+            targetFile: "frontend/src/components/layout/Navbar.jsx"
+        };
+        return { projectSpec, requirement, plannerTask };
+    };
+
+    const getSampleRepository = () => [
+        {
+            path: "frontend/src/components/layout/Navbar.jsx",
+            language: "javascript",
+            imports: [
+                "./ThemeToggle",
+                "../../hooks/useAuth",
+                "react",
+                "axios"
+            ],
+            importMetadata: [
+                {
+                    source: "./ThemeToggle",
+                    symbol: "ThemeToggle",
+                    importType: "default"
+                },
+                {
+                    source: "../../hooks/useAuth",
+                    symbol: "useAuth",
+                    importType: "named"
+                },
+                {
+                    source: "react",
+                    symbol: "React",
+                    importType: "default"
+                }
+            ]
+        },
+        {
+            path: "frontend/src/components/layout/ThemeToggle.jsx",
+            language: "javascript",
+            imports: []
+        },
+        {
+            path: "frontend/src/hooks/useAuth.js",
+            language: "javascript",
+            imports: []
+        }
+    ];
+
+    test("1. Reject malformed import metadata", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        
+        // Non-array importMetadata
+        const repo1 = getSampleRepository();
+        repo1[0].importMetadata = "not-an-array";
+        const res1 = buildContext(projectSpec, requirement, plannerTask, repo1, { includeImportedSymbols: true });
+        assert.strictEqual(res1.success, false);
+        assert.strictEqual(res1.errors[0].code, contextErrorCodes.CONTEXT_INVALID_IMPORT_METADATA);
+
+        // Missing required key
+        const repo2 = getSampleRepository();
+        repo2[0].importMetadata = [{ source: "./ThemeToggle", symbol: "ThemeToggle" }]; // missing importType
+        const res2 = buildContext(projectSpec, requirement, plannerTask, repo2, { includeImportedSymbols: true });
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, contextErrorCodes.CONTEXT_INVALID_IMPORT_METADATA);
+
+        // Incorrect primitive type
+        const repo3 = getSampleRepository();
+        repo3[0].importMetadata = [{ source: "./ThemeToggle", symbol: 123, importType: "default" }];
+        const res3 = buildContext(projectSpec, requirement, plannerTask, repo3, { includeImportedSymbols: true });
+        assert.strictEqual(res3.success, false);
+        assert.strictEqual(res3.errors[0].code, contextErrorCodes.CONTEXT_INVALID_IMPORT_METADATA);
+    });
+
+    test("2. Correct extraction of default imports", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        const res = buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: true });
+        assert.strictEqual(res.success, true);
+        
+        const { importedSymbols } = res.context.repositoryContext;
+        const defaultImp = importedSymbols.find(s => s.importType === "default" && s.symbol === "ThemeToggle");
+        assert.ok(defaultImp);
+        assert.strictEqual(defaultImp.file, "frontend/src/components/layout/ThemeToggle.jsx");
+    });
+
+    test("3. Correct extraction of named imports", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        const res = buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: true });
+        assert.strictEqual(res.success, true);
+        
+        const { importedSymbols } = res.context.repositoryContext;
+        const namedImp = importedSymbols.find(s => s.importType === "named" && s.symbol === "useAuth");
+        assert.ok(namedImp);
+        assert.strictEqual(namedImp.file, "frontend/src/hooks/useAuth.js");
+    });
+
+    test("4. Correct extraction of namespace imports", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        repo[0].importMetadata.push({
+            source: "./ThemeToggle",
+            symbol: "*",
+            importType: "namespace"
+        });
+        const res = buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: true });
+        assert.strictEqual(res.success, true);
+        
+        const { importedSymbols } = res.context.repositoryContext;
+        const nsImp = importedSymbols.find(s => s.importType === "namespace" && s.symbol === "*");
+        assert.ok(nsImp);
+        assert.strictEqual(nsImp.file, "frontend/src/components/layout/ThemeToggle.jsx");
+    });
+
+    test("5. Ignore unsupported import styles", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        
+        // Unsupported import styles inside importMetadata should be ignored, NOT throw
+        repo[0].importMetadata.push({
+            source: "./ThemeToggle",
+            symbol: "something",
+            importType: "require"
+        });
+        repo[0].importMetadata.push({
+            source: "./ThemeToggle",
+            symbol: "dynamicLoad",
+            importType: "dynamic"
+        });
+
+        const res = buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: true });
+        assert.strictEqual(res.success, true);
+
+        // Verify that 'require' and 'dynamic' imports are NOT in the importedSymbols list
+        const { importedSymbols } = res.context.repositoryContext;
+        assert.strictEqual(importedSymbols.some(s => s.importType === "require"), false);
+        assert.strictEqual(importedSymbols.some(s => s.importType === "dynamic"), false);
+        
+        // Verify node_modules / external packages (like react, axios) are ignored (they don't start with ./ or ../)
+        assert.strictEqual(importedSymbols.some(s => s.file === "react"), false);
+        assert.strictEqual(importedSymbols.some(s => s.symbol === "React"), false);
+    });
+
+    test("6. Deterministic ordering", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        
+        // Insert symbols out of alphabetical order
+        repo[0].importMetadata = [
+            { source: "../../hooks/useAuth", symbol: "useAuth", importType: "named" },
+            { source: "./ThemeToggle", symbol: "ThemeToggle", importType: "default" },
+            { source: "./ThemeToggle", symbol: "AlphaSymbol", importType: "named" }
+        ];
+
+        const res = buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: true });
+        assert.strictEqual(res.success, true);
+        const { importedSymbols } = res.context.repositoryContext;
+
+        // Ordering should be sorted by: file path ASC, then symbol name ASC
+        // Expected order:
+        // 1. file: "frontend/src/components/layout/ThemeToggle.jsx", symbol: "AlphaSymbol"
+        // 2. file: "frontend/src/components/layout/ThemeToggle.jsx", symbol: "ThemeToggle"
+        // 3. file: "frontend/src/hooks/useAuth.js", symbol: "useAuth"
+        
+        assert.strictEqual(importedSymbols.length, 3);
+        
+        assert.strictEqual(importedSymbols[0].file, "frontend/src/components/layout/ThemeToggle.jsx");
+        assert.strictEqual(importedSymbols[0].symbol, "AlphaSymbol");
+        
+        assert.strictEqual(importedSymbols[1].file, "frontend/src/components/layout/ThemeToggle.jsx");
+        assert.strictEqual(importedSymbols[1].symbol, "ThemeToggle");
+        
+        assert.strictEqual(importedSymbols[2].file, "frontend/src/hooks/useAuth.js");
+        assert.strictEqual(importedSymbols[2].symbol, "useAuth");
+    });
+
+    test("7. Deep immutability", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        const res = buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: true });
+        assert.strictEqual(res.success, true);
+
+        assert.ok(Object.isFrozen(res.context.repositoryContext.importedSymbols));
+        assert.ok(Object.isFrozen(res.context.repositoryContext.importedSymbols[0]));
+    });
+
+    test("8. No caller mutation", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        
+        const originalSpec = deepClone(projectSpec);
+        const originalReq = deepClone(requirement);
+        const originalTask = deepClone(plannerTask);
+        const originalRepo = deepClone(repo);
+
+        buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: true });
+
+        assert.deepStrictEqual(projectSpec, originalSpec);
+        assert.deepStrictEqual(requirement, originalReq);
+        assert.deepStrictEqual(plannerTask, originalTask);
+        assert.deepStrictEqual(repo, originalRepo);
+    });
+
+    test("9. Existing repository context remains unchanged", () => {
+        const { projectSpec, requirement, plannerTask } = getSampleInputs();
+        const repo = getSampleRepository();
+        
+        // Without options parameter
+        const resNoOptions = buildContext(projectSpec, requirement, plannerTask, repo);
+        assert.strictEqual(resNoOptions.success, true);
+        assert.strictEqual(resNoOptions.context.repositoryContext.importedSymbols, undefined);
+
+        // With includeImportedSymbols: false
+        const resWithFalse = buildContext(projectSpec, requirement, plannerTask, repo, { includeImportedSymbols: false });
+        assert.strictEqual(resWithFalse.success, true);
+        assert.strictEqual(resWithFalse.context.repositoryContext.importedSymbols, undefined);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
