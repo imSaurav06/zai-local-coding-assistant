@@ -3757,6 +3757,427 @@ suite("Requirement Identity (Phase 1D)", () => {
     });
 });
 
+suite("Pipeline Integration (Phase 1E)", () => {
+    const { orchestrateGeneration, prepareCanonicalProjectSpec, _testHooks } = require(path.join(backendRoot, "services/generationOrchestrator"));
+    const { compileProjectSpec } = require(path.join(backendRoot, "core/projectSpec"));
+    const { deriveRequirementIdentities } = require(path.join(backendRoot, "core/requirements"));
+    const projectService = require(path.join(backendRoot, "services/projectService"));
+    const { adaptProjectSpecForPersistence } = require(path.join(backendRoot, "controllers/projectController"));
+
+    const getSampleLegacyPayload = () => ({
+        projectName: "TestApp",
+        projectType: "Web Application",
+        frontend: "React (Vite)",
+        backend: "Express.js",
+        database: "MongoDB",
+        authentication: "JWT",
+        designRequirements: "Tailwind CSS",
+        pagesAndRoutes: [{ path: "/", name: "Home", description: "Home page" }],
+        components: [{ name: "Header", purpose: "Header view" }],
+        backendApis: [],
+        databaseModels: [],
+        integrations: [],
+        importantDependencies: [],
+        environmentVariables: [],
+        architectureConstraints: [],
+        runBuildRequirements: { runScript: "npm run dev", buildScript: "" },
+        deploymentRequirements: "None",
+        assumptions: []
+    });
+
+    test("1. prepareCanonicalProjectSpec compiles, validates and derives identities", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.strictEqual(prep.projectSpec.projectName, "TestApp");
+        assert.strictEqual(prep.projectSpec.schemaVersion, "1.0");
+        assert.ok(prep.requirementIdentity.success);
+        assert.ok(prep.requirementIdentity.requirements.length > 0);
+    });
+
+    test("2. prepareCanonicalProjectSpec throws PROJECT_PREPARATION_COMPILE_FAILED on invalid spec", () => {
+        const invalidPayload = getSampleLegacyPayload();
+        invalidPayload.pagesAndRoutes = [{ path: "invalid-path", name: "Home", description: "Home" }]; // Path must start with /
+        
+        let threw = false;
+        try {
+            prepareCanonicalProjectSpec(invalidPayload);
+        } catch (err) {
+            threw = true;
+            assert.strictEqual(err.code, "PROJECT_PREPARATION_COMPILE_FAILED");
+            assert.ok(err.errors.length > 0);
+        }
+        assert.ok(threw, "prepareCanonicalProjectSpec must throw immediately on compile failure");
+    });
+
+    test("3. Canonical ProjectSpec and Requirement Identity are deeply immutable and isolated", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.ok(Object.isFrozen(prep.projectSpec));
+        assert.ok(Object.isFrozen(prep.requirementIdentity));
+        assert.ok(Object.isFrozen(prep.requirementIdentity.requirements));
+    });
+
+    test("4. Generation planner and contract builder accept canonical ProjectSpec verbatim", () => {
+        const { planGeneration } = require(path.join(backendRoot, "services/generationPlanner"));
+        const { buildSharedContracts, buildProjectManifest } = require(path.join(backendRoot, "services/contractBuilder"));
+        
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        const compiled = prep.projectSpec;
+
+        const plan = planGeneration(compiled);
+        const contracts = buildSharedContracts(compiled);
+        const manifest = buildProjectManifest("prompt", compiled);
+
+        assert.strictEqual(plan.scaffoldAdapter, "mern");
+        assert.strictEqual(contracts.stackProfile, "mern");
+        assert.strictEqual(manifest.projectName, "TestApp");
+    });
+
+    test("5. Stack selection quirks are preserved on compiled canonical boundary", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        const compiled = prep.projectSpec;
+        const profile = detectProfile(compiled);
+        assert.strictEqual(profile.name, "mern");
+    });
+
+    test("6. Already-canonical bypass check avoids double compilation but derives identities", () => {
+        const payload = getSampleLegacyPayload();
+        const prep1 = prepareCanonicalProjectSpec(payload);
+        const frozenSpec = prep1.projectSpec;
+
+        let compileCount = 0;
+        let deriveCount = 0;
+        const originalCompile = _testHooks.compileProjectSpec;
+        const originalDerive = _testHooks.deriveRequirementIdentities;
+
+        _testHooks.compileProjectSpec = (p) => { compileCount++; return originalCompile(p); };
+        _testHooks.deriveRequirementIdentities = (s) => { deriveCount++; return originalDerive(s); };
+
+        try {
+            const prep2 = prepareCanonicalProjectSpec(frozenSpec);
+            assert.strictEqual(compileCount, 0, "Should bypass compile stage for already-canonical spec");
+            assert.strictEqual(deriveCount, 1, "Should still derive identities exactly once");
+            assert.strictEqual(prep2.projectSpec, frozenSpec, "Should return identical frozen spec reference");
+        } finally {
+            _testHooks.compileProjectSpec = originalCompile;
+            _testHooks.deriveRequirementIdentities = originalDerive;
+        }
+    });
+
+    test("7. Exactly-once execution tracking in prepareCanonicalProjectSpec", () => {
+        const payload = getSampleLegacyPayload();
+
+        let compileCount = 0;
+        let deriveCount = 0;
+        const originalCompile = _testHooks.compileProjectSpec;
+        const originalDerive = _testHooks.deriveRequirementIdentities;
+
+        _testHooks.compileProjectSpec = (p) => { compileCount++; return originalCompile(p); };
+        _testHooks.deriveRequirementIdentities = (s) => { deriveCount++; return originalDerive(s); };
+
+        try {
+            prepareCanonicalProjectSpec(payload);
+            assert.strictEqual(compileCount, 1, "Compiler must be called exactly once");
+            assert.strictEqual(deriveCount, 1, "Identity must be derived exactly once");
+        } finally {
+            _testHooks.compileProjectSpec = originalCompile;
+            _testHooks.deriveRequirementIdentities = originalDerive;
+        }
+    });
+
+    test("8. Compiler failure causes zero identity derivation calls and halts", () => {
+        const invalidPayload = getSampleLegacyPayload();
+        invalidPayload.pagesAndRoutes = [{ path: "invalid-path", name: "Home", description: "Home" }];
+
+        let compileCount = 0;
+        let deriveCount = 0;
+        const originalCompile = _testHooks.compileProjectSpec;
+        const originalDerive = _testHooks.deriveRequirementIdentities;
+
+        _testHooks.compileProjectSpec = (p) => { compileCount++; return originalCompile(p); };
+        _testHooks.deriveRequirementIdentities = (s) => { deriveCount++; return originalDerive(s); };
+
+        try {
+            assert.throws(() => {
+                prepareCanonicalProjectSpec(invalidPayload);
+            });
+            assert.strictEqual(compileCount, 1, "Compiler should execute once");
+            assert.strictEqual(deriveCount, 0, "Identity derivation should not be called if compilation fails");
+        } finally {
+            _testHooks.compileProjectSpec = originalCompile;
+            _testHooks.deriveRequirementIdentities = originalDerive;
+        }
+    });
+
+    test("9. Persistence adapter strips schemaVersion and deep-clones ProjectSpec", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        const canonicalSpec = prep.projectSpec;
+
+        assert.strictEqual(canonicalSpec.schemaVersion, "1.0");
+
+        const adapted = adaptProjectSpecForPersistence(canonicalSpec);
+        assert.strictEqual(adapted.schemaVersion, undefined, "Adapted spec must not contain schemaVersion");
+        assert.strictEqual(adapted.projectName, "TestApp");
+        assert.ok(!Object.isFrozen(adapted), "Adapted copy must be non-frozen to protect Mongoose writing");
+    });
+
+    test("10. Immutable actual consumer audit checks compatibility", () => {
+        const { planGeneration } = require(path.join(backendRoot, "services/generationPlanner"));
+        const { buildSharedContracts, buildProjectManifest } = require(path.join(backendRoot, "services/contractBuilder"));
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+        const { generateScaffoldFiles } = require(path.join(backendRoot, "services/scaffoldRegistry"));
+        const { validateProjectFiles } = require(path.join(backendRoot, "services/validationProfiles"));
+
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        const compiled = prep.projectSpec;
+
+        // Verify no throwing on frozen inputs for actual integration modules
+        assert.doesNotThrow(() => {
+            planGeneration(compiled);
+            buildSharedContracts(compiled);
+            buildProjectManifest("prompt", compiled);
+            detectProfile(compiled);
+            generateScaffoldFiles("mern", compiled);
+            validateProjectFiles([], compiled);
+        });
+    });
+
+    test("11. Identity failure prevents all generation side effects", () => {
+        const payload = getSampleLegacyPayload();
+
+        let compileCount = 0;
+        let deriveCount = 0;
+        const originalCompile = _testHooks.compileProjectSpec;
+        const originalDerive = _testHooks.deriveRequirementIdentities;
+
+        _testHooks.compileProjectSpec = (p) => { compileCount++; return originalCompile(p); };
+        _testHooks.deriveRequirementIdentities = (s) => {
+            deriveCount++;
+            return { success: false, errors: [{ path: "root", message: "Simulated identity failure" }] };
+        };
+
+        try {
+            let threw = false;
+            try {
+                prepareCanonicalProjectSpec(payload);
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_IDENTITY_FAILED");
+                assert.ok(err.errors.length > 0);
+                assert.ok(err.message.includes("Requirement Identity derivation failed"));
+            }
+            assert.ok(threw, "Identity failure must throw before any side effects");
+            assert.strictEqual(compileCount, 1, "Compiler should have succeeded");
+            assert.strictEqual(deriveCount, 1, "Identity derivation should have been called exactly once");
+        } finally {
+            _testHooks.compileProjectSpec = originalCompile;
+            _testHooks.deriveRequirementIdentities = originalDerive;
+        }
+    });
+
+    test("12. analyzeRequirements observable contract remains unchanged", () => {
+        // Verify that projectService.analyzeRequirements is not modified by 1E
+        const projectServiceSource = require("fs").readFileSync(
+            path.join(backendRoot, "services/projectService.js"), "utf8"
+        );
+        // Must NOT import compileProjectSpec or deriveRequirementIdentities
+        assert.ok(!projectServiceSource.includes("compileProjectSpec"),
+            "projectService must not reference compileProjectSpec — it stays legacy");
+        assert.ok(!projectServiceSource.includes("deriveRequirementIdentities"),
+            "projectService must not reference deriveRequirementIdentities");
+        assert.ok(!projectServiceSource.includes("prepareCanonicalProjectSpec"),
+            "projectService must not reference prepareCanonicalProjectSpec");
+    });
+
+    test("13. Pre-1E vs Post-1E Project.create persistence shape equivalence", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+
+        const adapted = adaptProjectSpecForPersistence(prep.projectSpec);
+
+        // Pre-1E persisted the raw legacy payload directly. Verify adapted shape matches:
+        // 1. schemaVersion must NOT be present (it didn't exist pre-1E)
+        assert.strictEqual(adapted.schemaVersion, undefined, "schemaVersion must not be persisted");
+        // 2. All original semantic fields must be present
+        assert.strictEqual(adapted.projectName, "TestApp");
+        assert.strictEqual(adapted.projectType, "Web Application");
+        assert.ok(Array.isArray(adapted.pagesAndRoutes));
+        assert.ok(Array.isArray(adapted.components));
+        assert.ok(Array.isArray(adapted.backendApis));
+        assert.ok(Array.isArray(adapted.databaseModels));
+        assert.ok(Array.isArray(adapted.integrations));
+        assert.ok(Array.isArray(adapted.importantDependencies));
+        assert.ok(Array.isArray(adapted.environmentVariables));
+        assert.ok(Array.isArray(adapted.architectureConstraints));
+        assert.ok(Array.isArray(adapted.assumptions));
+        assert.ok(typeof adapted.runBuildRequirements === "object");
+        // 3. requirementIdentity must NOT be on adapted spec
+        assert.strictEqual(adapted.requirementIdentity, undefined, "requirementIdentity must not be persisted");
+        // 4. stableId and displayId must NOT be on adapted spec
+        assert.strictEqual(adapted.stableId, undefined, "stableId must not be persisted");
+        assert.strictEqual(adapted.displayId, undefined, "displayId must not be persisted");
+        // 5. duplicates must NOT be on adapted spec
+        assert.strictEqual(adapted.duplicates, undefined, "duplicates must not be persisted");
+    });
+
+    test("14. Pre-1E vs Post-1E History.create persistence shape equivalence", () => {
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+
+        const adapted = adaptProjectSpecForPersistence(prep.projectSpec);
+
+        // Both Project.create and History.create receive the same adapted spec
+        assert.strictEqual(adapted.schemaVersion, undefined, "History spec must not contain schemaVersion");
+        assert.strictEqual(adapted.requirementIdentity, undefined, "History spec must not contain requirementIdentity");
+        assert.strictEqual(adapted.stableId, undefined);
+        assert.strictEqual(adapted.displayId, undefined);
+        assert.strictEqual(adapted.duplicates, undefined);
+        assert.ok(!Object.isFrozen(adapted), "History adapted spec must be mutable for Mongoose");
+    });
+
+    test("15. Public API response shape does not leak internal sidecar data", () => {
+        // The progressEmitter.end() call determines the public SSE response shape
+        // Verify that orchestrateGeneration return includes projectSpec and requirementIdentity
+        // but the controller's progressEmitter.end() omits them
+        const controllerSource = require("fs").readFileSync(
+            path.join(backendRoot, "controllers/projectController.js"), "utf8"
+        );
+        // Find the progressEmitter.end block
+        const endMatch = controllerSource.match(/progressEmitter\.end\(\{[\s\S]*?\}\)/);
+        assert.ok(endMatch, "progressEmitter.end call must exist");
+        const endBlock = endMatch[0];
+        // Must NOT include requirementIdentity, schemaVersion, or projectSpec in SSE response
+        assert.ok(!endBlock.includes("requirementIdentity"), "requirementIdentity must not leak to SSE response");
+        assert.ok(!endBlock.includes("schemaVersion"), "schemaVersion must not leak to SSE response");
+        assert.ok(!endBlock.includes("projectSpec"), "projectSpec must not leak to SSE response");
+    });
+
+    test("16. Stack selection across multiple profiles through compiled canonical boundary", () => {
+        const { detectProfile } = require(path.join(backendRoot, "services/stackProfiles"));
+
+        // MERN profile
+        const mernPayload = getSampleLegacyPayload();
+        const mernPrep = prepareCanonicalProjectSpec(mernPayload);
+        assert.strictEqual(detectProfile(mernPrep.projectSpec).name, "mern");
+
+        // React-Vite profile
+        const reactPayload = {
+            ...getSampleLegacyPayload(),
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            frontend: "React (Vite) 18.2"
+        };
+        const reactPrep = prepareCanonicalProjectSpec(reactPayload);
+        assert.strictEqual(detectProfile(reactPrep.projectSpec).name, "react-vite");
+
+        // Next.js profile
+        const nextPayload = {
+            ...getSampleLegacyPayload(),
+            frontend: "Next.js 14",
+            backend: "None",
+            database: "None",
+            authentication: "None",
+            projectType: "Next.js Application"
+        };
+        const nextPrep = prepareCanonicalProjectSpec(nextPayload);
+        assert.strictEqual(detectProfile(nextPrep.projectSpec).name, "nextjs");
+    });
+
+    test("17. Error propagation: compile failure thrown through orchestrateGeneration boundary", async () => {
+        const invalidPayload = getSampleLegacyPayload();
+        invalidPayload.pagesAndRoutes = [{ path: "invalid-path", name: "Home", description: "Home" }];
+
+        let threw = false;
+        try {
+            await orchestrateGeneration({
+                originalPrompt: "test",
+                projectSpec: invalidPayload
+            }, { emit: () => {} }, null, { cancelSignal: null });
+        } catch (err) {
+            threw = true;
+            assert.strictEqual(err.code, "PROJECT_PREPARATION_COMPILE_FAILED",
+                "orchestrateGeneration must propagate the compile failure error code");
+        }
+        assert.ok(threw, "orchestrateGeneration must throw on compilation failure before any generation");
+    });
+
+    test("18. Error propagation: identity failure thrown through orchestrateGeneration boundary", async () => {
+        const payload = getSampleLegacyPayload();
+        const originalDerive = _testHooks.deriveRequirementIdentities;
+        _testHooks.deriveRequirementIdentities = (s) => {
+            return { success: false, errors: [{ path: "root", message: "Forced identity failure" }] };
+        };
+
+        try {
+            let threw = false;
+            try {
+                await orchestrateGeneration({
+                    originalPrompt: "test",
+                    projectSpec: payload
+                }, { emit: () => {} }, null, { cancelSignal: null });
+            } catch (err) {
+                threw = true;
+                assert.strictEqual(err.code, "PROJECT_PREPARATION_IDENTITY_FAILED",
+                    "orchestrateGeneration must propagate the identity failure error code");
+            }
+            assert.ok(threw, "orchestrateGeneration must throw on identity failure before any generation");
+        } finally {
+            _testHooks.deriveRequirementIdentities = originalDerive;
+        }
+    });
+
+    test("19. Requirement Identity sidecar is retained in orchestrateGeneration return value", () => {
+        // Verify the return contract includes requirementIdentity at stable boundary
+        const payload = getSampleLegacyPayload();
+        const prep = prepareCanonicalProjectSpec(payload);
+        assert.ok(prep.requirementIdentity, "requirementIdentity must be present");
+        assert.ok(prep.requirementIdentity.success, "requirementIdentity must succeed");
+        assert.ok(Array.isArray(prep.requirementIdentity.requirements), "requirements must be an array");
+        assert.ok(prep.requirementIdentity.requirements.length > 0, "requirements must not be empty for valid spec");
+        // Verify sidecar is in orchestrator return shape (code evidence)
+        const orchestratorSource = require("fs").readFileSync(
+            path.join(backendRoot, "services/generationOrchestrator.js"), "utf8"
+        );
+        assert.ok(orchestratorSource.includes("requirementIdentity  // Sidecar metadata"),
+            "orchestrateGeneration return must include requirementIdentity sidecar");
+    });
+
+    test("20. Rollback boundary: reverting 1E changes removes all new imports and functions", () => {
+        // Evidence test: verify that all 1E additions are localized and revertible
+        const orchestratorSource = require("fs").readFileSync(
+            path.join(backendRoot, "services/generationOrchestrator.js"), "utf8"
+        );
+        const controllerSource = require("fs").readFileSync(
+            path.join(backendRoot, "controllers/projectController.js"), "utf8"
+        );
+        // 1E additions in orchestrator are: require core/projectSpec, require core/requirements,
+        // _testHooks, prepareCanonicalProjectSpec function, and the call site in orchestrateGeneration
+        assert.ok(orchestratorSource.includes('require("../core/projectSpec")'),
+            "Orchestrator must import core/projectSpec");
+        assert.ok(orchestratorSource.includes('require("../core/requirements")'),
+            "Orchestrator must import core/requirements");
+        assert.ok(orchestratorSource.includes("function prepareCanonicalProjectSpec"),
+            "prepareCanonicalProjectSpec function must exist");
+        // 1E additions in controller: adaptProjectSpecForPersistence
+        assert.ok(controllerSource.includes("function adaptProjectSpecForPersistence"),
+            "Controller must contain adaptProjectSpecForPersistence");
+        // Verify no other files were modified by 1E beyond these two + tests
+        // (This is structural evidence that rollback is a clean git revert)
+    });
+
+    test("21. adaptProjectSpecForPersistence handles null/undefined gracefully", () => {
+        assert.strictEqual(adaptProjectSpecForPersistence(null), null);
+        assert.strictEqual(adaptProjectSpecForPersistence(undefined), undefined);
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

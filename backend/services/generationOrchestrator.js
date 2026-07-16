@@ -5,6 +5,59 @@ const aiExecutor = require("./aiGenerationExecutor");
 const { mergeFiles } = require("./generationMerger");
 const { validateProjectFiles } = require("./validationProfiles");
 const { repairAffectedFiles } = require("./targetedRepairService");
+const { compileProjectSpec, validateProjectSpec } = require("../core/projectSpec");
+const { deriveRequirementIdentities } = require("../core/requirements");
+
+// Internal tracing hooks for unit testing only
+const _testHooks = {
+    compileProjectSpec,
+    deriveRequirementIdentities
+};
+
+/**
+ * Orchestrates compilation and identity derivation exactly once per run.
+ */
+function prepareCanonicalProjectSpec(legacyPayload) {
+    // If input is already a deeply frozen canonical ProjectSpec, skip compilation to avoid double-compilation.
+    if (legacyPayload && Object.isFrozen(legacyPayload) && legacyPayload.schemaVersion === "1.0") {
+        const validation = validateProjectSpec(legacyPayload);
+        if (validation.success) {
+            const identityResult = _testHooks.deriveRequirementIdentities(legacyPayload);
+            if (!identityResult.success) {
+                const err = new Error("Requirement Identity derivation failed: " + (identityResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+                err.code = "PROJECT_PREPARATION_IDENTITY_FAILED";
+                err.errors = identityResult.errors;
+                throw err;
+            }
+            return {
+                projectSpec: legacyPayload,
+                requirementIdentity: identityResult
+            };
+        }
+    }
+
+    const compilation = _testHooks.compileProjectSpec(legacyPayload);
+    if (!compilation.success) {
+        const err = new Error("ProjectSpec compilation failed: " + (compilation.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_COMPILE_FAILED";
+        err.errors = compilation.errors;
+        throw err;
+    }
+
+    const canonicalSpec = compilation.value;
+    const identityResult = _testHooks.deriveRequirementIdentities(canonicalSpec);
+    if (!identityResult.success) {
+        const err = new Error("Requirement Identity derivation failed: " + (identityResult.errors || []).map(e => `${e.path || 'root'}: ${e.message}`).join("; "));
+        err.code = "PROJECT_PREPARATION_IDENTITY_FAILED";
+        err.errors = identityResult.errors;
+        throw err;
+    }
+
+    return {
+        projectSpec: canonicalSpec,
+        requirementIdentity: identityResult
+    };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTENT GUARD
@@ -683,6 +736,11 @@ const generateRunInstructions = (projectSpec, files) => {
 // MAIN ORCHESTRATOR
 // ─────────────────────────────────────────────────────────────────────────────
 const orchestrateGeneration = async ({ originalPrompt, projectSpec }, progressEmitter, checkCancellation, options = {}) => {
+    // Compile and validate ProjectSpec and derive Requirement Identities once
+    const preparation = prepareCanonicalProjectSpec(projectSpec);
+    projectSpec = preparation.projectSpec;
+    const requirementIdentity = preparation.requirementIdentity;
+
     const startTime = Date.now();
     let scaffoldMs = 0;
     let validationMs = 0;
@@ -968,14 +1026,18 @@ totalMs=${totalMs}
         files: finalFiles,
         runInstructions,
         summary: richPlan,   // Rich plan document → displayed in PLAN tab
-        model: process.env.ZAI_MODEL
+        model: process.env.ZAI_MODEL,
+        projectSpec,         // Canonical ProjectSpec (frozen)
+        requirementIdentity  // Sidecar metadata
     };
 };
 
 module.exports = {
     orchestrateGeneration,
+    prepareCanonicalProjectSpec,
     applyContentGuard,
     generateRichPlan,
     generateRichReadme,
-    sanitizeMongooseConnectOptions
+    sanitizeMongooseConnectOptions,
+    _testHooks
 };

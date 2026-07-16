@@ -7,6 +7,19 @@ const { createProgressEmitter } = require("../services/progressEmitter");
 const previewService = require("../services/previewService");
 
 /**
+ * Persistence compatibility adapter for Phase 1E.
+ * Strips schemaVersion from the canonical ProjectSpec to ensure the database
+ * shape remains exactly identical to the pre-1E legacy shape.
+ * Performs a deep clone to prevent Mongoose mutation errors on frozen objects.
+ */
+function adaptProjectSpecForPersistence(projectSpec) {
+    if (!projectSpec) return projectSpec;
+    const clone = JSON.parse(JSON.stringify(projectSpec));
+    delete clone.schemaVersion;
+    return clone;
+}
+
+/**
  * Stage 1: Requirement Analysis
  * POST /api/project/analyze
  */
@@ -96,17 +109,19 @@ const generate = async (req, res) => {
 
         progressEmitter.emit("Saving Project", "Writing codebase configuration to database...");
 
+        const dbSpec = adaptProjectSpecForPersistence(data.projectSpec);
+
         // Save to Database with spec details
         const dbProject = await Project.create({
             userId: req.user._id,
-            projectName: projectSpec.projectName || "Project Scaffold",
-            projectType: projectSpec.projectType || "Web Application",
+            projectName: data.projectSpec.projectName || "Project Scaffold",
+            projectType: data.projectSpec.projectType || "Web Application",
             summary: data.summary,
             files: data.files,
             runInstructions: data.runInstructions,
             model: data.model,
             originalPrompt,
-            projectSpec,
+            projectSpec: dbSpec,
             generationStatus: "success"
         });
 
@@ -119,7 +134,7 @@ const generate = async (req, res) => {
             model: data.model,
             projectId: dbProject._id,
             originalPrompt,
-            projectSpec,
+            projectSpec: dbSpec,
             generationStatus: "success",
             summary: dbProject.summary
         });
@@ -269,5 +284,6 @@ module.exports = {
     getProjectById,
     startPreview,
     getPreviewStatus,
-    stopPreview
+    stopPreview,
+    adaptProjectSpecForPersistence
 };
