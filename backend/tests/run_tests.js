@@ -7687,6 +7687,134 @@ suite("VFS State Sync & Verification (Phase 7D)", () => {
     });
 });
 
+suite("Verification Engine (Phase 8A)", () => {
+    const { runVerification, verificationErrors } = require(path.join(backendRoot, "core/verification"));
+    const { checkSyntax } = require(path.join(backendRoot, "core/verification/syntaxChecker"));
+    const { checkImports } = require(path.join(backendRoot, "core/verification/importChecker"));
+    const { checkDependencies } = require(path.join(backendRoot, "core/verification/dependencyChecker"));
+    const { validateProjectFiles } = require(path.join(backendRoot, "services/validationProfiles"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    test("1. Syntax checker success", () => {
+        const files = [{ name: "package.json", content: '{"dependencies": {}}' }];
+        const errors = checkSyntax(files);
+        assert.strictEqual(errors.length, 0);
+    });
+
+    test("2. Syntax checker failures", () => {
+        const files = [{ name: "package.json", content: '{"dependencies": ' }];
+        const errors = checkSyntax(files);
+        assert.strictEqual(errors.length, 1);
+        assert.strictEqual(errors[0].code, verificationErrors.VERIFICATION_SYNTAX_ERROR);
+    });
+
+    test("3. Import checker success", () => {
+        const files = [
+            { name: "src/main.js", content: "import { helper } from './utils'; require('./other.js');" },
+            { name: "src/utils.js", content: "export const helper = 1;" },
+            { name: "src/other.js", content: "" }
+        ];
+        const errors = checkImports(files);
+        assert.strictEqual(errors.length, 0);
+    });
+
+    test("4. Import checker failures", () => {
+        const files = [
+            { name: "src/main.js", content: "import { helper } from './missing-utils';" }
+        ];
+        const errors = checkImports(files);
+        assert.strictEqual(errors.length, 1);
+        assert.strictEqual(errors[0].code, verificationErrors.VERIFICATION_IMPORT_ERROR);
+    });
+
+    test("5. Dependency checker success", () => {
+        const files = [
+            { name: "package.json", content: '{"dependencies": {"lodash": "1.0.0"}}' },
+            { name: "src/main.js", content: "import _ from 'lodash'; const path = require('path');" }
+        ];
+        const errors = checkDependencies(files);
+        assert.strictEqual(errors.length, 0);
+    });
+
+    test("6. Dependency checker failures", () => {
+        const files = [
+            { name: "package.json", content: '{"dependencies": {}}' },
+            { name: "src/main.js", content: "import _ from 'lodash';" }
+        ];
+        const errors = checkDependencies(files);
+        assert.strictEqual(errors.length, 1);
+        assert.strictEqual(errors[0].code, verificationErrors.VERIFICATION_DEPENDENCY_ERROR);
+    });
+
+    test("7. VerificationEngine aggregation and README validation", () => {
+        // Without README
+        const files = [
+            { name: "readme.txt", content: "" },
+            { name: "index.html", content: "" }
+        ];
+        const result = runVerification(files);
+        assert.strictEqual(result.success, false);
+        assert.ok(result.errors.some(e => e.message.includes("README.md")));
+
+        // Valid setup
+        const validFiles = [
+            { name: "README.md", content: "# Project" },
+            { name: "index.html", content: "" }
+        ];
+        const resultValid = runVerification(validFiles);
+        assert.strictEqual(resultValid.success, true);
+    });
+
+    test("8. Deterministic output", () => {
+        const files = [
+            { name: "README.md", content: "# Project" },
+            { name: "index.html", content: "" }
+        ];
+        const res1 = runVerification(files);
+        const res2 = runVerification(files);
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    test("9. Deep immutability", () => {
+        const files = [
+            { name: "README.md", content: "# Project" },
+            { name: "index.html", content: "" }
+        ];
+        const result = runVerification(files);
+        assert.ok(Object.isFrozen(result));
+        assert.ok(Object.isFrozen(result.errors));
+        assert.ok(Object.isFrozen(result.warnings));
+        assert.ok(Object.isFrozen(result.metadata));
+    });
+
+    test("10. Caller parameter non-mutation", () => {
+        const files = [
+            { name: "README.md", content: "# Project" },
+            { name: "index.html", content: "" }
+        ];
+        const originalFiles = deepClone(files);
+        runVerification(files);
+        assert.deepStrictEqual(files, originalFiles);
+    });
+
+    test("11. Compatibility wrapper inside validationProfiles", () => {
+        const files = [
+            { name: "README.md", content: "# Project" },
+            { name: "index.html", content: "" }
+        ];
+        const errorStrings = validateProjectFiles(files, {});
+        assert.strictEqual(errorStrings.length, 0);
+
+        const invalidFiles = [
+            { name: "package.json", content: "{" }
+        ];
+        const invalidErrorStrings = validateProjectFiles(invalidFiles, {});
+        assert.ok(invalidErrorStrings.length > 0);
+        assert.ok(invalidErrorStrings[0].includes("JSON"));
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
