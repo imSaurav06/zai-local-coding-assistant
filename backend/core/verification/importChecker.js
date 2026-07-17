@@ -1,7 +1,7 @@
 "use strict";
 
 const path = require("path");
-const { verificationErrors } = require("./verificationErrors");
+const { verificationErrors, verificationSeverity, verificationCategory } = require("./verificationErrors");
 
 /**
  * Validates local relative imports for JS/JSX/TS/TSX files.
@@ -46,6 +46,8 @@ function checkImports(files) {
                 if (!exists) {
                     errors.push({
                         code: verificationErrors.VERIFICATION_IMPORT_ERROR,
+                        severity: verificationSeverity.ERROR,
+                        category: verificationCategory.IMPORT,
                         path: filePath,
                         message: `File '${filePath}' imports missing local module '${relPath}' (resolved as '${resolved}').`
                     });

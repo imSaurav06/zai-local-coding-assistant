@@ -7,8 +7,8 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 ## Migration Status Summary
 
 *   **Current Phase**: PHASE 8 (Incremental Verification Engine)
-*   **Current Task Pack**: 8B (Incremental Verification Integration)
-*   **Overall Status**: IN_PROGRESS (Task Packs 8A–8B Complete)
+*   **Current Task Pack**: 8C (Verification Quality & Diagnostics)
+*   **Overall Status**: IN_PROGRESS (Task Packs 8A–8C Complete)
 
 ---
 
@@ -634,6 +634,31 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Blockers**: None.
 - **Next Action**: STOP. Review Phase 8B report. Proceed to Task Pack 8C in the next session.
 
+### Task Pack 8C: Verification Quality & Diagnostics
+- **Status**: DONE
+- **Started At**: 2026-07-17T10:00:00+05:30
+- **Completed At**: 2026-07-17T10:20:00+05:30
+- **Files Created**:
+  - `backend/core/verification/verificationDiagnostics.js`
+  - `backend/core/verification/verificationReporter.js`
+- **Files Changed**:
+  - `backend/core/verification/verificationErrors.js` (Added `verificationSeverity` and `verificationCategory` frozen enums)
+  - `backend/core/verification/syntaxChecker.js` (Added `severity` and `category` to error objects)
+  - `backend/core/verification/importChecker.js` (Added `severity` and `category` to error objects)
+  - `backend/core/verification/dependencyChecker.js` (Added `severity` and `category` to error objects)
+  - `backend/core/verification/verificationEngine.js` (Added `severity` and `category` to all inline engine errors)
+  - `backend/core/verification/index.js` (Re-exported all 8C symbols)
+  - `backend/tests/run_tests.js` (Added 20 Phase 8C tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated - this document)
+  - `docs/migration/HANDOFF.md` (Updated)
+- **Implementation Summary**: Error objects from all checkers and the engine now carry `severity` (ERROR/WARNING/INFO) and `category` (SYNTAX/STRUCTURE/IMPORT/DEPENDENCY/PROFILE/INTERNAL) fields. `computeDiagnostics(result)` provides frozen summary stats (totalErrors, totalWarnings, bySeverity, byCategory). `buildReport(result, durationMs?)` renders a human-readable text report. `measureVerification(files, options)` wraps `runVerification` with wall-clock timing, returning `{ result, durationMs }` as a frozen object. Timing is explicitly kept outside VerificationResult to preserve deterministic `deepStrictEqual` equality of results. All existing public APIs and test contracts are unchanged.
+- **Tests Added**: 20 tests (Phase 8C suite)
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 512 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Review Phase 8C report. Proceed to Task Pack 8D (or Phase 9) in the next session.
+
 ---
 
 ## Future Migration Phases
@@ -647,7 +672,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 5** | Durable Checkpoints + Resume | **DONE** (All Task Packs 5A–5E Complete) | 2026-07-17 |
 | **Phase 6** | ContextBuilder | **DONE** (All Task Packs 6A–6D Complete) | 2026-07-17 |
 | **Phase 7** | Structured / Transaction VFS File Operations | **DONE** (All Task Packs 7A–7E Complete) | 2026-07-17 |
-| **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Packs 8A–8B Complete) | TBD |
+| **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Packs 8A–8C Complete) | TBD |
 | **Phase 9** | Bounded Targeted Repair | NOT_STARTED | TBD |
 | **Phase 10** | AIProviderGateway Hardening | NOT_STARTED | TBD |
 | **Phase 11** | Controlled Parallel Task Execution | NOT_STARTED | TBD |

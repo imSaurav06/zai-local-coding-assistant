@@ -1,7 +1,7 @@
 "use strict";
 
 const path = require("path");
-const { verificationErrors } = require("./verificationErrors");
+const { verificationErrors, verificationSeverity, verificationCategory } = require("./verificationErrors");
 const { createVerificationResult } = require("./verificationResult");
 const { checkSyntax } = require("./syntaxChecker");
 const { checkImports } = require("./importChecker");
@@ -21,6 +21,8 @@ function runVerification(files, options = {}) {
         if (!Array.isArray(files) || files.length === 0) {
             errors.push({
                 code: verificationErrors.VERIFICATION_STRUCTURE_ERROR,
+                severity: verificationSeverity.ERROR,
+                category: verificationCategory.STRUCTURE,
                 path: "",
                 message: "No files were generated in the codebase."
             });
@@ -34,6 +36,8 @@ function runVerification(files, options = {}) {
             if (name.includes("..") || path.isAbsolute(name)) {
                 errors.push({
                     code: verificationErrors.VERIFICATION_STRUCTURE_ERROR,
+                    severity: verificationSeverity.ERROR,
+                    category: verificationCategory.STRUCTURE,
                     path: name,
                     message: `Invalid file path detected: '${name}'`
                 });
@@ -55,6 +59,8 @@ function runVerification(files, options = {}) {
                     profileErrors.forEach(errStr => {
                         errors.push({
                             code: verificationErrors.VERIFICATION_PROFILE_ERROR,
+                            severity: verificationSeverity.ERROR,
+                            category: verificationCategory.PROFILE,
                             path: "",
                             message: errStr
                         });
@@ -63,6 +69,8 @@ function runVerification(files, options = {}) {
             } catch (err) {
                 errors.push({
                     code: verificationErrors.VERIFICATION_PROFILE_ERROR,
+                    severity: verificationSeverity.ERROR,
+                    category: verificationCategory.PROFILE,
                     path: "",
                     message: `Profile specific validation failed: ${err.message}`
                 });
@@ -99,6 +107,8 @@ function runVerification(files, options = {}) {
         if (!hasReadme) {
             errors.push({
                 code: verificationErrors.VERIFICATION_STRUCTURE_ERROR,
+                severity: verificationSeverity.ERROR,
+                category: verificationCategory.STRUCTURE,
                 path: "readme.md",
                 message: "Missing required file 'README.md'."
             });
@@ -110,6 +120,8 @@ function runVerification(files, options = {}) {
     } catch (err) {
         return createVerificationResult(false, [{
             code: verificationErrors.VERIFICATION_INTERNAL_ERROR,
+            severity: verificationSeverity.ERROR,
+            category: verificationCategory.INTERNAL,
             path: "",
             message: `Unexpected internal error: ${err.message}`
         }]);

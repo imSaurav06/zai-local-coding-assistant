@@ -7926,6 +7926,207 @@ suite("Verification Engine Integration (Phase 8B)", () => {
     });
 });
 
+suite("Verification Quality & Diagnostics (Phase 8C)", () => {
+    const {
+        runVerification,
+        verificationSeverity,
+        verificationCategory,
+        computeDiagnostics,
+        measureVerification,
+        buildReport
+    } = require(path.join(backendRoot, "core/verification"));
+    const { checkSyntax }       = require(path.join(backendRoot, "core/verification/syntaxChecker"));
+    const { checkImports }      = require(path.join(backendRoot, "core/verification/importChecker"));
+    const { checkDependencies } = require(path.join(backendRoot, "core/verification/dependencyChecker"));
+
+    const makeValidFiles = () => [
+        { name: "README.md",   content: "# My Project\nA complete project." },
+        { name: "index.html",  content: "<!DOCTYPE html><html><body>Hello</body></html>" }
+    ];
+
+    const makeInvalidFiles = () => [
+        { name: "package.json", content: "{" }   // broken JSON, no README
+    ];
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    // ── Enum integrity ────────────────────────────────────────────────────────
+
+    test("1. verificationSeverity is frozen with correct values", () => {
+        assert.ok(Object.isFrozen(verificationSeverity), "verificationSeverity must be frozen");
+        assert.strictEqual(verificationSeverity.ERROR,   "ERROR");
+        assert.strictEqual(verificationSeverity.WARNING, "WARNING");
+        assert.strictEqual(verificationSeverity.INFO,    "INFO");
+    });
+
+    test("2. verificationCategory is frozen with correct values", () => {
+        assert.ok(Object.isFrozen(verificationCategory), "verificationCategory must be frozen");
+        assert.strictEqual(verificationCategory.SYNTAX,     "SYNTAX");
+        assert.strictEqual(verificationCategory.STRUCTURE,  "STRUCTURE");
+        assert.strictEqual(verificationCategory.IMPORT,     "IMPORT");
+        assert.strictEqual(verificationCategory.DEPENDENCY, "DEPENDENCY");
+        assert.strictEqual(verificationCategory.PROFILE,    "PROFILE");
+        assert.strictEqual(verificationCategory.INTERNAL,   "INTERNAL");
+    });
+
+    // ── Checker enrichment ────────────────────────────────────────────────────
+
+    test("3. Syntax checker errors include severity and category", () => {
+        const files = [{ name: "package.json", content: "{bad json" }];
+        const errors = checkSyntax(files);
+        assert.ok(errors.length > 0, "Expected at least one syntax error");
+        assert.strictEqual(errors[0].severity, "ERROR");
+        assert.strictEqual(errors[0].category, "SYNTAX");
+        assert.ok(errors[0].message.includes("JSON"), "Message must mention JSON");
+    });
+
+    test("4. Import checker errors include severity and category", () => {
+        const files = [
+            {
+                name: "src/app.js",
+                content: "import x from './missing-module';"
+            }
+        ];
+        const errors = checkImports(files);
+        assert.ok(errors.length > 0, "Expected at least one import error");
+        assert.strictEqual(errors[0].severity, "ERROR");
+        assert.strictEqual(errors[0].category, "IMPORT");
+    });
+
+    test("5. Dependency checker errors include severity and category", () => {
+        const files = [
+            { name: "package.json",  content: JSON.stringify({ dependencies: {} }) },
+            { name: "src/index.js",  content: "const x = require('some-undeclared-package');" }
+        ];
+        const errors = checkDependencies(files);
+        assert.ok(errors.length > 0, "Expected at least one dependency error");
+        assert.strictEqual(errors[0].severity, "ERROR");
+        assert.strictEqual(errors[0].category, "DEPENDENCY");
+    });
+
+    test("6. VerificationEngine inline errors include severity and category", () => {
+        // Empty array → STRUCTURE error from the engine itself
+        const result = runVerification([]);
+        assert.strictEqual(result.success, false);
+        assert.ok(result.errors.length > 0);
+        assert.strictEqual(result.errors[0].severity, "ERROR");
+        assert.strictEqual(result.errors[0].category, "STRUCTURE");
+    });
+
+    // ── computeDiagnostics ────────────────────────────────────────────────────
+
+    test("7. computeDiagnostics rejects non-object input", () => {
+        assert.throws(() => computeDiagnostics(null),      /non-null object/);
+        assert.throws(() => computeDiagnostics("string"),  /non-null object/);
+        assert.throws(() => computeDiagnostics({ errors: "bad" }), /must be an array/);
+    });
+
+    test("8. computeDiagnostics returns zero totals for a passing result", () => {
+        const result = runVerification(makeValidFiles());
+        assert.strictEqual(result.success, true);
+        const diag = computeDiagnostics(result);
+        assert.strictEqual(diag.totalErrors,   0);
+        assert.strictEqual(diag.totalWarnings, 0);
+        assert.strictEqual(diag.hasErrors,     false);
+        assert.strictEqual(diag.hasWarnings,   false);
+    });
+
+    test("9. computeDiagnostics returns correct error count for a failing result", () => {
+        const result = runVerification(makeInvalidFiles());
+        assert.strictEqual(result.success, false);
+        const diag = computeDiagnostics(result);
+        assert.strictEqual(diag.totalErrors, result.errors.length,
+            "totalErrors must equal errors.length in VerificationResult");
+        assert.strictEqual(diag.hasErrors, true);
+    });
+
+    test("10. computeDiagnostics bySeverity counts are correct", () => {
+        const result = runVerification(makeInvalidFiles());
+        const diag = computeDiagnostics(result);
+        const expectedErrorCount = result.errors.filter(e => (e.severity || "ERROR") === "ERROR").length;
+        assert.strictEqual(diag.bySeverity.ERROR,   expectedErrorCount);
+        assert.strictEqual(diag.bySeverity.WARNING, 0);
+        assert.strictEqual(diag.bySeverity.INFO,    0);
+    });
+
+    test("11. computeDiagnostics byCategory counts sum to totalErrors", () => {
+        const result = runVerification(makeInvalidFiles());
+        const diag = computeDiagnostics(result);
+        const catTotal = Object.values(diag.byCategory).reduce((a, b) => a + b, 0);
+        assert.strictEqual(catTotal, diag.totalErrors,
+            "sum of byCategory values must equal totalErrors");
+    });
+
+    test("12. computeDiagnostics output is frozen", () => {
+        const result = runVerification(makeValidFiles());
+        const diag = computeDiagnostics(result);
+        assert.ok(Object.isFrozen(diag), "diagnostics object must be frozen");
+        assert.ok(Object.isFrozen(diag.bySeverity),  "bySeverity must be frozen");
+        assert.ok(Object.isFrozen(diag.byCategory),  "byCategory must be frozen");
+    });
+
+    test("13. computeDiagnostics does not mutate the caller's VerificationResult", () => {
+        const result = runVerification(makeInvalidFiles());
+        const snapshot = deepClone(result);
+        computeDiagnostics(result);
+        assert.deepStrictEqual(deepClone(result), snapshot,
+            "VerificationResult must not be mutated by computeDiagnostics");
+    });
+
+    // ── buildReport ───────────────────────────────────────────────────────────
+
+    test("14. buildReport rejects non-object input", () => {
+        assert.throws(() => buildReport(null),     /non-null object/);
+        assert.throws(() => buildReport("string"), /non-null object/);
+    });
+
+    test("15. buildReport shows PASS for a successful result", () => {
+        const result = runVerification(makeValidFiles());
+        const report = buildReport(result);
+        assert.ok(typeof report === "string" && report.length > 0, "Report must be a non-empty string");
+        assert.ok(report.includes("PASS"), "Report must contain PASS");
+        assert.ok(!report.includes("FAIL"), "Report must not contain FAIL on success");
+    });
+
+    test("16. buildReport shows FAIL for a failing result", () => {
+        const result = runVerification(makeInvalidFiles());
+        const report = buildReport(result);
+        assert.ok(report.includes("FAIL"), "Report must contain FAIL");
+        assert.ok(!report.includes("PASS"), "Report must not contain PASS on failure");
+    });
+
+    test("17. buildReport includes duration when provided", () => {
+        const result = runVerification(makeValidFiles());
+        const report = buildReport(result, 42);
+        assert.ok(report.includes("42ms"), "Report must include provided durationMs");
+    });
+
+    test("18. buildReport includes all error entries with severity and category", () => {
+        const result = runVerification(makeInvalidFiles());
+        const report = buildReport(result);
+        assert.ok(report.includes("[ERROR]"),  "Report must tag each error with [ERROR]");
+        assert.ok(report.includes("Errors:"),  "Report must include error count label");
+    });
+
+    // ── measureVerification ───────────────────────────────────────────────────
+
+    test("19. measureVerification returns result and non-negative durationMs", () => {
+        const { result, durationMs } = measureVerification(makeValidFiles(), {});
+        assert.ok(result && typeof result.success === "boolean", "result must be a VerificationResult");
+        assert.ok(typeof durationMs === "number" && durationMs >= 0,
+            "durationMs must be a non-negative number");
+    });
+
+    test("20. measureVerification output is frozen and result matches runVerification", () => {
+        const files = makeValidFiles();
+        const measured = measureVerification(files, {});
+        assert.ok(Object.isFrozen(measured), "measureVerification output must be frozen");
+        const direct = runVerification(files, {});
+        assert.deepStrictEqual(measured.result, direct,
+            "measured.result must equal direct runVerification output");
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

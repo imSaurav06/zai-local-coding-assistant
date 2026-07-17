@@ -1,6 +1,6 @@
 "use strict";
 
-const { verificationErrors } = require("./verificationErrors");
+const { verificationErrors, verificationSeverity, verificationCategory } = require("./verificationErrors");
 
 /**
  * Validates external package imports against package.json declarations.
@@ -74,6 +74,8 @@ function checkDependencies(files) {
                 if (!declaredDeps.has(basePkg)) {
                     errors.push({
                         code: verificationErrors.VERIFICATION_DEPENDENCY_ERROR,
+                        severity: verificationSeverity.ERROR,
+                        category: verificationCategory.DEPENDENCY,
                         path: filePath,
                         message: `File '${filePath}' imports undeclared external package '${basePkg}' (requested as '${impPath}').`
                     });

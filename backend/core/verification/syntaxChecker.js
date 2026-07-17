@@ -1,6 +1,6 @@
 "use strict";
 
-const { verificationErrors } = require("./verificationErrors");
+const { verificationErrors, verificationSeverity, verificationCategory } = require("./verificationErrors");
 
 /**
  * Validates JSON syntax across package.json files.
@@ -20,6 +20,8 @@ function checkSyntax(files) {
             } catch (err) {
                 errors.push({
                     code: verificationErrors.VERIFICATION_SYNTAX_ERROR,
+                    severity: verificationSeverity.ERROR,
+                    category: verificationCategory.SYNTAX,
                     path: name,
                     message: `Invalid JSON syntax in '${name}': ${err.message}`
                 });

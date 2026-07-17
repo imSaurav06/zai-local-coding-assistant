@@ -19,27 +19,34 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 8 (Incremental Verification Engine)
-*   **CURRENT TASK PACK**: 8B (Incremental Verification Integration)
-*   **LAST COMPLETED TASK PACK**: 8B (Incremental Verification Integration)
-*   **Overall Status**: IN_PROGRESS (Task Packs 8A–8B Complete)
+*   **CURRENT TASK PACK**: 8C (Verification Quality & Diagnostics)
+*   **LAST COMPLETED TASK PACK**: 8C (Verification Quality & Diagnostics)
+*   **Overall Status**: IN_PROGRESS (Task Packs 8A–8C Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 8B**: None.
-- **FILES CHANGED BY 8B**:
-  - `backend/services/generationOrchestrator.js` (Wired runVerification into pipeline)
-  - `backend/tests/run_tests.js` (Added 7 integration tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status for Phase 8/8B)
+- **FILES CREATED BY 8C**:
+  - `backend/core/verification/verificationDiagnostics.js`
+  - `backend/core/verification/verificationReporter.js`
+- **FILES CHANGED BY 8C**:
+  - `backend/core/verification/verificationErrors.js` (verificationSeverity + verificationCategory enums)
+  - `backend/core/verification/syntaxChecker.js` (severity + category on errors)
+  - `backend/core/verification/importChecker.js` (severity + category on errors)
+  - `backend/core/verification/dependencyChecker.js` (severity + category on errors)
+  - `backend/core/verification/verificationEngine.js` (severity + category on inline errors)
+  - `backend/core/verification/index.js` (exports new 8C symbols)
+  - `backend/tests/run_tests.js` (Added 20 Phase 8C tests)
+  - `docs/migration/PHASE_STATUS.md` (Updated status)
   - `docs/migration/HANDOFF.md` (Updated - this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T09:08:00+05:30
-- **TEST RESULTS**: 492 passed, 0 failed, 0 skipped.
+- **TESTS LAST RUN**: 2026-07-17T10:20:00+05:30
+- **TEST RESULTS**: 512 passed, 0 failed, 0 skipped.
   - Create file succeeds
   - Duplicate path creations rejected
   - Update file succeeds
@@ -189,12 +196,13 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 8B is complete. Proceed to Task Pack 8C in the next session.
+Task Pack 8C is complete. Proceed to Task Pack 8D (or Phase 9) in the next session.
 
 **FILES TO READ FIRST**:
-- [generationOrchestrator.js L1052–1074](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js#L1052-L1074)
+- [verificationDiagnostics.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/verification/verificationDiagnostics.js)
+- [verificationReporter.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/verification/verificationReporter.js)
 - [verificationEngine.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/verification/verificationEngine.js)
-- [run_tests.js Phase 8B suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js#L7817)
+- [run_tests.js Phase 8C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration logic outside the verification stage.
@@ -210,4 +218,4 @@ Task Pack 8B is complete. Proceed to Task Pack 8C in the next session.
 - Context structures (`backend/core/context/`).
 - VFS structures (`backend/core/vfs/`).
 
-**STOP CONDITIONS**: Do not start Task Pack 8C in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Phase 9 in this session. Do not commit or push changes.
