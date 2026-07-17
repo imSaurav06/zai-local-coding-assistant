@@ -106,13 +106,13 @@ module.exports = function registerSerializerTests(suite, test) {
         });
 
         // ── 6. Reject incompatible version ──
-        test("7. Reject incompatible version", () => {
+        test("7. Reject incompatible version with CHECKPOINT_INCOMPATIBLE_VERSION", () => {
             const checkpoint = getSampleValidCheckpoint();
             const raw = JSON.parse(JSON.stringify(checkpoint));
             raw.version = "2.0"; // Incompatible version
 
             assert.throws(() => deserializeCheckpoint(raw), (err) => {
-                return err.code === checkpointErrorCodes.CHECKPOINT_INVALID_STRUCTURE;
+                return err.code === checkpointErrorCodes.CHECKPOINT_INCOMPATIBLE_VERSION;
             });
         });
 
@@ -222,6 +222,63 @@ module.exports = function registerSerializerTests(suite, test) {
             assert.strictEqual(typeof normalizeCheckpoint, "function");
             assert.strictEqual(typeof isSerializedCheckpoint, "function");
             assert.strictEqual(typeof CURRENT_SERIALIZER_VERSION, "string");
+        });
+
+        // ── 15. Patch 1: Preserve Queue and Worker array sequence ──
+        test("16. Preserve queue list order and worker order exactly", () => {
+            const opts = {
+                version: "1.0",
+                executionId: "exec_order_test",
+                metadata: {
+                    createdAt: "2026-07-17T12:00:00.000Z",
+                    updatedAt: "2026-07-17T12:30:00.000Z",
+                    waveNumber: 1
+                },
+                queues: {
+                    pending: ["task_z", "task_a", "task_m"],
+                    running: ["task_y", "task_b"],
+                    completed: ["task_x", "task_c"],
+                    failed: []
+                },
+                workers: ["worker_zeta", "worker_alpha"],
+                statistics: {
+                    completedTasks: 2,
+                    failedTasks: 0,
+                    totalTasks: 7
+                }
+            };
+            const buildRes = createCheckpoint(opts);
+            assert.strictEqual(buildRes.success, true);
+            const cp = buildRes.checkpoint;
+
+            const serialized = serializeCheckpoint(cp);
+            const restored = deserializeCheckpoint(serialized);
+
+            assert.deepStrictEqual(restored.queues.pending, ["task_z", "task_a", "task_m"]);
+            assert.deepStrictEqual(restored.queues.running, ["task_y", "task_b"]);
+            assert.deepStrictEqual(restored.queues.completed, ["task_x", "task_c"]);
+            assert.deepStrictEqual(restored.workers, ["worker_zeta", "worker_alpha"]);
+        });
+
+        // ── 16. Patch 2: Reject functions and undefined values ──
+        test("17. Reject functions in checkpoints during serialization", () => {
+            const checkpoint = getSampleValidCheckpoint();
+            const raw = JSON.parse(JSON.stringify(checkpoint));
+            raw.invalidFn = () => {};
+
+            assert.throws(() => serializeCheckpoint(raw), (err) => {
+                return err.code === checkpointErrorCodes.CHECKPOINT_INVALID_INPUT;
+            });
+        });
+
+        test("18. Reject undefined values in checkpoints during serialization", () => {
+            const checkpoint = getSampleValidCheckpoint();
+            const raw = JSON.parse(JSON.stringify(checkpoint));
+            raw.invalidUndef = undefined;
+
+            assert.throws(() => serializeCheckpoint(raw), (err) => {
+                return err.code === checkpointErrorCodes.CHECKPOINT_INVALID_INPUT;
+            });
         });
     });
 };

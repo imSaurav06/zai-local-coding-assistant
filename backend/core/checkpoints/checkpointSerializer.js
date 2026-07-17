@@ -44,7 +44,39 @@ function deepClone(val) {
 }
 
 /**
+ * Recursively scans an object structure to reject any undefined values or functions.
+ *
+ * @param {any} obj The object or value to scan
+ * @param {String} path The property path tracked for diagnostics
+ */
+function checkInvalidValues(obj, path = "") {
+    if (obj === undefined) {
+        const err = new Error(`Invalid value: 'undefined' detected at path '${path}'.`);
+        err.code = checkpointErrorCodes.CHECKPOINT_INVALID_INPUT;
+        throw err;
+    }
+    if (typeof obj === "function") {
+        const err = new Error(`Invalid value: function detected at path '${path}'.`);
+        err.code = checkpointErrorCodes.CHECKPOINT_INVALID_INPUT;
+        throw err;
+    }
+    if (obj === null || typeof obj !== "object") {
+        return;
+    }
+    if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+            checkInvalidValues(obj[i], path ? `${path}[${i}]` : `[${i}]`);
+        }
+        return;
+    }
+    for (const key of Object.keys(obj)) {
+        checkInvalidValues(obj[key], path ? `${path}.${key}` : key);
+    }
+}
+
+/**
  * Normalizes a checkpoint to canonical property ordering.
+ * Preserves the original array sequence for queues and workers.
  *
  * @param {Object} checkpoint The checkpoint to normalize
  */
@@ -54,6 +86,9 @@ function normalizeCheckpoint(checkpoint) {
         err.code = checkpointErrorCodes.CHECKPOINT_INVALID_INPUT;
         throw err;
     }
+
+    // Reject invalid serializable elements like functions or undefined
+    checkInvalidValues(checkpoint);
 
     // Clone and freeze if not already frozen, to validate structurally
     const frozen = Object.isFrozen(checkpoint) ? checkpoint : deepFreeze(deepClone(checkpoint));
@@ -66,7 +101,7 @@ function normalizeCheckpoint(checkpoint) {
 
     if (frozen.version !== CURRENT_SERIALIZER_VERSION) {
         const err = new Error(`Incompatible checkpoint version: ${frozen.version}`);
-        err.code = checkpointErrorCodes.CHECKPOINT_INVALID_STRUCTURE;
+        err.code = checkpointErrorCodes.CHECKPOINT_INCOMPATIBLE_VERSION;
         throw err;
     }
 
@@ -86,27 +121,23 @@ function normalizeCheckpoint(checkpoint) {
     }
     normalized.metadata = sortedMetadata;
 
-    // 3. Normalize queues if present
+    // 3. Normalize queues if present (keys sorted alphabetically, sequence preserved)
     if (frozen.hasOwnProperty("queues")) {
         const sortedQueues = {};
-        const queueKeys = ["completed", "failed", "pending", "running"]; // alphabetical
+        const queueKeys = ["completed", "failed", "pending", "running"]; // alphabetical order
         for (const k of queueKeys) {
             if (frozen.queues.hasOwnProperty(k)) {
-                // Sort task ID list alphabetically to ensure deterministic state representation
-                sortedQueues[k] = [...frozen.queues[k]].sort();
+                // PATCH 1: Do NOT reorder queue lists - preserve original execution order
+                sortedQueues[k] = [...frozen.queues[k]];
             }
         }
         normalized.queues = sortedQueues;
     }
 
-    // 4. Normalize workers list if present (sorted alphabetically)
+    // 4. Normalize workers list if present (sequence preserved)
     if (frozen.hasOwnProperty("workers")) {
-        const sortedWorkers = [...frozen.workers].sort((a, b) => {
-            const idA = typeof a === "string" ? a : (a.id || a.workerId);
-            const idB = typeof b === "string" ? b : (b.id || b.workerId);
-            return idA.localeCompare(idB);
-        });
-        normalized.workers = sortedWorkers;
+        // PATCH 1: Do NOT reorder workers array
+        normalized.workers = [...frozen.workers];
     }
 
     // 5. Normalize statistics block if present (keys sorted alphabetically)
@@ -125,10 +156,11 @@ function normalizeCheckpoint(checkpoint) {
     }
     if (frozen.hasOwnProperty("executionState")) {
         const sortedExecState = {};
-        const execKeys = ["completedTasks", "failedTasks", "pendingTasks", "runningTasks"]; // alphabetical
+        const execKeys = ["completedTasks", "failedTasks", "pendingTasks", "runningTasks"]; // alphabetical order
         for (const k of execKeys) {
             if (frozen.executionState.hasOwnProperty(k)) {
-                sortedExecState[k] = [...frozen.executionState[k]].sort();
+                // Preserved order for executionState lists
+                sortedExecState[k] = [...frozen.executionState[k]];
             }
         }
         normalized.executionState = sortedExecState;
@@ -148,6 +180,9 @@ function serializeCheckpoint(checkpoint) {
         err.code = checkpointErrorCodes.CHECKPOINT_INVALID_INPUT;
         throw err;
     }
+
+    // Validate that inputs do not contain functions or undefined
+    checkInvalidValues(checkpoint);
 
     const normalized = normalizeCheckpoint(checkpoint);
     return JSON.stringify(normalized);
@@ -197,6 +232,8 @@ function cloneCheckpoint(checkpoint) {
         err.code = checkpointErrorCodes.CHECKPOINT_INVALID_INPUT;
         throw err;
     }
+    
+    checkInvalidValues(checkpoint);
     const cloned = deepClone(checkpoint);
     return deepFreeze(cloned);
 }
@@ -222,6 +259,7 @@ function isSerializedCheckpoint(object) {
         return false;
     }
     try {
+        checkInvalidValues(parsed);
         const frozen = deepFreeze(deepClone(parsed));
         const validation = validateCheckpoint(frozen);
         return validation.success && frozen.version === CURRENT_SERIALIZER_VERSION;
