@@ -69,3 +69,42 @@ This document records the exact state of the Z.ai Local Coding Assistant codebas
 - **Circular References**: High risk of circular reference between `previewService.js` (imports orchestrator helper `applyContentGuard`) and projectController (which imports both).
 - **Scalability Barriers**: Sending all contracts and complete files in prompt contexts will hit token budget ceilings for LMS-scale projects.
 - **Mongoose Deprecations**: Obsolescent mongoose connect options (`useNewUrlParser` and `useUnifiedTopology`) must be scrubbed out of generated backend code.
+
+---
+
+## 4. Current Migration Status
+
+- **Phase 0**  ✅ Complete
+- **Phase 1**  ✅ Complete
+- **Phase 2**  ✅ Complete
+- **Phase 3**  ✅ Complete
+- **Phase 4**  ✅ Complete
+- **Phase 5**  ✅ Complete
+- **Phase 6**  ✅ Complete
+- **Phase 7**  ✅ Complete
+- **Phase 8**  ✅ Complete
+- **Phase 9**  ✅ Complete
+- **Phase 10A** ✅ Durable Checkpoint Foundation
+- **Phase 10B** ✅ AI Provider Gateway
+- **Phase 10C** ✅ Repair Engine
+
+### Current Regression Status
+- **Total Tests**: 761 / 761 tests passing
+- **Failed**: 0 failed
+
+### Current AI Provider Configuration
+* **Primary Provider**: Z.ai
+  * **Model**: GLM-5.2
+  * **Priority**: 1
+* **Fallback Provider**: OpenRouter
+  * **Priority**: 2
+
+### Current System State
+The modular architecture for:
+* Durable Checkpoints
+* AI Provider Gateway
+* Repair Engine
+has been completed successfully.
+
+The project is now ready to begin Phase 11 Runtime Integration.
+

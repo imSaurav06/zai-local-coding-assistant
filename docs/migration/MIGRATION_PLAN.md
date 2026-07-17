@@ -147,22 +147,23 @@ Every future Task Pack must strictly adhere to this protocol:
 - **Modules Affected**: `targetedRepairService.js`.
 - **Relative Effort**: M.
 
-### PHASE 10: AIProviderGateway Hardening + GLM-5.2 Primary Migration
-- **Goal**: Consolidate gateway wrappers and configure GLM-5.2 as primary model.
+### PHASE 10: AI Provider Gateway & Repair Engine Foundation
+- **Goal**: Consolidate provider interfaces, implement robust provider gateway routing/retries/fallback, and implement the modular repair engine foundation.
 - **Dependencies**: Phase 9.
 - **Task Packs**:
-  - **Task Pack 10A**: Refactor providerRouter into `AIProviderGateway` class.
-  - **Task Pack 10B**: Change primary model variables in `.env` to GLM-5.2.
-- **Modules Affected**: `providerRouter.js`, `aiGenerationExecutor.js`, `.env.example`.
-- **Relative Effort**: S.
+  - **Task Pack 10A**: Durable Checkpoint Foundation (Status: COMPLETE)
+  - **Task Pack 10B**: AI Provider Gateway (Status: COMPLETE)
+  - **Task Pack 10C**: Repair Engine (Status: COMPLETE)
+- **Current Regression**: 761 / 761 tests passing
 
-### PHASE 11: Controlled Parallel Task Execution
-- **Goal**: Run independent task graph nodes in parallel using a pool worker model.
-- **Dependencies**: Phase 10.
-- **Task Packs**:
-  - **Task Pack 11A**: Create thread pool executors inside `ExecutionOrchestrator`.
-  - **Task Pack 11B**: Manage rate limit throttling.
-- **Modules Affected**: `generationOrchestrator.js`.
+### PHASE 11: Execution Runtime Integration
+- **Goal**: Integrate the new modular runtime, replacing legacy orchestration incrementally while preserving compatibility.
+- **Status**: Next milestone (No implementation has started)
+- **Objectives**:
+  - Integrate the new modular runtime.
+  - Replace legacy orchestration incrementally.
+  - Preserve backward compatibility.
+  - Maintain regression safety.
 - **Relative Effort**: L.
 
 ### PHASE 12: Requirement / Integration / Security / Deployment Audits
