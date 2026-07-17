@@ -155,8 +155,11 @@ function recoverExecution(executionState, checkpoint, pipelineResult, options = 
         // Check if checkpoint is mismatching (state corruption)
         const checkpointCompleted = checkpoint.executionState.completedTasks || [];
         const stateCompleted = executionState.queues.completed || [];
-        const completedMatch = checkpointCompleted.length === stateCompleted.length &&
-            checkpointCompleted.every((id, idx) => id === stateCompleted[idx]);
+        const completedMatch = options.allowProgress
+            ? (checkpointCompleted.length <= stateCompleted.length &&
+               checkpointCompleted.every((id, idx) => id === stateCompleted[idx]))
+            : (checkpointCompleted.length === stateCompleted.length &&
+               checkpointCompleted.every((id, idx) => id === stateCompleted[idx]));
 
         if (!completedMatch) {
             failureCategory = failureCategories.CHECKPOINT_FAILURE;

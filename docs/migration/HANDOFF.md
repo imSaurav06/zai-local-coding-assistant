@@ -16,41 +16,40 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ---
 
-### 2. Current Migration State
+## 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 9 (ExecutionOrchestrator Foundation)
-*   **CURRENT TASK PACK**: 9E (Recovery)
-*   **LAST COMPLETED TASK PACK**: 9E (Recovery)
-*   **Overall Status**: IN_PROGRESS (Task Pack 9E Complete)
+*   **CURRENT TASK PACK**: 9F (Orchestrator Integration)
+*   **LAST COMPLETED TASK PACK**: 9F-B (Recovery Invariant Refinement)
+*   **Overall Status**: COMPLETE (Phase 9 Integration and Foundation Complete)
 
 ---
 
 - **Git Branch**: `main`
-- **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 9E**:
-  - `backend/core/execution/recovery.js`
-  - `backend/core/execution/recoveryValidator.js`
-  - `backend/core/execution/recoveryErrors.js`
-  - `docs/migration/PHASE_9E_RECOVERY.md`
-- **FILES CHANGED BY 9E**:
-  - `backend/core/execution/index.js` (Exposed public APIs)
-  - `backend/tests/run_tests.js` (Added 6 Phase 9E tests)
-  - `docs/migration/PHASE_STATUS.md` (Updated status)
-  - `docs/migration/HANDOFF.md` (Updated — this document)
+- **Working Tree State**: Unstaged changes.
+- **FILES MODIFIED / PATCHED IN 9F-A / 9F-B**:
+  - [generationOrchestrator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js) (Added targeted repair bridge to loop, passed progress options)
+  - [recovery.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/recovery.js) (Refined mismatch invariant to check prefix-equality when allowProgress option is active)
+  - [executionPipeline.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/executionPipeline.js) (Integrated into loop)
+
+---
+
+## 3. Compatibility Patches (9F-A & 9F-B)
+
+### 3.1 9F-A Legacy Targeted Repair Bridge
+*   **Root Cause**: The legacy file-targeted repair loop (`repairAffectedFiles`) was deleted in Phase 9F orchestrator integration, but the new `RepairEngine` is scheduled for a later phase. This disconnected verification-failed and placeholder-filled worker code from any repair execution, failing the legacy regression baseline.
+*   **Fix**: Added a compatibility bridge in the orchestrator execution loop's `RETRY` branch. If Recovery decides `RETRY` for `PROVIDER_FAILURE` or `WORKER_FAILURE` (triggered by content guard failures), the loop invokes `repairAffectedFiles` on the affected files, and merges repaired files back into the transactional VFS.
+
+### 3.2 9F-B Recovery Checkpoint Invariant Refinement
+*   **Root Cause**: In 9F, Recovery naively checked for exact equality between the startup `checkpoint`'s `completedTasks` and the live `executionState.queues.completed` list. Under ADR-011, checkpoints are updated only at wave boundaries, meaning checkpoints naturally desynchronize/lag behind the state as tasks finish one-by-one inside a wave. Comparing them strictly on retries threw false-positive `CHECKPOINT_FAILURE` aborts.
+*   **Fix**: Refined the Recovery validation scope. An `allowProgress` option was introduced for in-progress waves. When enabled, checkpoint completion is verified via prefix-matching (ensuring the live state is a proper superset of the checkpoint and has not gone backward), while maintaining strict exact-equality checks by default for startup resume operations.
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T16:50:00+05:30
+- **TESTS LAST RUN**: 2026-07-17T20:25:00+05:30
 - **TEST RESULTS**: 583 passed, 0 failed.
-- **New Tests Added (Phase 9E)**: 6 unit tests in suite `Recovery Layer (Phase 9E)`:
-  1. Rejects invalid or mutable inputs in recoverExecution
-  2. Correctly classifies success, recoverable and non-recoverable failures
-  3. Enforces max retry limits and computes exponential backoff delays
-  4. recoverExecution returns deeply frozen valid recovery decisions
-  5. Input arguments are never mutated during recoverExecution
-  6. Throws RECOVERY_UNSUPPORTED_FAILURE for unknown pipeline error codes
 - **KNOWN FAILURES**: None.
 - **BLOCKERS**: None.
 
@@ -59,51 +58,11 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ## 5. Architectural Decisions Accepted
 - **ADR-001**: Incremental refactoring loop (no big-bang rewrite).
 - **ADR-006**: Limit generation concurrency strictly to 3 concurrent workers.
+- **ADR-011**: Checkpoints are created only after every topological execution wave completes.
 - **ADR-013**: Code must compile and pass builds to qualify as production-ready.
-- **ADR-016**: ProjectSpec Custom Internal Validation Engine (decided against external validator dependency like Ajv/Zod/Joi for lightweight, zero-overhead, offline reliability).
+- **ADR-016**: ProjectSpec Custom Internal Validation Engine.
 
 ---
 
-## 6. Phase 9E Architecture Summary
-
-### 6.1 Recovery Layer Contract
-*   **PRIMARY API**: `createRecovery()` / `recoverExecution(executionState, checkpoint, pipelineResult, options)`
-*   **FAILURE CLASSIFICATION**: Standard categories map errors (`RECOVERABLE`, `NON_RECOVERABLE`, `VERIFICATION_FAILURE`, `PROVIDER_FAILURE`, `WORKER_FAILURE`, `CHECKPOINT_FAILURE`).
-*   **RETRY BACKOFF**: Retry actions compute exponential delays (`1s`, `2s`, `4s`...) up to retry limits.
-*   **CHECKPOINT COORDINATION**: Mismatch validation checks completed queues, triggers `"RESTORE"` checkpoint action, and `"SAVE"` on pipeline success.
-*   **VALIDATOR**: `validateRecovery(result)` verifies schema compliance.
-
----
-
-## 7. Open Architecture Questions
-- None.
-
----
-
-## 8. Next Exact Action
-Task Pack 9E is complete. Proceed to Task Pack 9F in the next session.
-
-**Task Pack 9F**: Orchestrator Integration
-- Integrate components inside the generic `ExecutionOrchestrator`.
-
-**FILES TO READ FIRST**:
-- [recovery.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/recovery.js)
-- [recoveryValidator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/recoveryValidator.js)
-- [run_tests.js Phase 9E suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
-
-**DO NOT TOUCH**:
-- Existing generation orchestration logic.
-- Requirements analysis handlers (`backend/services/projectService.js`).
-- Database models (`backend/models/Project.js`, `backend/models/History.js`).
-- Stack selection implementation (`backend/services/stackProfiles.js`).
-- ProjectSpec Compiler semantics (`backend/core/projectSpec/`).
-- Requirement Identity semantics (`backend/core/requirements/`).
-- RTM model semantics (`backend/core/rtm/`).
-- TaskGraph structures (`backend/core/taskGraph/`).
-- Planner structure (`backend/core/planner/`).
-- Checkpoint structures (`backend/core/checkpoints/`).
-- Context structures (`backend/core/context/`).
-- VFS structures (`backend/core/vfs/`).
-- VerificationEngine (`backend/core/verification/`).
-
-**STOP CONDITIONS**: Do not start Phase 9F in this session. Do not commit or push changes.
+## 6. Next Exact Action
+Phase 9 is fully completed and all regression tests are passing green (583/583). Proceed to Phase 10 (or next specified migration task pack) in the next session.

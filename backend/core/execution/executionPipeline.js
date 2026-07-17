@@ -128,25 +128,75 @@ function createExecutionPipeline(options = {}) {
 
                 // 6. Stage changes in VFS
                 const vfsState = executionOptions.vfsState || {};
-                const vfsFile = {
-                    path: workerResult.file.path || workerResult.file.name,
-                    content: workerResult.file.content,
-                    metadata: workerResult.file.metadata || {}
-                };
+                const filesToStage = [];
+                if (workerResult.files && Array.isArray(workerResult.files)) {
+                    for (const f of workerResult.files) {
+                        const pathVal = f.path || f.name;
+                        let lang = f.language;
+                        if (!lang) {
+                            if (pathVal.endsWith(".js") || pathVal.endsWith(".jsx")) lang = "javascript";
+                            else if (pathVal.endsWith(".css")) lang = "css";
+                            else if (pathVal.endsWith(".html")) lang = "html";
+                            else lang = "plaintext";
+                        }
+                        filesToStage.push({
+                            path: pathVal,
+                            language: lang,
+                            content: f.content,
+                            metadata: f.metadata || {}
+                        });
+                    }
+                } else if (workerResult.file) {
+                    const pathVal = workerResult.file.path || workerResult.file.name;
+                    let lang = workerResult.file.language;
+                    if (!lang) {
+                        if (pathVal.endsWith(".js") || pathVal.endsWith(".jsx")) lang = "javascript";
+                        else if (pathVal.endsWith(".css")) lang = "css";
+                        else if (pathVal.endsWith(".html")) lang = "html";
+                        else lang = "plaintext";
+                    }
+                    filesToStage.push({
+                        path: pathVal,
+                        language: lang,
+                        content: workerResult.file.content,
+                        metadata: workerResult.file.metadata || {}
+                    });
+                }
 
                 let vfsResult;
                 if (vfs.createFile) {
-                    vfsResult = vfs.createFile(vfsState, vfsFile);
+                    let currentVfs = vfsState;
+                    let lastRes = { success: true, vfs: currentVfs };
+                    for (const f of filesToStage) {
+                        const normalizedPath = (f.path || f.name).replace(/\\/g, "/");
+                        const exists = currentVfs.files && currentVfs.files.some(existing => existing.path.replace(/\\/g, "/") === normalizedPath);
+                        let res;
+                        if (exists && vfs.updateFile) {
+                            res = vfs.updateFile(currentVfs, f.path || f.name, f.content);
+                        } else {
+                            res = vfs.createFile(currentVfs, f);
+                        }
+                        if (!res.success) {
+                            lastRes = res;
+                            break;
+                        }
+                        currentVfs = res.vfs;
+                    }
+                    if (lastRes.success !== false) {
+                        vfsResult = { success: true, vfs: currentVfs };
+                    } else {
+                        vfsResult = lastRes;
+                    }
                 } else if (vfs.stageChanges) {
-                    vfsResult = vfs.stageChanges(vfsState, vfsFile);
+                    vfsResult = vfs.stageChanges(vfsState, filesToStage[0]);
                 } else {
-                    vfsResult = { success: true, vfs: vfsState, files: [vfsFile] };
+                    vfsResult = { success: true, vfs: vfsState, files: filesToStage };
                 }
 
                 if (!vfsResult || vfsResult.success === false) {
                     return deepFreeze({
                         success: false,
-                        execution: { schedule },
+                        execution: { schedule, vfsState },
                         verification: null,
                         diagnostics: null,
                         metadata: {
@@ -159,7 +209,16 @@ function createExecutionPipeline(options = {}) {
                 }
 
                 // 7. Invoke Verification
-                const verifyFiles = (vfsResult.vfs && Array.isArray(vfsResult.vfs.files)) ? vfsResult.vfs.files : (vfsResult.files || [vfsFile]);
+                const rawVerifyFiles = (vfsResult.vfs && Array.isArray(vfsResult.vfs.files)) ? vfsResult.vfs.files : (vfsResult.files || filesToStage);
+                const verifyFiles = rawVerifyFiles.map(f => {
+                    const nameVal = f.name || f.path || "";
+                    const pathVal = f.path || f.name || "";
+                    return {
+                        ...f,
+                        name: nameVal,
+                        path: pathVal
+                    };
+                });
                 const verificationResult = verification.runVerification(verifyFiles, { projectSpec: executionOptions.projectSpec });
                 const success = !!(verificationResult && (!verificationResult.errors || verificationResult.errors.length === 0));
 
@@ -167,7 +226,7 @@ function createExecutionPipeline(options = {}) {
 
                 const result = {
                     success,
-                    execution: { schedule },
+                    execution: { schedule, vfsState: vfsResult.vfs || vfsState },
                     verification: verificationResult,
                     diagnostics,
                     metadata: {
@@ -188,7 +247,7 @@ function createExecutionPipeline(options = {}) {
             } catch (error) {
                 return deepFreeze({
                     success: false,
-                    execution: { schedule },
+                    execution: { schedule, vfsState: executionOptions.vfsState },
                     verification: null,
                     diagnostics: null,
                     metadata: {

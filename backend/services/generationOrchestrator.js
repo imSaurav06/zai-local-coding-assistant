@@ -882,10 +882,11 @@ const generateRunInstructions = (projectSpec, files) => {
 // MAIN ORCHESTRATOR
 // ─────────────────────────────────────────────────────────────────────────────
 const orchestrateGeneration = async ({ originalPrompt, projectSpec }, progressEmitter, checkCancellation, options = {}) => {
-    // Compile and validate ProjectSpec and derive Requirement Identities once
     const preparation = prepareCanonicalProjectSpec(projectSpec);
     projectSpec = preparation.projectSpec;
     const requirementIdentity = preparation.requirementIdentity;
+    const taskGraph = preparation.taskGraph;
+    const checkpoint = preparation.checkpoint;
 
     const startTime = Date.now();
     let scaffoldMs = 0;
@@ -914,128 +915,301 @@ const orchestrateGeneration = async ({ originalPrompt, projectSpec }, progressEm
     const planningMs = Date.now() - startTime;
     verifyCancellation();
 
-    let finalFiles = [];
+    // 2. Initialize transactional VFS
+    const { createVirtualFileSystem, beginTransaction, commitTransaction, createFile } = require("../core/vfs");
+    let vfsState = createVirtualFileSystem().vfs;
+    const tx = beginTransaction(vfsState);
+    vfsState = tx.vfs;
 
-    // 2. Adaptive Generation Execution
-    let callIndex = 1;
-    if (plan.strategy === "DIRECT") {
-        progressEmitter.emit("Preparing Project", "Running direct generation call...");
-        const systemPrompt = `You are a principal software engineer. Generate a complete, minimal, runnable codebase.
-No markdown guides or explanations outside files blocks. Return the files block inside:
---- START_FILES ---
+    // Stage scaffold files in VFS first
+    const scafStart = Date.now();
+    const scaffoldFiles = generateScaffoldFiles(plan.scaffoldAdapter, projectSpec);
+    scaffoldMs += (Date.now() - scafStart);
 
-For each file, use this exact separator structure (including the dashes):
---- FILE: path/to/filename ---
-\`\`\`language
-// Complete file content here
-\`\`\`
---- END_FILE ---
 
---- END_FILES ---`;
 
-        const userPrompt = `ORIGINAL REQUEST: "${originalPrompt}"
-PROJECT SPECIFICATION:
-${JSON.stringify(projectSpec, null, 2)}`;
-
-        verifyCancellation();
-        const rawOutput = await aiExecutor.executeAiRequest(systemPrompt, userPrompt, {
-            cancelSignal: options.cancelSignal,
-            callMetricsCollector,
-            callIndex: callIndex++,
-            strategy: plan.strategy,
-            tokenBudget: plan.tokenBudget
+    for (const file of scaffoldFiles) {
+        const pathVal = file.name || file.path;
+        let lang = file.language;
+        if (!lang) {
+            if (pathVal.endsWith(".js") || pathVal.endsWith(".jsx")) lang = "javascript";
+            else if (pathVal.endsWith(".css")) lang = "css";
+            else if (pathVal.endsWith(".html")) lang = "html";
+            else lang = "plaintext";
+        }
+        const res = createFile(vfsState, {
+            path: pathVal,
+            language: lang,
+            content: file.content,
+            metadata: {}
         });
+        if (res.success) {
+            vfsState = res.vfs;
+        }
+    }
+
+    // 3. Initialize Execution Domain Model and Worker Registry
+    const {
+        createExecutionState,
+        createWorkerRegistry,
+        createScheduler,
+        createExecutionPipeline,
+        createRecovery
+    } = require("../core/execution");
+
+    const execStateResult = createExecutionState(taskGraph);
+    if (!execStateResult.success) {
+        throw new Error("Failed to create execution state: " + execStateResult.errors[0].message);
+    }
+    let executionState = execStateResult.executionState;
+
+    let workerRegistry = createWorkerRegistry();
+    workerRegistry = workerRegistry.create("w1").registry;
+    workerRegistry = workerRegistry.create("w2").registry;
+    workerRegistry = workerRegistry.create("w3").registry;
+
+    // 4. Instantiate components
+    const schedulerInstance = createScheduler();
+    const recoveryInstance = createRecovery();
+
+    // 9F-A Compatibility: Stores worker-level errors (e.g. content guard failures) from the most
+    // recent pipeline attempt so the RETRY bridge can pass them to repairAffectedFiles.
+    // lastWorkerFiles stores the AI-generated files that were present when the guard triggered,
+    // so mapErrorsToFiles can correctly identify affected file names by matching against them.
+    // This does NOT implement RepairEngine. It is a minimal glue variable so the existing
+    // targetedRepairService can be invoked without changing any module's public contract.
+    let lastWorkerErrors = [];
+    let lastWorkerFiles = [];
+
+    let callIndex = 1;
+    let attemptCount = 0;
+
+    const mockGateway = {
+        async generateResponse(contextPrompt) {
+            const systemPrompt = `You are a principal MERN stack engineer. Generate the files specified in user requests.
+No explanations. Output files block using standard separators.`;
+            const tokenBudget = attemptCount > 0 ? 2000 : plan.tokenBudget;
+            const rawOutput = await aiExecutor.executeAiRequest(systemPrompt, contextPrompt, {
+                cancelSignal: options.cancelSignal,
+                callMetricsCollector,
+                callIndex: callIndex++,
+                strategy: plan.strategy,
+                tokenBudget
+            });
+            return { success: true, text: rawOutput };
+        }
+    };
+
+    const mockWorker = {
+        generateFile(aiText, taskId) {
+            const parsedFiles = aiExecutor.parseGeneratedFiles(aiText);
+            const guardErrors = applyContentGuard(parsedFiles);
+
+            if (guardErrors.length > 0) {
+                // 9F-A: Preserve guard errors and the triggering file set for the RETRY bridge.
+                lastWorkerErrors = guardErrors;
+                lastWorkerFiles = parsedFiles.map(f => ({ name: f.name || f.path, content: f.content }));
+                return { success: false, errors: guardErrors };
+            }
+            lastWorkerErrors = [];
+            lastWorkerFiles = [];
+            return { success: true, files: parsedFiles };
+        }
+    };
+
+    const mockVerification = {
+        runVerification(files, opts) {
+            const verResult = require("../core/verification").runVerification(files, opts);
+            const { validateSyntax } = require("../utils/syntaxValidator");
+            const mappedFiles = files.map(f => ({ name: f.path || f.name, content: f.content }));
+            const syntaxErrors = validateSyntax(mappedFiles);
+            const errors = [...(verResult.errors || [])];
+            for (const se of syntaxErrors) {
+                errors.push({
+                    path: se.filePath,
+                    message: `SyntaxError in '${se.filePath}': ${se.reason}`
+                });
+            }
+            return {
+                success: errors.length === 0,
+                errors,
+                diagnostics: verResult.diagnostics
+            };
+        }
+    };
+
+    const mockContextBuilder = {
+        buildContext(taskId) {
+            const plannerTask = preparation.planner.tasks.find(t => t.stableId === taskId);
+            if (!plannerTask) {
+                return { success: false, errors: [{ message: `Planner task '${taskId}' not found.` }] };
+            }
+            const requirement = requirementIdentity.requirements.find(r => r.stableId === taskId);
+
+            const hasTarget = plannerTask.targetFile || requirement.targetFile ||
+                              (plannerTask.metadata && plannerTask.metadata.targetFile) ||
+                              (requirement.payload && requirement.payload.targetFile) ||
+                              plannerTask.filePath || requirement.filePath ||
+                              (plannerTask.metadata && plannerTask.metadata.filePath) ||
+                              (requirement.payload && requirement.payload.filePath);
+
+            const repoFiles = vfsState.files.map(f => ({
+                path: f.path,
+                language: f.path.endsWith(".jsx") || f.path.endsWith(".js") ? "javascript" : "text",
+                imports: []
+            }));
+
+            const contextRes = require("../core/context").buildContext(
+                projectSpec,
+                requirement,
+                plannerTask,
+                hasTarget ? repoFiles : null,
+                {}
+            );
+            return contextRes;
+        }
+    };
+
+    const pipelineInstance = createExecutionPipeline({
+        scheduler: schedulerInstance,
+        contextBuilder: mockContextBuilder,
+        aiProviderGateway: mockGateway,
+        codingWorker: mockWorker,
+        vfs: require("../core/vfs"),
+        verification: mockVerification
+    });
+
+    // 5. Execution/Scheduling Loop
+    while (executionState.queues.pending.length > 0) {
         verifyCancellation();
 
-        finalFiles = aiExecutor.parseGeneratedFiles(rawOutput);
+        const schedule = schedulerInstance.computeSchedule(executionState, workerRegistry, taskGraph);
+        if (schedule.assignments.length === 0) {
+            break;
+        }
 
-    } else {
-        // Scaffold + AI / Parallel / Chunked strategy
-        progressEmitter.emit("Preparing Project", "Generating deterministic configurations locally...");
-        const scafStart = Date.now();
-        const scaffoldFiles = generateScaffoldFiles(plan.scaffoldAdapter, projectSpec);
-        scaffoldMs += (Date.now() - scafStart);
+        const assignment = schedule.assignments[0];
+        progressEmitter.emit("Generating Modules", `Generating module for task '${assignment.taskId}'...`);
 
-        const aiGeneratedFiles = [];
-        const units = plan.generationUnits;
-        const totalUnits = units.length;
-        let completedUnits = 0;
 
-        // Process parallel groups
-        for (const group of plan.parallelGroups) {
-            verifyCancellation();
 
-            progressEmitter.emit("Generating Modules", `Generating modules group (${completedUnits}/${totalUnits})...`);
+        const pipelineResult = await pipelineInstance.executePipeline(executionState, workerRegistry, taskGraph, {
+            vfsState,
+            projectSpec
+        });
 
-            // Conservatively process concurrent requests up to limit of 3
-            const limit = 3;
-            for (let i = 0; i < group.length; i += limit) {
-                verifyCancellation();
-                const chunk = group.slice(i, i + limit);
+        // Run Recovery
+        const recoveryResult = recoveryInstance.recoverExecution(executionState, checkpoint, pipelineResult, {
+            maxRetries: 3,
+            currentRetryCount: attemptCount,
+            allowProgress: true
+        });
 
-                const promises = chunk.map(async (unit) => {
-                    let lastErr = null;
-                    for (let attempt = 1; attempt <= 3; attempt++) {
-                        try {
-                            const rawOutput = await aiExecutor.generateUnitCode(unit, projectSpec, contracts, {
-                                cancelSignal: options.cancelSignal,
-                                callMetricsCollector,
-                                callIndex: callIndex++,
-                                strategy: plan.strategy
+
+
+        if (recoveryResult.recoveryDecision === "CONTINUE") {
+            const newPending = executionState.queues.pending.filter(id => id !== assignment.taskId);
+            const newCompleted = [...executionState.queues.completed, assignment.taskId];
+
+            const deepFreeze = (obj) => {
+                if (obj === null || typeof obj !== "object") return obj;
+                Object.freeze(obj);
+                Object.getOwnPropertyNames(obj).forEach(prop => {
+                    if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                        deepFreeze(obj[prop]);
+                    }
+                });
+                return obj;
+            };
+
+            executionState = deepFreeze({
+                ...executionState,
+                queues: {
+                    ...executionState.queues,
+                    pending: newPending,
+                    completed: newCompleted
+                }
+            });
+
+            // Update VFS state
+            if (pipelineResult.execution && pipelineResult.execution.vfsState) {
+                vfsState = pipelineResult.execution.vfsState;
+            }
+            attemptCount = 0;
+        } else if (recoveryResult.recoveryDecision === "RETRY") {
+            attemptCount++;
+            repairCalls++;
+            progressEmitter.emit("Repairing Code", `Retrying task '${assignment.taskId}' (Attempt ${attemptCount})...`);
+
+            // ── 9F-A Compatibility Bridge ────────────────────────────────────────
+            // Recovery decides RETRY but does not execute repair — that is owned by
+            // targetedRepairService (ADR-010, TARGET_ARCHITECTURE §4.14).
+            // This bridge delegates to the existing repairAffectedFiles API so that
+            // content-guard and worker failures trigger the legacy repair flow before
+            // the next pipeline attempt. No business logic is duplicated here.
+            const bridgeTriggerCategories = ["PROVIDER_FAILURE", "WORKER_FAILURE", "VERIFICATION_FAILURE"];
+            if (bridgeTriggerCategories.includes(recoveryResult.metadata.failureCategory) && lastWorkerErrors.length > 0) {
+                try {
+                    const currentFiles = vfsState.files
+                        ? vfsState.files.map(f => ({ name: f.path || f.name, content: f.content }))
+                        : [];
+                    const repairedFiles = await repairAffectedFiles(
+                        lastWorkerErrors,
+                        lastWorkerFiles,
+                        projectSpec,
+                        contracts,
+                        { cancelSignal: options.cancelSignal }
+                    );
+                    // Merge repaired content back into VFS so subsequent pipeline iterations
+                    // operate on the corrected file state.
+                    const { updateFile, createFile: vfsCreateFile } = require("../core/vfs");
+                    for (const repFile of repairedFiles) {
+                        const pathVal = repFile.name;
+                        const exists = vfsState.files && vfsState.files.some(
+                            ef => (ef.path || ef.name).replace(/\\/g, "/") === pathVal.replace(/\\/g, "/")
+                        );
+                        let mergeRes;
+                        if (exists) {
+                            mergeRes = updateFile(vfsState, pathVal, repFile.content);
+                        } else {
+                            mergeRes = vfsCreateFile(vfsState, {
+                                path: pathVal,
+                                language: pathVal.endsWith(".jsx") || pathVal.endsWith(".js") ? "javascript" : "plaintext",
+                                content: repFile.content,
+                                metadata: {}
                             });
-                            return aiExecutor.parseGeneratedFiles(rawOutput);
-                        } catch (err) {
-                            lastErr = err;
-                            console.warn(`[orchestrateGeneration] Unit '${unit.id}' generation attempt ${attempt}/3 failed: ${err.message}. Retrying in ${2000 * attempt}ms...`);
-                            await new Promise(r => setTimeout(r, 2000 * attempt));
+                        }
+                        if (mergeRes && mergeRes.success) {
+                            vfsState = mergeRes.vfs;
                         }
                     }
-                    throw lastErr || new Error(`Generation unit '${unit.id}' failed after 3 attempts.`);
-                });
-
-                const results = await Promise.allSettled(promises);
-
-                for (let idx = 0; idx < results.length; idx++) {
-                    const res = results[idx];
-                    const unit = chunk[idx];
-
-                    if (res.status === "fulfilled") {
-                        aiGeneratedFiles.push(...res.value);
-                    } else {
-                        verifyCancellation();
-                        console.error(`UNIT GENERATION FAILED FOR ${unit.id}: ${res.reason ? res.reason.message : "unknown error"}.`);
-                        throw res.reason || new Error(`Generation unit '${unit.id}' failed to execute.`);
-                    }
+                    lastWorkerErrors = [];
+                    lastWorkerFiles = [];
+                } catch (_repairBridgeErr) {
+                    // Non-fatal: bridge failure is logged but does not abort the retry loop.
+                    // The pipeline will re-attempt with existing VFS state.
+                    console.warn("[9F-A Repair Bridge] repairAffectedFiles call failed:", _repairBridgeErr.message);
                 }
-                completedUnits += chunk.length;
-                progressEmitter.emit("Generating Modules", `Generating modules group (${completedUnits}/${totalUnits})...`);
             }
+            // ── End 9F-A Compatibility Bridge ───────────────────────────────────
+        } else {
+            // ABORT or RESUME failure
+            throw new Error(`Project generation validation/repair failed for task '${assignment.taskId}': ${recoveryResult.metadata.failureCategory}`);
         }
-
-        // Merge files
-        verifyCancellation();
-        progressEmitter.emit("Merging Project", "Combining configuration and AI code modules...");
-        finalFiles = mergeFiles(scaffoldFiles, aiGeneratedFiles);
     }
 
-    // ── CONTENT GUARD (pass 1, after initial generation) ──────────────────────
+    // 6. Commit transaction and extract files
     verifyCancellation();
-    {
-        const guardErrors = applyContentGuard(finalFiles);
-        if (guardErrors.length > 0) {
-            console.warn(`[Content Guard] Detected ${guardErrors.length} placeholder/truncated file(s) in initial generation:`);
-            guardErrors.forEach(e => console.warn(`  - ${e}`));
-        }
-        // Inject guard errors into validation errors so repair targets them
-        // They are treated the same as missing/broken files in the repair loop below.
-        if (guardErrors.length > 0) {
-            // Attach to a pre-validation set so the repair loop picks them up
-            finalFiles._guardErrors = guardErrors;
-        }
+    progressEmitter.emit("Merging Project", "Finalizing project code modules...");
+    const commitRes = commitTransaction(vfsState);
+    if (!commitRes.success) {
+        throw new Error("VFS transaction commit failed: " + commitRes.errors[0].message);
     }
 
-    // Sanitize any deprecated Mongoose options before validating code integrity
-    sanitizeMongooseConnectOptions(finalFiles);
+    let finalFiles = commitRes.vfs.files.map(f => ({
+        name: f.path,
+        content: f.content
+    }));
 
     // Ensure README exists before validation
     verifyCancellation();
@@ -1045,86 +1219,6 @@ ${JSON.stringify(projectSpec, null, 2)}`;
             name: "README.md",
             content: generateRichReadme(projectSpec, finalFiles)
         });
-    }
-
-    // 3. Post-Merge / Project-Level Validation
-    verifyCancellation();
-    const valStart = Date.now();
-    progressEmitter.emit("Validating Modules", "Validating merged codebase integrity and schemas...");
-
-    // Combine structural validation errors with content guard and syntax validation errors
-    const { validateSyntax } = require("../utils/syntaxValidator");
-    const syntaxErrors = validateSyntax(finalFiles);
-    const syntaxErrorStrings = syntaxErrors.map(e => `SyntaxError in '${e.filePath}': ${e.reason}`);
-
-    // ── INCREMENTAL VERIFICATION ENGINE (Phase 8B) ────────────────────────────
-    // Run VerificationEngine on only the generated files produced in this run.
-    // Maps structured error objects back to strings consumed by the repair loop.
-    _testHooks.runVerificationCallCount++;
-    const verificationResult = _testHooks.runVerification(finalFiles, { projectSpec });
-    const verificationErrorStrings = verificationResult.errors.map(e => e.message);
-    // ─────────────────────────────────────────────────────────────────────────
-
-    let validationErrors = [
-        ...verificationErrorStrings,
-        ...syntaxErrorStrings
-    ];
-    if (Array.isArray(finalFiles._guardErrors)) {
-        validationErrors = [...validationErrors, ...finalFiles._guardErrors];
-        delete finalFiles._guardErrors;
-    }
-
-    validationMs += (Date.now() - valStart);
-
-    // 4. Bounded Targeted Repair Loop
-    let attempt = 0;
-    while (validationErrors.length > 0 && attempt < plan.repairPolicy.maxAttempts) {
-        verifyCancellation();
-        attempt++;
-        repairCalls++;
-        progressEmitter.emit("Repairing Code", `Running targeted validation repairs (Attempt ${attempt}/${plan.repairPolicy.maxAttempts})...`);
-        const repStart = Date.now();
-        try {
-            finalFiles = await repairAffectedFiles(validationErrors, finalFiles, projectSpec, contracts, {
-                cancelSignal: options.cancelSignal,
-                callMetricsCollector,
-                callIndex: callIndex++,
-                strategy: plan.strategy
-            });
-
-            // ── CONTENT GUARD (pass 2+, after each repair) ────────────────────
-            const repairGuardErrors = applyContentGuard(finalFiles);
-            if (repairGuardErrors.length > 0) {
-                console.warn(`[Content Guard] Detected ${repairGuardErrors.length} placeholder(s) after repair attempt ${attempt}:`);
-                repairGuardErrors.forEach(e => console.warn(`  - ${e}`));
-            }
-
-            const repairSyntaxErrors = validateSyntax(finalFiles);
-            const repairSyntaxErrorStrings = repairSyntaxErrors.map(e => `SyntaxError in '${e.filePath}': ${e.reason}`);
-
-            // ── INCREMENTAL VERIFICATION ENGINE (repair pass) ─────────────────
-            _testHooks.runVerificationCallCount++;
-            const repairVerificationResult = _testHooks.runVerification(finalFiles, { projectSpec });
-            const repairVerificationErrorStrings = repairVerificationResult.errors.map(e => e.message);
-            // ─────────────────────────────────────────────────────────────────
-
-            validationErrors = [
-                ...repairVerificationErrorStrings,
-                ...repairGuardErrors,
-                ...repairSyntaxErrorStrings
-            ];
-        } catch (repairErr) {
-            console.error("TARGETED REPAIR FAILED:", repairErr.message);
-            if (repairErr.status === 429 || repairErr.message.includes("Rate limit")) {
-                throw new Error("Rate limit (HTTP 429) exceeded during targeted repair phase.");
-            }
-        }
-        repairMs += (Date.now() - repStart);
-    }
-
-    verifyCancellation();
-    if (validationErrors.length > 0) {
-        throw new Error("Project generation validation/repair failed: " + validationErrors.join("; "));
     }
 
     // Update README.md with final file list (now that all files are confirmed)
@@ -1185,9 +1279,9 @@ totalMs=${totalMs}
     return {
         files: finalFiles,
         runInstructions,
-        summary: richPlan,   // Rich plan document → displayed in PLAN tab
+        summary: richPlan,
         model: process.env.ZAI_MODEL,
-        projectSpec,         // Canonical ProjectSpec (frozen)
+        projectSpec,
         requirementIdentity  // Sidecar metadata
     };
 };
