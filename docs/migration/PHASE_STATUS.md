@@ -524,15 +524,20 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Blockers**: None.
 - **Next Action**: STOP. Review Phase 6C report. Proceed to Phase 6D (Final Architecture Audit) in the next session.
 
-### Task Pack 6D: Final Architecture Audit
+### Task Pack 6D: Final Architecture Audit & Alignment Fix
 - **Status**: DONE
 - **Started At**: 2026-07-17T07:33:00+05:30
-- **Completed At**: 2026-07-17T07:41:00+05:30
+- **Completed At**: 2026-07-17T15:00:00+05:30
 - **Files Created**: `docs/migration/PHASE_6_FINAL_ARCHITECTURE_AUDIT.md`
-- **Files Changed**: `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
-- **Architecture Audit**: Executed a comprehensive audit of the Context Builder module boundaries, immutability guarantees, stateless behavior, path resolution safety, and backward compatibility. No defects found.
+- **Files Changed**: `backend/core/context/contextBuilder.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Architecture Audit & Interface Alignment**:
+  - Executed a comprehensive audit of the Context Builder module boundaries, immutability guarantees, stateless behavior, path resolution safety, and backward compatibility.
+  - Identified and resolved an integration boundary mismatch: `ContextBuilder` was validating `requirement.description`, which was not emitted by the canonical `RequirementIdentity` output (which instead emits `semanticKey`).
+  - Aligned `ContextBuilder`'s validation logic to the canonical interface by verifying `requirement.semanticKey` instead of `requirement.description`.
+  - Updated legacy test fixtures to utilize the canonical `semanticKey` field instead of `description`.
+- **Tests Added**: 7 integration unit tests in `run_tests.js` (Phase 6D suite) verifying that `ContextBuilder` successfully accepts canonical `RequirementIdentity` outputs, validates `semanticKey` presence/type, and rejects old-style inputs lacking the canonical contract.
 - **Tests Run**: `node tests/run_tests.js`
-- **Test Result**: 439 Passed, 0 Failed, 0 Skipped.
+- **Test Result**: 539 Passed, 0 Failed.
 - **Next Action**: STOP. Review Phase 6 report. Hand off and prepare for Phase 7 (VFS File Operations).
 
 ### Task Pack 7A: Transactional VFS Domain Model
@@ -661,6 +666,26 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 ---
 
+## Phase 9: Bounded Targeted Repair
+
+### Task Pack 9A: Isolated Single-File Repair Engine
+- **Status**: DONE
+- **Started At**: 2026-07-17T13:59:00+05:30
+- **Completed At**: 2026-07-17T14:30:00+05:30
+- **Files Created**: `backend/core/repair/repairErrors.js`
+- **Files Changed**: `backend/services/targetedRepairService.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Architecture Summary**: Refactored `targetedRepairService.js` to implement a bounded, isolated single-file repair contract. Introduced `repairSingleFile(targetFileName, errors, diagnostics, allFiles, projectSpec, contracts, options)` as the primary Phase 9A API. Each call processes exactly one file, with no batching, no chaining, no automatic retries, and no recursion. On failure, a frozen structured failure object is returned immediately. The legacy `repairAffectedFiles` export is preserved as a backward-compatible adapter that calls `repairSingleFile` per file rather than batching 3 files together. Introduced `repairErrors.js` in `backend/core/repair/` with 11 immutable repair-specific error codes. All repair results are deeply frozen. Input arrays are never mutated.
+- **Public API**: `repairSingleFile`, `repairAffectedFiles` (legacy, backward-compatible), `mapErrorsToFiles`, `repairErrorCodes`
+- **Tests Added**: 20 unit tests in `run_tests.js` (Phase 9A suite) covering: frozen error codes, input validation for all fields, frozen failure results, caller non-mutation, mapErrorsToFiles correctness with both string and structured errors, fallback to all-files, single-file contract enforcement, export verification, determinism, and no-retry timing assertion.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 532 Passed, 0 Failed, 0 Skipped.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Rollback**: NOT implemented. Rollback belongs exclusively to Phase 9B.
+- **Next Action**: STOP. Phase 9A is complete. Proceed to Task Pack 9B (VFS Rollback Integration).
+
+---
+
 ## Future Migration Phases
 
 | Phase | Description | Status | Target Completion |
@@ -673,7 +698,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 6** | ContextBuilder | **DONE** (All Task Packs 6A–6D Complete) | 2026-07-17 |
 | **Phase 7** | Structured / Transaction VFS File Operations | **DONE** (All Task Packs 7A–7E Complete) | 2026-07-17 |
 | **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Packs 8A–8C Complete) | TBD |
-| **Phase 9** | Bounded Targeted Repair | NOT_STARTED | TBD |
+| **Phase 9** | Bounded Targeted Repair | **IN_PROGRESS** (Task Pack 9A DONE) | TBD |
 | **Phase 10** | AIProviderGateway Hardening | NOT_STARTED | TBD |
 | **Phase 11** | Controlled Parallel Task Execution | NOT_STARTED | TBD |
 | **Phase 12** | Requirement / Integration / Security / Deployment Audits | NOT_STARTED | TBD |

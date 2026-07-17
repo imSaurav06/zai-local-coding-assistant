@@ -99,16 +99,18 @@ function buildContext(projectSpec, requirement, plannerTask, repository, options
         }
 
         // 3. Validate requirement structure
+        // Canonical field set matches RequirementIdentity output: stableId, displayId, kind, semanticKey.
+        // semanticKey is the human-readable identity string emitted by requirementIdentity.js.
         if (
             typeof requirement !== "object" ||
             !requirement.hasOwnProperty("stableId") ||
             !requirement.hasOwnProperty("displayId") ||
             !requirement.hasOwnProperty("kind") ||
-            !requirement.hasOwnProperty("description") ||
+            !requirement.hasOwnProperty("semanticKey") ||
             typeof requirement.stableId !== "string" ||
             typeof requirement.displayId !== "string" ||
             typeof requirement.kind !== "string" ||
-            typeof requirement.description !== "string"
+            typeof requirement.semanticKey !== "string"
         ) {
             return deepFreeze({
                 success: false,
@@ -116,7 +118,7 @@ function buildContext(projectSpec, requirement, plannerTask, repository, options
                 errors: [{
                     code: contextErrorCodes.CONTEXT_INVALID_REQUIREMENT,
                     path: "requirement",
-                    message: "Requirement is malformed or missing key fields (stableId, displayId, kind, description)."
+                    message: "Requirement is malformed or missing key fields (stableId, displayId, kind, semanticKey)."
                 }]
             });
         }

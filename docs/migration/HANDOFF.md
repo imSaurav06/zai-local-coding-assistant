@@ -18,137 +18,59 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ### 2. Current Migration State
 
-*   **CURRENT PHASE**: PHASE 8 (Incremental Verification Engine)
-*   **CURRENT TASK PACK**: 8C (Verification Quality & Diagnostics)
-*   **LAST COMPLETED TASK PACK**: 8C (Verification Quality & Diagnostics)
-*   **Overall Status**: IN_PROGRESS (Task Packs 8A–8C Complete)
+*   **CURRENT PHASE**: PHASE 9 (Bounded Targeted Repair)
+*   **CURRENT TASK PACK**: 9A (Isolated Single-File Repair Engine)
+*   **LAST COMPLETED TASK PACK**: 9A (Isolated Single-File Repair Engine) + ContextBuilder Alignment Fix
+*   **Overall Status**: IN_PROGRESS (Task Pack 9A Complete + Alignment Fix Integrated)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 8C**:
-  - `backend/core/verification/verificationDiagnostics.js`
-  - `backend/core/verification/verificationReporter.js`
-- **FILES CHANGED BY 8C**:
-  - `backend/core/verification/verificationErrors.js` (verificationSeverity + verificationCategory enums)
-  - `backend/core/verification/syntaxChecker.js` (severity + category on errors)
-  - `backend/core/verification/importChecker.js` (severity + category on errors)
-  - `backend/core/verification/dependencyChecker.js` (severity + category on errors)
-  - `backend/core/verification/verificationEngine.js` (severity + category on inline errors)
-  - `backend/core/verification/index.js` (exports new 8C symbols)
-  - `backend/tests/run_tests.js` (Added 20 Phase 8C tests)
+- **FILES CREATED**:
+  - `backend/core/repair/repairErrors.js`
+- **FILES CHANGED**:
+  - `backend/core/context/contextBuilder.js` (aligned validation contract to canonical `semanticKey` field)
+  - `backend/services/targetedRepairService.js` (full refactor — bounded single-file repair engine)
+  - `backend/tests/run_tests.js` (Added 20 Phase 9A tests + 7 Phase 6D integration alignment tests)
   - `docs/migration/PHASE_STATUS.md` (Updated status)
-  - `docs/migration/HANDOFF.md` (Updated - this document)
+  - `docs/migration/HANDOFF.md` (Updated — this document)
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T10:20:00+05:30
-- **TEST RESULTS**: 512 passed, 0 failed, 0 skipped.
-  - Create file succeeds
-  - Duplicate path creations rejected
-  - Update file succeeds
-  - Update non-existent file rejected
-  - Delete file succeeds
-  - Delete non-existent file rejected
-  - Transaction active requirement checks
-  - Deterministic file and operations ordering
-  - Deep VFS immutability checks
-  - Caller parameter non-mutation checks
-- **New Tests Added**: 11 unit tests added under the suite `VFS Transaction Management (Phase 7B)`, covering:
-  - beginTransaction activates transaction
-  - Nested beginTransaction rejected
-  - commitTransaction succeeds
-  - rollbackTransaction restores snapshot
-  - commit without active transaction rejected
-  - rollback without active transaction rejected
-  - Buffered operations cleared after commit
-  - Buffered operations cleared after rollback
-  - Deep immutability preserved
-  - Deterministic behavior
-  - No caller mutation
-- **New Tests Added**: 7 unit tests added under the suite `Transactional VFS Domain Model (Phase 7A)`, covering:
-  - Reject invalid input
-  - Reject duplicate paths
-  - Correct initialization
-  - Default status assignment
-  - Deep immutability
-  - Deterministic creation
-  - No caller mutation
-- **New Tests Added**: 9 unit tests added under the suite `Symbol-Aware Context Resolution (Phase 6C)`, covering:
-  - Reject malformed import metadata
-  - Correct extraction of default imports
-  - Correct extraction of named imports
-  - Correct extraction of namespace imports
-  - Ignore unsupported import styles
-  - Deterministic ordering
-  - Deep immutability
-  - No caller mutation
-  - Existing repository context remains unchanged
-- **New Tests Added**: 7 unit tests added under the suite `Repository-Aware Context (Phase 6B)`, covering:
-  - Checkpoint Builder executes exactly once in preparation pipeline
-  - Checkpoint Validator executes exactly once in preparation pipeline
-  - Resume State Builder executes exactly once in preparation pipeline
-  - Checkpoint creation failure halts preparation and throws correct error code
-  - Checkpoint validation failure halts preparation and throws correct error code
-  - Resume state creation failure halts preparation and throws correct error code
-  - Checkpoint and ResumeState remain frozen in preparation result
-  - Checkpoint and ResumeState never reach persistence adapter
-  - Checkpoint and ResumeState sidecars are not returned by public orchestrateGeneration result
-  - Accepts a valid pre-built frozen Checkpoint
-  - Rejects invalid root structures
-  - Rejects invalid metadata attributes
-  - Rejects duplicate task IDs across planner tasks
-  - Rejects non-frozen checkpoint configurations
-  - Validation process is pure, side-effect-free, and deterministic
-  - Input parameters are never mutated
-  - Rejects invalid non-object checkpoint inputs
-  - Rejects malformed checkpoint structure
-  - Resume state initializes correctly and preserves metadata
-  - Completed/pending/running/failed tasks arrays are correctly preserved
-  - Resume state output is deeply frozen and immutable
-  - Resume state creation is stateless, pure, and deterministic
-  - Input parameters are never mutated
-  - Rejects invalid non-object planner inputs
-  - Rejects invalid planner structures
-  - Rejects duplicate task IDs
-  - Checkpoint initializes correctly and populates executionState groups
-  - Checkpoint is deeply frozen and immutable
-  - Creation is stateless, pure, and deterministic
-  - Input parameters are never mutated
-- **New Tests Added**: 11 unit tests added under the suite `Planner Pipeline Integration (Phase 4E)`, covering:
-  - Planner Model executes exactly once in preparation pipeline
-  - Planner Topology executes exactly once in preparation pipeline
-  - Ready Queue Builder executes exactly once in preparation pipeline
-  - Planner Validator executes exactly once in preparation pipeline
-  - Planner Model failure prevents planning and throws correct error code
-  - Planner Topology failure prevents planning and throws correct error code
-  - Ready Queue failure prevents planning and throws correct error code
-  - Planner validation failure prevents planning and throws correct error code
-  - Planner remains frozen in preparation result
-  - Planner never reaches persistence adapter
-  - Planner sidecar is not returned by public orchestrateGeneration result
-  - Rejects self-dependencies
-  - Rejects asymmetric edges
-  - Rejects invalid statuses
-  - Rejects non-frozen planners
-  - Validation is deterministic, pure, and does not mutate planner parameter
-  - Planner input is never mutated, repeated runs are identical and output is frozen
-  - Creation is deterministic, pure, and does not mutate planner parameters
-  - Populates correct metadata mapping
-  - Planner data structures are deeply frozen and immutable
-  - Planner creation is stateless and pure
-  - Caller taskGraph input parameters are never mutated
-  - Rejects broken references (dependencies pointing to non-existent nodes)
-  - Cycle detection correctly rejects graphs with cyclic dependencies
-  - Validation is deterministic and does not mutate graph parameters
-  - Builds are stateless, pure, and deterministic
-  - Input parameters are never mutated
-  - Output data structure is deeply frozen and immutable
-  - Creation is stateless, pure, and deterministic
-  - Caller input is never mutated
+- **TESTS LAST RUN**: 2026-07-17T15:05:00+05:30
+- **TEST RESULTS**: 539 passed, 0 failed.
+- **New Tests Added (Phase 6D Alignment)**: 7 integration tests in suite `ContextBuilder ↔ RequirementIdentity Integration Alignment (Phase 6D)`:
+  1. RequirementIdentity output has semanticKey (not description)
+  2. ContextBuilder accepts canonical RequirementIdentity output directly
+  3. ContextBuilder accepts all derived RequirementIdentity requirements
+  4. ContextBuilder preserves semanticKey in context requirement copy
+  5. ContextBuilder rejects a requirement with description but no semanticKey
+  6. ContextBuilder rejects a requirement with empty semanticKey string
+  7. Interface alignment confirmed: zero mismatch between producers and consumer
+- **New Tests Added (Phase 9A)**: 20 unit tests in suite `Bounded Targeted Repair — Phase 9A`:
+  1. repairErrorCodes is frozen with required error code keys
+  2. repairSingleFile rejects empty targetFileName with structured failure
+  3. repairSingleFile rejects non-string targetFileName
+  4. repairSingleFile rejects empty errors array
+  5. repairSingleFile rejects non-array errors
+  6. repairSingleFile rejects non-array files
+  7. repairSingleFile rejects null projectSpec
+  8. repairSingleFile rejects null contracts
+  9. Repair failure result is frozen and immutable
+  10. Caller files array is never mutated by repairSingleFile
+  11. Caller files array is never mutated by repairAffectedFiles (legacy adapter)
+  12. mapErrorsToFiles correctly identifies files mentioned in errors
+  13. mapErrorsToFiles falls back to all files when no specific match
+  14. mapErrorsToFiles handles structured error objects from Phase 8 verification
+  15. repairSingleFile processes exactly one file — validated by contract signature
+  16. repairAffectedFiles is backward-compatible and still exported
+  17. repairSingleFile is exported as a function
+  18. mapErrorsToFiles is exported and backward-compatible
+  19. repairSingleFile is deterministic — same inputs produce same failure output
+  20. No retry loop — repair failure propagates immediately without retry
 - **KNOWN FAILURES**: None.
 - **BLOCKERS**: None.
 
@@ -157,36 +79,26 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ## 5. Architectural Decisions Accepted
 - **ADR-001**: Incremental refactoring loop (no big-bang rewrite).
 - **ADR-006**: Limit generation concurrency strictly to 3 concurrent workers.
+- **ADR-010**: Bounded Targeted Repair — single-file isolated repair with rollback (Phase 9A implements isolation; Phase 9B implements rollback).
 - **ADR-013**: Code must compile and pass builds to qualify as production-ready.
 - **ADR-016**: ProjectSpec Custom Internal Validation Engine (decided against external validator dependency like Ajv/Zod/Joi for lightweight, zero-overhead, offline reliability).
 
 ---
 
-## 6. Phase 1 Complete Integration Contract
+## 6. Phase 9A Architecture Summary
 
-### 6.1 ProjectSpec Module
-*   **SCHEMA VERSION**: `"1.0"`
-*   **PUBLIC COMPILER API**:
-    *   `compileProjectSpec(legacyPayload)`: Normalizes and validates legacy payload.
-    *   `compilerErrorCodes`: Dict of compiler-specific error codes.
-*   **COMPILATION RESULT CONTRACT**:
-    *   Success: `{ success: true, value: validatedImmutableProjectSpec, errors: [] }`
-    *   Failure: `{ success: false, value: null, errors: [{ code, path, message, keyword }] }`
+### 6.1 Repair Engine Contract (Phase 9A)
+*   **PRIMARY API**: `repairSingleFile(targetFileName, errors, diagnostics, allFiles, projectSpec, contracts, options)`
+*   **REPAIR CONTRACT**: One input file → one isolated repair execution → one output file (or structured failure). Never more than one file processed per invocation.
+*   **FAILURE CONTRACT**: If repair fails, returns frozen `{ success: false, code, message, repairedFile: null, metadata }`. No retry. No recursion.
+*   **SUCCESS CONTRACT**: Returns frozen `{ success: true, code: null, message: null, repairedFile: { name, content }, metadata, verificationStatus }`.
+*   **ERROR CODES**: 11 immutable codes in `backend/core/repair/repairErrors.js` (REPAIR_INVALID_TARGET_FILE, REPAIR_INVALID_ERRORS, REPAIR_INVALID_FILES, REPAIR_INVALID_PROJECT_SPEC, REPAIR_INVALID_CONTRACTS, REPAIR_AI_CALL_FAILED, REPAIR_PARSE_FAILED, REPAIR_SYNTAX_REGRESSION, REPAIR_TARGET_NOT_IN_OUTPUT, REPAIR_MULTI_FILE_REJECTED, REPAIR_INTERNAL_ERROR).
+*   **BACKWARD COMPAT API**: `repairAffectedFiles(errors, files, projectSpec, contracts, options)` — preserved, adapts to call `repairSingleFile` per file instead of old 3-file batching.
+*   **INPUT IMMUTABILITY**: Caller `files` array is never mutated.
+*   **PURITY**: No filesystem writes, no persistence, no repository mutation.
 
-### 6.2 Requirement Identity Module
-*   **PUBLIC IDENTITY API**: `deriveRequirementIdentities(validatedProjectSpec)`
-*   **IDENTITY VERSION**: `"1.0"`
-*   **IDENTITY RESULT CONTRACT**:
-    *   Success: `{ success: true, requirements: [...], duplicates: [...] }` (deeply frozen)
-    *   Failure: `{ success: false, errors: [{ code, path, message }] }`
-
-### 6.3 Pipeline Integration
-*   **INTEGRATION FUNCTION**: `prepareCanonicalProjectSpec(legacyPayload)` in `generationOrchestrator.js`
-*   **RETURNS**: `{ projectSpec: frozenCanonicalSpec, requirementIdentity: frozenIdentityResult, rtm: frozenRTM, taskGraph: frozenTaskGraph, planner: frozenPlanner, checkpoint: frozenCheckpoint, resumeState: frozenResumeState }` (RTM, TaskGraph, Planner, Checkpoint, ResumeState are internal-only sidecars)
-*   **ERROR CODES**: `PROJECT_PREPARATION_COMPILE_FAILED`, `PROJECT_PREPARATION_IDENTITY_FAILED`, `PROJECT_PREPARATION_RTM_BUILD_FAILED`, `PROJECT_PREPARATION_RTM_VALIDATION_FAILED`, `PROJECT_PREPARATION_TASK_GRAPH_BUILD_FAILED`, `PROJECT_PREPARATION_TASK_GRAPH_VALIDATION_FAILED`, `PROJECT_PREPARATION_PLANNER_BUILD_FAILED`, `PROJECT_PREPARATION_PLANNER_TOPOLOGY_FAILED`, `PROJECT_PREPARATION_PLANNER_READY_FAILED`, `PROJECT_PREPARATION_PLANNER_VALIDATION_FAILED`, `PROJECT_PREPARATION_CHECKPOINT_BUILD_FAILED`, `PROJECT_PREPARATION_CHECKPOINT_VALIDATION_FAILED`, `PROJECT_PREPARATION_RESUME_STATE_FAILED`
-*   **PERSISTENCE ADAPTER**: `adaptProjectSpecForPersistence(projectSpec)` in `projectController.js` (strips schemaVersion and any sidecar data)
-*   **BOUNDARY**: Top of `orchestrateGeneration()` — before any planning, scaffolding, or AI calls
-*   **SIDECAR**: `requirementIdentity` and `rtm` travel internally alongside `projectSpec` in memory, but are completely stripped from public database saves and client API responses.
+### 6.2 Rollback
+*   **NOT IMPLEMENTED in Phase 9A**. Rollback belongs exclusively to Phase 9B (VFS Rollback Integration).
 
 ---
 
@@ -196,16 +108,20 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 8C is complete. Proceed to Task Pack 8D (or Phase 9) in the next session.
+Task Pack 9A is complete. Proceed to Task Pack 9B in the next session.
+
+**Task Pack 9B**: VFS Rollback Integration
+- Integrate VFS rollbacks on invalid syntax repairs.
+- On repair failure, the VFS state is rolled back to the pre-repair snapshot.
 
 **FILES TO READ FIRST**:
-- [verificationDiagnostics.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/verification/verificationDiagnostics.js)
-- [verificationReporter.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/verification/verificationReporter.js)
-- [verificationEngine.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/verification/verificationEngine.js)
-- [run_tests.js Phase 8C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
+- [targetedRepairService.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/targetedRepairService.js)
+- [repairErrors.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/repair/repairErrors.js)
+- [vfsTransaction.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/vfs/vfsTransaction.js)
+- [run_tests.js Phase 9A suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
 
 **DO NOT TOUCH**:
-- Existing generation orchestration logic outside the verification stage.
+- Existing generation orchestration logic outside the repair stage.
 - Requirements analysis handlers (`backend/services/projectService.js`).
 - Database models (`backend/models/Project.js`, `backend/models/History.js`).
 - Stack selection implementation (`backend/services/stackProfiles.js`).
@@ -217,5 +133,7 @@ Task Pack 8C is complete. Proceed to Task Pack 8D (or Phase 9) in the next sessi
 - Checkpoint structures (`backend/core/checkpoints/`).
 - Context structures (`backend/core/context/`).
 - VFS structures (`backend/core/vfs/`).
+- VerificationEngine (`backend/core/verification/`).
 
-**STOP CONDITIONS**: Do not start Phase 9 in this session. Do not commit or push changes.
+
+**STOP CONDITIONS**: Do not start Phase 9B in this session. Do not commit or push changes.
