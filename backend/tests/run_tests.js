@@ -61,6 +61,9 @@ require("./core/checkpoints/checkpointLifecycle.test.js")(suite, test);
 // Register Checkpoint Resume Loader Tests (Phase 10A-5B)
 require("./core/checkpoints/checkpointResumeLoader.test.js")(suite, test);
 
+// Register Checkpoint Recovery Integration Tests (Phase 10A-5C)
+require("./core/checkpoints/recoveryIntegration.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

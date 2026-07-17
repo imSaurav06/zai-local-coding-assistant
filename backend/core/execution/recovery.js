@@ -112,6 +112,55 @@ function validateInputs(executionState, checkpoint, pipelineResult) {
  * @param {Object} options Options configuration
  */
 function recoverExecution(executionState, checkpoint, pipelineResult, options = {}) {
+    if (typeof executionState === "string") {
+        // Asynchronous checkpoint-based recovery integration
+        const executionId = executionState;
+        const checkpointStore = checkpoint;
+
+        return (async () => {
+            if (!checkpointStore || typeof checkpointStore.load !== "function") {
+                const err = new Error("Invalid checkpointStore: must implement CheckpointStore interface with load().");
+                err.code = "CHECKPOINT_STORE_INVALID_ARGUMENT";
+                throw err;
+            }
+
+            const { loadExecutionState } = require("../checkpoints");
+            let restoredState;
+            try {
+                restoredState = await loadExecutionState(executionId, checkpointStore);
+            } catch (e) {
+                const err = new Error(`Recovery load state failed: ${e.message}`);
+                err.code = e.code || "RECOVERY_STORE_ERROR";
+                err.originalError = e;
+                throw err;
+            }
+
+            if (!restoredState) {
+                const err = new Error(`Checkpoint not found for executionId: '${executionId}'`);
+                err.code = "RESUME_INVALID_CHECKPOINT";
+                throw err;
+            }
+
+            // Recovery-level validation of the restored ExecutionState
+            if (!restoredState.queues || !restoredState.metadata || !restoredState.statistics) {
+                const err = new Error("Restored state is missing required ExecutionState attributes.");
+                err.code = recoveryErrorCodes.RECOVERY_INVALID_INPUT;
+                throw err;
+            }
+
+            const result = {
+                success: true,
+                executionState: restoredState,
+                checkpointVersion: restoredState.version || "1.0",
+                reason: "SUCCESS",
+                recoveredAt: new Date().toISOString()
+            };
+
+            return deepFreeze(result);
+        })();
+    }
+
+    // Legacy mode
     // 1. Validate inputs
     validateInputs(executionState, checkpoint, pipelineResult);
 
