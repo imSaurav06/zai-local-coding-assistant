@@ -27,6 +27,15 @@ const {
     ZaiProvider
 } = require("./zaiProvider");
 
+const {
+    AIProviderGateway,
+    createAIProviderGateway
+} = require("./aiProviderGateway");
+
+const {
+    gatewayErrorCodes
+} = require("./gatewayErrors");
+
 module.exports = {
     createProvider,
     validateProvider,
@@ -38,5 +47,8 @@ module.exports = {
     createProviderInterface,
     providerInterfaceErrorCodes,
     OpenRouterProvider,
-    ZaiProvider
+    ZaiProvider,
+    AIProviderGateway,
+    createAIProviderGateway,
+    gatewayErrorCodes
 };
