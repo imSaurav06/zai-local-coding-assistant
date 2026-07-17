@@ -516,16 +516,28 @@ const extractRunInstructions = (projectSpec, files) => {
  */
 const generateProject = async ({ originalPrompt, projectSpec }) => {
     try {
-        const { orchestrateGeneration } = require("./generationOrchestrator");
+        const { loadRuntimeConfig, createExecutionRuntimeAdapter } = require("../core/runtime");
+        const config = loadRuntimeConfig();
+        const adapter = createExecutionRuntimeAdapter(config);
+
         const mockEmitter = {
             emit: (stage, text) => console.log(`[Progress] ${stage}: ${text}`),
             end: () => {}
         };
-        const data = await orchestrateGeneration(
-            { originalPrompt, projectSpec },
-            mockEmitter,
-            () => {}
-        );
+        const request = {
+            projectSpec,
+            options: {
+                progressEmitter: mockEmitter,
+                checkCancellation: () => {}
+            },
+            metadata: {
+                originalPrompt
+            }
+        };
+
+        const response = await adapter.execute(request);
+        const data = response.result;
+
         return {
             success: true,
             result: data.summary,

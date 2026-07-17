@@ -2,7 +2,7 @@ const projectService = require("../services/projectService");
 const Project = require("../models/Project");
 const History = require("../models/History");
 const AdmZip = require("adm-zip");
-const { orchestrateGeneration } = require("../services/generationOrchestrator");
+const { loadRuntimeConfig, createExecutionRuntimeAdapter } = require("../core/runtime");
 const { createProgressEmitter } = require("../services/progressEmitter");
 const previewService = require("../services/previewService");
 
@@ -98,12 +98,23 @@ const generate = async (req, res) => {
             if (cancelled) throw new Error("Generation was cancelled due to client disconnection.");
         };
 
-        const data = await orchestrateGeneration({
-            originalPrompt,
-            projectSpec
-        }, progressEmitter, checkCancellation, {
-            cancelSignal: controller.signal
-        });
+        const config = loadRuntimeConfig();
+        const adapter = createExecutionRuntimeAdapter(config);
+
+        const request = {
+            projectSpec,
+            options: {
+                progressEmitter,
+                checkCancellation,
+                cancelSignal: controller.signal
+            },
+            metadata: {
+                originalPrompt
+            }
+        };
+
+        const response = await adapter.execute(request);
+        const data = response.result;
 
         checkCancellation();
 
