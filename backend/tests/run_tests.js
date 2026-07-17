@@ -79,6 +79,9 @@ require("./core/providers/zaiProvider.test.js")(suite, test);
 // Register AI Provider Gateway Tests (Phase 10B-5A)
 require("./core/providers/aiProviderGateway.test.js")(suite, test);
 
+// Register Repair Domain Model Tests (Phase 10C-1)
+require("./core/repair/repairModel.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
