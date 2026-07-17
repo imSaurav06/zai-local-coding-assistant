@@ -65,6 +65,18 @@ const {
 const { shadowRuntimeErrorCodes } = require("./shadowRuntimeErrors");
 const { parityValidatorErrorCodes } = require("./parityValidatorErrors");
 
+const {
+    createRuntimeRouter,
+    selectRuntime,
+    executeRuntime,
+    validateRuntimeSelection,
+    runtimeRouterErrorCodes,
+    RUNTIME_ROUTER_VERSION
+} = require("./runtimeRouter");
+
+const { executeLegacy, LEGACY_RUNTIME_ADAPTER_VERSION } = require("./legacyRuntimeAdapter");
+const { executeModular, MODULAR_RUNTIME_ADAPTER_VERSION } = require("./modularRuntimeAdapter");
+
 module.exports = {
     createRuntimeConfig,
     loadRuntimeConfig,
@@ -108,5 +120,15 @@ module.exports = {
     generateParityReport,
     PARITY_VALIDATOR_VERSION,
     shadowRuntimeErrorCodes,
-    parityValidatorErrorCodes
+    parityValidatorErrorCodes,
+    createRuntimeRouter,
+    selectRuntime,
+    executeRuntime,
+    validateRuntimeSelection,
+    runtimeRouterErrorCodes,
+    RUNTIME_ROUTER_VERSION,
+    executeLegacy,
+    LEGACY_RUNTIME_ADAPTER_VERSION,
+    executeModular,
+    MODULAR_RUNTIME_ADAPTER_VERSION
 };

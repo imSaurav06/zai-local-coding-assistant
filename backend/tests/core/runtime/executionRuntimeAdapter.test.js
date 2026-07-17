@@ -90,10 +90,19 @@ module.exports = function registerRuntimeAdapterTests(suite, test) {
                 const adapter = createExecutionRuntimeAdapter({ runtimeMode: mode });
                 const res = await adapter.execute(request);
 
-                assert.strictEqual(mockCalled, true);
-                assert.strictEqual(res.success, true);
-                assert.strictEqual(res.runtime, "LEGACY"); // always executes legacy in this phase
-                assert.strictEqual(res.result.runInstructions, "run it");
+                if (mode === "MODULAR") {
+                    assert.strictEqual(mockCalled, false);
+                    assert.deepStrictEqual(res, {
+                        runtime: "MODULAR",
+                        status: "NOT_IMPLEMENTED",
+                        message: "Modular runtime activation is scheduled for Phase 11B-2."
+                    });
+                } else {
+                    assert.strictEqual(mockCalled, true);
+                    assert.strictEqual(res.success, true);
+                    assert.strictEqual(res.runtime, "LEGACY");
+                    assert.strictEqual(res.result.runInstructions, "run it");
+                }
                 assert.ok(Object.isFrozen(res));
             }
         });

@@ -1,0 +1,11 @@
+"use strict";
+
+const runtimeRouterErrorCodes = Object.freeze({
+    RUNTIME_ROUTER_INVALID_MODE: "RUNTIME_ROUTER_INVALID_MODE",
+    RUNTIME_ROUTER_INVALID_REQUEST: "RUNTIME_ROUTER_INVALID_REQUEST",
+    RUNTIME_ROUTER_EXECUTION_FAILED: "RUNTIME_ROUTER_EXECUTION_FAILED"
+});
+
+module.exports = {
+    runtimeRouterErrorCodes
+};

@@ -166,134 +166,23 @@ async function execute(request) {
         throw err;
     }
 
-    const runtimeMode = this.config.runtimeMode;
-    const ALLOWED_MODES = new Set(["LEGACY", "MODULAR", "SHADOW"]);
-    if (!ALLOWED_MODES.has(runtimeMode)) {
-        const err = new Error(`Unsupported runtime mode: '${runtimeMode}'`);
-        err.code = executionRuntimeAdapterErrorCodes.EXECUTION_RUNTIME_UNSUPPORTED_MODE;
-        throw err;
-    }
-
-    // Optional Checkpoint Bridge calls
-    const enableCheckpoint = this.config.enableCheckpointPersistence;
-    let initialExecutionState = null;
-    if (enableCheckpoint) {
-        initialExecutionState = Object.freeze({
-            version: "1.0",
-            metadata: {
-                status: "READY",
-                executionId: `exec_${Date.now()}`,
-                createdAt: new Date().toISOString()
-            },
-            queues: Object.freeze({
-                pending: ["task_01"],
-                running: [],
-                completed: [],
-                failed: []
-            }),
-            statistics: Object.freeze({
-                totalTasks: 1,
-                pending: 1,
-                running: 0,
-                completed: 0,
-                failed: 0
-            })
-        });
-
-        await this.checkpointBridge.initializeExecutionCheckpoint(initialExecutionState);
-    }
-
-    // Phase 11A-2: Always execute legacy orchestrator.
-    const legacyOrchestrator = require("../../services/generationOrchestrator");
-
     try {
-        const originalPrompt = (request.metadata && request.metadata.originalPrompt) || "";
-        const progressEmitter = request.options && request.options.progressEmitter;
-        const checkCancellation = request.options && request.options.checkCancellation;
-        const cancelSignal = request.options && request.options.cancelSignal;
-
-        const legacyResult = await legacyOrchestrator.orchestrateGeneration(
-            {
-                originalPrompt,
-                projectSpec: request.projectSpec
-            },
-            progressEmitter,
-            checkCancellation,
-            {
-                cancelSignal
-            }
-        );
-
-        if (enableCheckpoint) {
-            const finalExecutionState = Object.freeze({
-                version: "1.0",
-                metadata: {
-                    status: "SUCCESS",
-                    executionId: initialExecutionState.metadata.executionId,
-                    createdAt: initialExecutionState.metadata.createdAt
-                },
-                queues: Object.freeze({
-                    pending: [],
-                    running: [],
-                    completed: ["task_01"],
-                    failed: []
-                }),
-                statistics: Object.freeze({
-                    totalTasks: 1,
-                    pending: 0,
-                    running: 0,
-                    completed: 1,
-                    failed: 0
-                })
-            });
-
-            await this.checkpointBridge.finalizeExecutionCheckpoint(finalExecutionState);
-        }
-
-        const rawResult = {
-            files: legacyResult.files,
-            runInstructions: legacyResult.runInstructions,
-            summary: legacyResult.summary,
-            model: legacyResult.model,
-            projectSpec: legacyResult.projectSpec
-        };
-
-        // Run Verification and optional Repair Bridge hooks
-        const verifyRepairRes = await this.verificationRepairBridge.verifyAndRepair(rawResult);
-
-        const response = {
-            success: verifyRepairRes.success,
-            runtime: "LEGACY", // Hardcoded target for Phase 11A-2
-            result: verifyRepairRes.result,
-            metadata: {
-                requirementIdentity: legacyResult.requirementIdentity,
-                verificationResult: verifyRepairRes.verificationResult,
-                repaired: verifyRepairRes.repaired
-            }
-        };
-
-        const frozenResponse = deepFreezeExecutionResponse(response);
-
-        // Run Shadow Runtime if configured (Parity validation is isolated within)
-        const { executeShadow } = require("./shadowRuntime");
-        await executeShadow(this, request, frozenResponse);
-
-        return frozenResponse;
+        const { executeRuntime } = require("./runtimeRouter");
+        return await executeRuntime(this, request);
     } catch (err) {
-        // Let standard adapter errors bubble directly
-        const adapterErrorCodes = new Set([
+        const transparentErrorCodes = new Set([
             "VERIFICATION_REPAIR_INVALID_INPUT",
             "VERIFICATION_REPAIR_VERIFICATION_FAILED",
             "VERIFICATION_REPAIR_REPAIR_FAILED",
             "VERIFICATION_REPAIR_BRIDGE_FAILED"
         ]);
-        if (err.code && adapterErrorCodes.has(err.code)) {
+        if (err.code && transparentErrorCodes.has(err.code)) {
             throw err;
         }
 
-        const execErr = new Error(`Legacy execution failed: ${err.message}`);
+        const execErr = new Error(err.message);
         execErr.code = executionRuntimeAdapterErrorCodes.EXECUTION_RUNTIME_EXECUTION_FAILED;
-        execErr.originalError = err;
+        execErr.originalError = err.originalError || err;
         throw execErr;
     }
 }
@@ -320,12 +209,15 @@ function createExecutionRuntimeAdapter(config = {}) {
     const checkpointBridge = createCheckpointBridge(finalConfig);
     const verificationRepairBridge = createVerificationRepairBridge(finalConfig);
     const workerPool = createWorkerPool(finalConfig);
+    const { createRuntimeRouter } = require("./runtimeRouter");
+    const runtimeRouter = createRuntimeRouter(finalConfig);
 
     return {
         config: finalConfig,
         checkpointBridge,
         verificationRepairBridge,
         workerPool,
+        runtimeRouter,
         execute
     };
 }
