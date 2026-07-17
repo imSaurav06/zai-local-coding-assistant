@@ -8817,6 +8817,490 @@ suite("Execution Domain Model (Phase 9A)", () => {
     });
 });
 
+suite("Worker Lifecycle (Phase 9B)", () => {
+    const {
+        createWorker,
+        createWorkerRegistry,
+        validateWorker,
+        workerStatuses,
+        workerErrorCodes
+    } = require(path.join(backendRoot, "core/execution"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const makeValidWorkerObject = (workerId) => {
+        return {
+            workerId: workerId,
+            status: "IDLE",
+            currentTask: null,
+            completedTasks: [],
+            metadata: {
+                createdBy: "ExecutionOrchestrator",
+                version: "1.0"
+            }
+        };
+    };
+
+    // Helper to deeply freeze objects for validation tests
+    const deepFreeze = (obj) => {
+        if (obj === null || typeof obj !== "object") return obj;
+        Object.freeze(obj);
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+            if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                deepFreeze(obj[prop]);
+            }
+        });
+        return obj;
+    };
+
+    // ── 1. Worker creation ────────────────────────────────────────────────────
+    test("1. createWorker constructs a valid IDLE worker object", () => {
+        const res = createWorker("worker-1");
+        assert.strictEqual(res.success, true);
+        const w = res.worker;
+        assert.strictEqual(w.workerId, "worker-1");
+        assert.strictEqual(w.status, workerStatuses.IDLE);
+        assert.strictEqual(w.currentTask, null);
+        assert.deepStrictEqual(w.completedTasks, []);
+        assert.strictEqual(w.metadata.createdBy, "ExecutionOrchestrator");
+        assert.strictEqual(w.metadata.version, "1.0");
+        assert.ok(Object.isFrozen(w));
+    });
+
+    // ── 2. Invalid worker rejection ──────────────────────────────────────────
+    test("2. Rejects invalid input values in createWorker and validateWorker", () => {
+        const badIds = [null, undefined, "", "   ", [], {}];
+        for (const bad of badIds) {
+            const res = createWorker(bad);
+            assert.strictEqual(res.success, false);
+            assert.strictEqual(res.worker, null);
+            assert.strictEqual(res.errors[0].code, workerErrorCodes.WORKER_INVALID_INPUT);
+        }
+
+        // Validate non-object inputs
+        const resObj = validateWorker("not-an-object");
+        assert.strictEqual(resObj.success, false);
+        assert.strictEqual(resObj.errors[0].code, workerErrorCodes.WORKER_INVALID_INPUT);
+    });
+
+    // ── 3. Invalid status rejection ──────────────────────────────────────────
+    test("3. Rejects invalid worker status", () => {
+        const workerObj = makeValidWorkerObject("worker-1");
+        workerObj.status = "NOT_A_VALID_STATUS";
+        const frozen = deepFreeze(workerObj);
+        const res = validateWorker(frozen);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(res.errors[0].code, workerErrorCodes.WORKER_INVALID_STATUS);
+    });
+
+    // ── 4. Duplicate worker detection ────────────────────────────────────────
+    test("4. Registry detects duplicate worker IDs on creation", () => {
+        const regResult = createWorkerRegistry().create("worker-1");
+        assert.strictEqual(regResult.success, true);
+        const reg2 = regResult.registry.create("worker-1"); // duplicate create
+        assert.strictEqual(reg2.success, false);
+        assert.strictEqual(reg2.errors[0].code, workerErrorCodes.WORKER_DUPLICATE_ID);
+    });
+
+    // ── 5. Registry creation ──────────────────────────────────────────────────
+    test("5. createWorkerRegistry initializes successfully", () => {
+        const registry = createWorkerRegistry();
+        assert.ok(Object.isFrozen(registry));
+        assert.ok(Object.isFrozen(registry.workers));
+        assert.deepStrictEqual(Object.keys(registry.workers), []);
+    });
+
+    // ── 6. Registry lookup ────────────────────────────────────────────────────
+    test("6. Registry lookup finds registered workers and returns null otherwise", () => {
+        const reg1 = createWorkerRegistry().create("worker-a").registry;
+        const w = reg1.lookup("worker-a");
+        assert.ok(w);
+        assert.strictEqual(w.workerId, "worker-a");
+
+        assert.strictEqual(reg1.lookup("worker-b"), null);
+        assert.strictEqual(reg1.lookup(null), null);
+    });
+
+    // ── 7. Registry lookup / exists validation ────────────────────────────────
+    test("7. Registry existence validation returns correct boolean states", () => {
+        const reg = createWorkerRegistry().create("worker-x").registry;
+        assert.strictEqual(reg.exists("worker-x"), true);
+        assert.strictEqual(reg.exists("worker-y"), false);
+        assert.strictEqual(reg.exists(null), false);
+    });
+
+    // ── 8. Registry immutability ──────────────────────────────────────────────
+    test("8. Registry is deeply frozen and does not mutate historical state", () => {
+        const registryA = createWorkerRegistry();
+        const resB = registryA.create("w-1");
+        assert.strictEqual(resB.success, true);
+        const registryB = resB.registry;
+
+        // Verify registryA remains empty
+        assert.strictEqual(registryA.exists("w-1"), false);
+        assert.strictEqual(registryB.exists("w-1"), true);
+        assert.ok(Object.isFrozen(registryB));
+        assert.ok(Object.isFrozen(registryB.workers));
+
+        // Attempt mutations
+        try { registryB.workers["w-1"] = null; } catch (_) {}
+        assert.strictEqual(registryB.lookup("w-1").workerId, "w-1");
+    });
+
+    // ── 9. Validator success & failure ────────────────────────────────────────
+    test("9. validateWorker correctly distinguishes valid and invalid structures", () => {
+        // Success
+        const wObj = makeValidWorkerObject("worker-good");
+        const frozen = deepFreeze(wObj);
+        const res = validateWorker(frozen);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.errors.length, 0);
+
+        // Mutable validation failure
+        const unfrozenWorker = makeValidWorkerObject("worker-unfrozen");
+        const resUnfrozen = validateWorker(unfrozenWorker);
+        assert.strictEqual(resUnfrozen.success, false);
+        assert.strictEqual(resUnfrozen.errors[0].code, workerErrorCodes.WORKER_MUTABLE_INPUT);
+
+        // Missing field failure
+        const missingFieldWorker = makeValidWorkerObject("worker-bad");
+        delete missingFieldWorker.status;
+        const frozenMissing = deepFreeze(missingFieldWorker);
+        const resMissing = validateWorker(frozenMissing);
+        assert.strictEqual(resMissing.success, false);
+        assert.strictEqual(resMissing.errors[0].code, workerErrorCodes.WORKER_INVALID_INPUT);
+    });
+
+    // ── 10. Error enum frozen ─────────────────────────────────────────────────
+    test("10. Worker error codes enum is deeply frozen", () => {
+        assert.ok(Object.isFrozen(workerErrorCodes));
+        const keys = ["WORKER_INVALID_INPUT", "WORKER_INVALID_STATUS", "WORKER_DUPLICATE_ID", "WORKER_MUTABLE_INPUT"];
+        for (const k of keys) {
+            assert.strictEqual(workerErrorCodes[k], k);
+        }
+    });
+
+    // ── 11. Determinism ───────────────────────────────────────────────────────
+    test("11. Worker creation is pure and deterministic", () => {
+        const res1 = createWorker("worker-det");
+        const res2 = createWorker("worker-det");
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    // ── 12. Caller input non-mutation ─────────────────────────────────────────
+    test("12. validateWorker and createWorkerRegistry never mutate inputs", () => {
+        const workerObj = makeValidWorkerObject("w-mutable-test");
+        const clone = deepClone(workerObj);
+        // validateWorker unfrozen (validates and rejects since unfrozen, but must not mutate)
+        validateWorker(workerObj);
+        assert.deepStrictEqual(workerObj, clone);
+    });
+});
+
+suite("Scheduler Decision Layer (Phase 9C)", () => {
+    const {
+        createScheduler,
+        computeSchedule,
+        validateSchedule,
+        schedulerErrorCodes,
+        createExecutionState,
+        createWorkerRegistry,
+        createWorker,
+        workerStatuses
+    } = require(path.join(backendRoot, "core/execution"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const makeNode = (stableId, displayId, dependencies = [], dependents = []) => {
+        return {
+            stableId,
+            displayId,
+            kind: "backend",
+            semanticKey: "backend",
+            status: "PENDING",
+            dependencies,
+            dependents,
+            metadata: {},
+            payload: {}
+        };
+    };
+
+    const makeFrozenGraph = (nodes) => {
+        const graph = {
+            graphVersion: "1.0",
+            metadata: {
+                graphVersion: "1.0",
+                identityVersion: "1.0",
+                createdBy: "test",
+                totalNodes: nodes.length
+            },
+            nodes: nodes
+        };
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(graph);
+    };
+
+    // Helper to construct a frozen executionState directly for tests
+    const makeFrozenState = (pending, running = [], completed = [], failed = []) => {
+        const total = pending.length + running.length + completed.length + failed.length;
+        const state = {
+            version: "1.0",
+            metadata: { status: "RUNNING", executionId: null, createdAt: null },
+            queues: { pending, running, completed, failed },
+            statistics: { totalTasks: total, pending: pending.length, running: running.length, completed: completed.length, failed: failed.length }
+        };
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(state);
+    };
+
+    // Helper to construct a registry with custom workers
+    const makeRegistryWithWorkers = (workerList) => {
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        const workersMap = {};
+        for (const w of workerList) {
+            workersMap[w.workerId] = deepFreeze(w);
+        }
+        return Object.freeze({
+            workers: Object.freeze(workersMap),
+            lookup(id) { return this.workers[id] || null; },
+            exists(id) { return !!this.workers[id]; }
+        });
+    };
+
+    // ── 1. Invalid input rejection ──────────────────────────────────────────
+    test("1. Rejects invalid or mutable inputs", () => {
+        const state = makeFrozenState([]);
+        const reg = createWorkerRegistry();
+        const graph = makeFrozenGraph([]);
+
+        // Invalid State
+        assert.throws(() => computeSchedule(null, reg, graph), (err) => {
+            return err.code === schedulerErrorCodes.SCHEDULER_INVALID_STATE;
+        });
+        const mutableState = { version: "1.0", queues: { pending: [] } };
+        assert.throws(() => computeSchedule(mutableState, reg, graph), (err) => {
+            return err.code === schedulerErrorCodes.SCHEDULER_INVALID_STATE;
+        });
+
+        // Invalid Registry
+        assert.throws(() => computeSchedule(state, null, graph), (err) => {
+            return err.code === schedulerErrorCodes.SCHEDULER_INVALID_WORKER;
+        });
+        const mutableReg = { workers: {} };
+        assert.throws(() => computeSchedule(state, mutableReg, graph), (err) => {
+            return err.code === schedulerErrorCodes.SCHEDULER_INVALID_WORKER;
+        });
+
+        // Invalid Graph
+        assert.throws(() => computeSchedule(state, reg, null), (err) => {
+            return err.code === schedulerErrorCodes.SCHEDULER_INVALID_INPUT;
+        });
+        const mutableGraph = { nodes: [] };
+        assert.throws(() => computeSchedule(state, reg, mutableGraph), (err) => {
+            return err.code === schedulerErrorCodes.SCHEDULER_INVALID_INPUT;
+        });
+    });
+
+    // ── 2. Ready node discovery ──────────────────────────────────────────────
+    test("2. Discovers ready nodes (pending tasks with completed dependencies)", () => {
+        const n1 = makeNode("t1", "REQ-001");
+        const n2 = makeNode("t2", "REQ-002", ["t1"]); // depends on t1
+        const graph = makeFrozenGraph([n1, n2]);
+
+        // Scenario A: t1 is pending, t2 is pending. Only t1 is ready (no deps).
+        const stateA = makeFrozenState(["t1", "t2"]);
+        const reg = createWorkerRegistry().create("w1").registry;
+        const resA = computeSchedule(stateA, reg, graph);
+        assert.deepStrictEqual(resA.readyTasks, ["t1"]);
+        assert.deepStrictEqual(resA.blockedTasks, ["t2"]);
+
+        // Scenario B: t1 is completed, t2 is pending. t2 is now ready.
+        const stateB = makeFrozenState(["t2"], [], ["t1"]);
+        const resB = computeSchedule(stateB, reg, graph);
+        assert.deepStrictEqual(resB.readyTasks, ["t2"]);
+        assert.deepStrictEqual(resB.blockedTasks, []);
+    });
+
+    // ── 3. Dependency resolution & Blocked detection ──────────────────────────
+    test("3. Blocks tasks that depend on unfinished/running/failed tasks", () => {
+        const n1 = makeNode("t1", "REQ-001");
+        const n2 = makeNode("t2", "REQ-002", ["t1"]);
+        const graph = makeFrozenGraph([n1, n2]);
+
+        // t1 is running, t2 is pending. t2 is blocked because t1 is not completed.
+        const stateRunning = makeFrozenState(["t2"], ["t1"]);
+        const reg = createWorkerRegistry().create("w1").registry;
+        const resRunning = computeSchedule(stateRunning, reg, graph);
+        assert.deepStrictEqual(resRunning.readyTasks, []);
+        assert.deepStrictEqual(resRunning.blockedTasks, ["t2"]);
+
+        // t1 is failed, t2 is pending. t2 is blocked because t1 is not completed.
+        const stateFailed = makeFrozenState(["t2"], [], [], ["t1"]);
+        const resFailed = computeSchedule(stateFailed, reg, graph);
+        assert.deepStrictEqual(resFailed.readyTasks, []);
+        assert.deepStrictEqual(resFailed.blockedTasks, ["t2"]);
+    });
+
+    // ── 4. Worker availability ───────────────────────────────────────────────
+    test("4. Schedules only to IDLE workers, ignoring active ones", () => {
+        const n1 = makeNode("t1", "REQ-001");
+        const graph = makeFrozenGraph([n1]);
+        const state = makeFrozenState(["t1"]);
+
+        // Registry has w1 (RUNNING) and w2 (IDLE)
+        const w1 = { workerId: "w1", status: "RUNNING", currentTask: "t0", completedTasks: [], metadata: {} };
+        const w2 = { workerId: "w2", status: "IDLE", currentTask: null, completedTasks: [], metadata: {} };
+        const reg = makeRegistryWithWorkers([w1, w2]);
+
+        const res = computeSchedule(state, reg, graph);
+        assert.strictEqual(res.readyTasks.length, 1);
+        assert.strictEqual(res.assignments.length, 1);
+        assert.strictEqual(res.assignments[0].workerId, "w2"); // assigned to idle worker w2
+        assert.strictEqual(res.assignments[0].taskId, "t1");
+    });
+
+    // ── 5. Parallel allocation limit (ADR-006) ────────────────────────────────
+    test("5. Respects parallel concurrency limit of max 3 active workers", () => {
+        const n1 = makeNode("t1", "REQ-001");
+        const n2 = makeNode("t2", "REQ-002");
+        const n3 = makeNode("t3", "REQ-003");
+        const n4 = makeNode("t4", "REQ-004");
+        const graph = makeFrozenGraph([n1, n2, n3, n4]);
+        const state = makeFrozenState(["t1", "t2", "t3", "t4"]);
+
+        // w1, w2, w3, w4 are IDLE. But since active limit is 3 and current active count is 0:
+        // We assign at most 3 tasks.
+        const w1 = { workerId: "w1", status: "IDLE", currentTask: null, completedTasks: [], metadata: {} };
+        const w2 = { workerId: "w2", status: "IDLE", currentTask: null, completedTasks: [], metadata: {} };
+        const w3 = { workerId: "w3", status: "IDLE", currentTask: null, completedTasks: [], metadata: {} };
+        const w4 = { workerId: "w4", status: "IDLE", currentTask: null, completedTasks: [], metadata: {} };
+        const regA = makeRegistryWithWorkers([w1, w2, w3, w4]);
+
+        const resA = computeSchedule(state, regA, graph);
+        assert.strictEqual(resA.readyTasks.length, 4);
+        assert.strictEqual(resA.assignments.length, 3); // Capped to 3!
+
+        // w1 (RUNNING), w2 (IDLE), w3 (IDLE), w4 (IDLE).
+        // Current active count = 1. Remaining slots = 2.
+        // We should make exactly 2 assignments.
+        const w1Active = { workerId: "w1", status: "RUNNING", currentTask: "t0", completedTasks: [], metadata: {} };
+        const regB = makeRegistryWithWorkers([w1Active, w2, w3, w4]);
+
+        const resB = computeSchedule(state, regB, graph);
+        assert.strictEqual(resB.assignments.length, 2); // Capped to 2!
+    });
+
+    // ── 6. Immutable schedule ─────────────────────────────────────────────────
+    test("6. computeSchedule returns deeply frozen valid schedules", () => {
+        const n1 = makeNode("t1", "REQ-001");
+        const graph = makeFrozenGraph([n1]);
+        const state = makeFrozenState(["t1"]);
+        const reg = createWorkerRegistry().create("w1").registry;
+
+        const res = computeSchedule(state, reg, graph);
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.readyTasks));
+        assert.ok(Object.isFrozen(res.assignments));
+        assert.ok(Object.isFrozen(res.blockedTasks));
+        assert.ok(Object.isFrozen(res.metadata));
+
+        // Validate using validateSchedule
+        const val = validateSchedule(res);
+        assert.strictEqual(val.success, true);
+        assert.strictEqual(val.errors.length, 0);
+    });
+
+    // ── 7. Frozen error enums ─────────────────────────────────────────────────
+    test("7. Scheduler error codes enum is deeply frozen", () => {
+        assert.ok(Object.isFrozen(schedulerErrorCodes));
+        const requiredCodes = ["SCHEDULER_INVALID_INPUT", "SCHEDULER_INVALID_STATE", "SCHEDULER_INVALID_WORKER", "SCHEDULER_DEPENDENCY_ERROR"];
+        for (const code of requiredCodes) {
+            assert.strictEqual(schedulerErrorCodes[code], code);
+        }
+    });
+
+    // ── 8. Deterministic scheduling ──────────────────────────────────────────
+    test("8. Ready tasks and idle workers sorted deterministically", () => {
+        const n1 = makeNode("t1", "REQ-001");
+        const n2 = makeNode("t2", "REQ-002");
+        // Shuffle nodes order in graph
+        const graph = makeFrozenGraph([n2, n1]);
+
+        // State has t2 and t1 pending.
+        const state = makeFrozenState(["t2", "t1"]);
+
+        // Idle workers: w2, w1
+        const w1 = { workerId: "w1", status: "IDLE", currentTask: null, completedTasks: [], metadata: {} };
+        const w2 = { workerId: "w2", status: "IDLE", currentTask: null, completedTasks: [], metadata: {} };
+        const reg = makeRegistryWithWorkers([w2, w1]);
+
+        const res = computeSchedule(state, reg, graph);
+        // readyTasks must sort by displayId: REQ-001 (t1) then REQ-002 (t2)
+        assert.deepStrictEqual(res.readyTasks, ["t1", "t2"]);
+        // assignments must assign w1 to t1, and w2 to t2
+        assert.deepStrictEqual(res.assignments, [
+            { workerId: "w1", taskId: "t1" },
+            { workerId: "w2", taskId: "t2" }
+        ]);
+    });
+
+    // ── 9. Input non-mutation ────────────────────────────────────────────────
+    test("9. computeSchedule never mutates inputs", () => {
+        const n1 = makeNode("t1", "REQ-001");
+        const graph = makeFrozenGraph([n1]);
+        const state = makeFrozenState(["t1"]);
+        const reg = createWorkerRegistry().create("w1").registry;
+
+        const snapshotGraph = JSON.stringify(graph);
+        const snapshotState = JSON.stringify(state);
+        const snapshotReg = JSON.stringify(reg);
+
+        computeSchedule(state, reg, graph);
+
+        assert.strictEqual(JSON.stringify(graph), snapshotGraph);
+        assert.strictEqual(JSON.stringify(state), snapshotState);
+        assert.strictEqual(JSON.stringify(reg), snapshotReg);
+    });
+
+    // ── 10. Dependency Error checks ──────────────────────────────────────────
+    test("10. Throws SCHEDULER_DEPENDENCY_ERROR for non-existent task reference", () => {
+        const n1 = makeNode("t1", "REQ-001", ["non-existent-dep"]);
+        const graph = makeFrozenGraph([n1]);
+        const state = makeFrozenState(["t1"]);
+        const reg = createWorkerRegistry();
+
+        assert.throws(() => computeSchedule(state, reg, graph), (err) => {
+            return err.code === schedulerErrorCodes.SCHEDULER_DEPENDENCY_ERROR;
+        });
+    });
+});
 
 (async () => {
     for (const suite of suites) {

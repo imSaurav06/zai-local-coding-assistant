@@ -19,21 +19,22 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 9 (ExecutionOrchestrator Foundation)
-*   **CURRENT TASK PACK**: 9A (Execution Domain Model)
-*   **LAST COMPLETED TASK PACK**: 9A (Execution Domain Model)
-*   **Overall Status**: IN_PROGRESS (Task Pack 9A Complete)
+*   **CURRENT TASK PACK**: 9C (Scheduler)
+*   **LAST COMPLETED TASK PACK**: 9C (Scheduler)
+*   **Overall Status**: IN_PROGRESS (Task Pack 9C Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 9A**:
-  - `backend/core/execution/executionErrors.js`
-  - `backend/core/execution/executionState.js`
-  - `backend/core/execution/index.js`
-  - `docs/migration/PHASE_9A_EXECUTION_DOMAIN_MODEL.md`
-- **FILES CHANGED BY 9A**:
-  - `backend/tests/run_tests.js` (Added 10 Phase 9A tests)
+- **FILES CREATED BY 9C**:
+  - `backend/core/execution/scheduler.js`
+  - `backend/core/execution/schedulerValidator.js`
+  - `backend/core/execution/schedulerErrors.js`
+  - `docs/migration/PHASE_9C_SCHEDULER.md`
+- **FILES CHANGED BY 9C**:
+  - `backend/core/execution/index.js` (Exposed public APIs)
+  - `backend/tests/run_tests.js` (Added 10 Phase 9C tests)
   - `docs/migration/PHASE_STATUS.md` (Updated status)
   - `docs/migration/HANDOFF.md` (Updated — this document)
 
@@ -41,19 +42,19 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T15:15:00+05:30
-- **TEST RESULTS**: 549 passed, 0 failed.
-- **New Tests Added (Phase 9A)**: 10 unit tests in suite `Execution Domain Model (Phase 9A)`:
-  1. Rejects invalid input (null, undefined, arrays, functions)
-  2. Rejects mutable input
-  3. Rejects duplicate task stableIds or displayIds
-  4. Initialized successfully to READY status
-  5. Queues initialized correctly
-  6. Statistics initialized correctly
-  7. Error codes enum is deeply frozen
-  8. ExecutionState result is deeply frozen and immutable
-  9. Outputs deterministic queue sorting by displayId
-  10. Caller input taskGraph is never mutated by createExecutionState
+- **TESTS LAST RUN**: 2026-07-17T16:10:00+05:30
+- **TEST RESULTS**: 571 passed, 0 failed.
+- **New Tests Added (Phase 9C)**: 10 unit tests in suite `Scheduler Decision Layer (Phase 9C)`:
+  1. Rejects invalid or mutable inputs
+  2. Discovers ready nodes (pending tasks with completed dependencies)
+  3. Blocks tasks that depend on unfinished/running/failed tasks
+  4. Schedules only to IDLE workers, ignoring active ones
+  5. Respects parallel concurrency limit of max 3 active workers
+  6. computeSchedule returns deeply frozen valid schedules
+  7. Scheduler error codes enum is deeply frozen
+  8. Ready tasks and idle workers sorted deterministically
+  9. computeSchedule never mutates inputs
+  10. Throws SCHEDULER_DEPENDENCY_ERROR for non-existent task reference
 - **KNOWN FAILURES**: None.
 - **BLOCKERS**: None.
 
@@ -67,38 +68,14 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ---
 
-## 6. Phase 9A Architecture Summary
+## 6. Phase 9C Architecture Summary
 
-### 6.1 Execution Domain Model Contract (Phase 9A)
-*   **PRIMARY API**: `createExecutionState(taskGraph)`
-*   **EXECUTION CONTRACT**: Translates a frozen `TaskGraph` into a single, deeply frozen, canonical `ExecutionState` object.
-*   **READY STATE STRUCTURE**:
-    ```javascript
-    {
-        version: "1.0",
-        metadata: {
-            status: "READY",
-            executionId: null,
-            createdAt: null
-        },
-        queues: {
-            pending: [/* stableIds sorted by displayId ascending */],
-            running: [],
-            completed: [],
-            failed: []
-        },
-        statistics: {
-            totalTasks: N,
-            pending: N,
-            running: 0,
-            completed: 0,
-            failed: 0
-        }
-    }
-    ```
-*   **INPUT VALIDATION**: Validates that input is a non-null object, is deeply frozen (`Object.isFrozen`), contains a frozen `nodes` array, has no duplicate stableId/displayId entries, and passes `validateTaskGraph`.
-*   **ERROR CODES**: 4 frozen enums in `executionErrors.js` (EXECUTION_INVALID_INPUT, EXECUTION_INVALID_TASK_GRAPH, EXECUTION_MUTABLE_INPUT, EXECUTION_DUPLICATE_TASK).
-*   **PURITY & DETERMINISM**: The model constructor is a pure, synchronous, deterministic function with no async calls, no side effects, no timestamps, and no UUID/randomness generators.
+### 6.1 Scheduler Decision Contract
+*   **PRIMARY API**: `computeSchedule(executionState, workerRegistry, taskGraph)`
+*   **DECISION TRANSITION**: Checks task dependencies and returns a deeply frozen `Schedule` object listing ready tasks, assignments, and blocked tasks.
+*   **ADR-006 PARALLELISM LIMIT**: Strictly limits assignments such that no more than `3` workers are active (`ASSIGNED` or `RUNNING` status) at any time.
+*   **DETERMINISM**: Ready tasks are sorted alphabetically by `displayId` ascending. Idle workers are sorted alphabetically by `workerId` ascending.
+*   **VALIDATOR**: `validateSchedule(schedule)` checks structural field values and freezing state.
 
 ---
 
@@ -108,15 +85,15 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 9A is complete. Proceed to Task Pack 9B in the next session.
+Task Pack 9C is complete. Proceed to Task Pack 9D in the next session.
 
-**Task Pack 9B**: Worker Lifecycle
-- Implement state transitions and lifecycle methods for coding workers and scheduling loop initialization.
+**Task Pack 9D**: Execution Pipeline
+- Implement the Execution Orchestrator scheduling loop and state transitions.
 
 **FILES TO READ FIRST**:
-- [executionState.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/executionState.js)
-- [executionErrors.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/executionErrors.js)
-- [run_tests.js Phase 9A suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
+- [scheduler.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/scheduler.js)
+- [schedulerValidator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/schedulerValidator.js)
+- [run_tests.js Phase 9C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration logic.
@@ -133,4 +110,4 @@ Task Pack 9A is complete. Proceed to Task Pack 9B in the next session.
 - VFS structures (`backend/core/vfs/`).
 - VerificationEngine (`backend/core/verification/`).
 
-**STOP CONDITIONS**: Do not start Phase 9B in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Phase 9D in this session. Do not commit or push changes.

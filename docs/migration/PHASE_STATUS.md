@@ -683,6 +683,36 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Blockers**: None.
 - **Next Action**: STOP. Proceed to Task Pack 9B (Worker Lifecycle).
 
+### Task Pack 9B: Worker Lifecycle
+- **Status**: DONE
+- **Started At**: 2026-07-17T15:35:00+05:30
+- **Completed At**: 2026-07-17T15:50:00+05:30
+- **Files Created**: `backend/core/execution/workerModel.js`, `backend/core/execution/workerValidator.js`, `backend/core/execution/workerRegistry.js`, `backend/core/execution/workerErrors.js`, `docs/migration/PHASE_9B_WORKER_LIFECYCLE.md`
+- **Files Changed**: `backend/core/execution/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Architecture Summary**: Implemented the stateless, pure, deterministic Worker Lifecycle domain model. It models individual execution slot workers, establishes the statuses (`IDLE`, `ASSIGNED`, `RUNNING`, `FAILED`, `COMPLETED`), constructs a functional registry (`create`, `lookup`, `exists` methods returning new frozen registries on change), and provides structural validation/immutability audits.
+- **Public API**: `createWorker(workerId)`, `createWorkerRegistry(workers?)`, `validateWorker(worker)`, `workerStatuses`, `workerErrorCodes` (frozen enums: `WORKER_INVALID_INPUT`, `WORKER_INVALID_STATUS`, `WORKER_DUPLICATE_ID`, `WORKER_MUTABLE_INPUT`).
+- **Tests Added**: 12 unit tests in `run_tests.js` (Phase 9B Worker Lifecycle suite) verifying worker construction, validation constraints, status enum safety, duplicate worker checks, registry operations, immutability, determinism, and caller non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 561 Passed, 0 Failed.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Proceed to Task Pack 9C (Scheduler).
+
+### Task Pack 9C: Scheduler
+- **Status**: DONE
+- **Started At**: 2026-07-17T15:55:00+05:30
+- **Completed At**: 2026-07-17T16:10:00+05:30
+- **Files Created**: `backend/core/execution/scheduler.js`, `backend/core/execution/schedulerValidator.js`, `backend/core/execution/schedulerErrors.js`, `docs/migration/PHASE_9C_SCHEDULER.md`
+- **Files Changed**: `backend/core/execution/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Architecture Summary**: Implemented the Task Scheduler Decision Layer. It takes the immutable `ExecutionState`, `WorkerRegistry`, and `TaskGraph` structures, and computes a new deeply frozen, immutable `Schedule` decision containing `readyTasks` (sorted alphabetically by `displayId` ascending), `blockedTasks`, and `assignments` (allocating `IDLE` workers deterministically to ready tasks, respecting the ADR-006 concurrency worker cap of `3`).
+- **Public API**: `createScheduler()`, `computeSchedule(executionState, workerRegistry, taskGraph)`, `validateSchedule(schedule)`, `schedulerErrorCodes` (frozen enums: `SCHEDULER_INVALID_INPUT`, `SCHEDULER_INVALID_STATE`, `SCHEDULER_INVALID_WORKER`, `SCHEDULER_DEPENDENCY_ERROR`).
+- **Tests Added**: 10 unit tests in `run_tests.js` (Phase 9C Scheduler suite) verifying ready node discovery, dependency resolution, blocked task detection, worker availability, concurrency limits, schedule metadata and validation, frozen enums, determinism, and caller non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 571 Passed, 0 Failed.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Proceed to Task Pack 9D (Execution Pipeline).
+
 ---
 
 ## Future Migration Phases
@@ -697,7 +727,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 6** | ContextBuilder | **DONE** (All Task Packs 6A–6D Complete) | 2026-07-17 |
 | **Phase 7** | Structured / Transaction VFS File Operations | **DONE** (All Task Packs 7A–7E Complete) | 2026-07-17 |
 | **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Packs 8A–8C Complete) | TBD |
-| **Phase 9** | ExecutionOrchestrator Foundation | **IN_PROGRESS** (Task Pack 9A DONE) | TBD |
+| **Phase 9** | ExecutionOrchestrator Foundation | **IN_PROGRESS** (Task Packs 9A–9C DONE) | TBD |
 | **Phase 10** | AIProviderGateway Hardening | NOT_STARTED | TBD |
 | **Phase 11** | Controlled Parallel Task Execution | NOT_STARTED | TBD |
 | **Phase 12** | Requirement / Integration / Security / Deployment Audits | NOT_STARTED | TBD |
