@@ -11,7 +11,9 @@ const CANONICAL_KEYS = new Set([
     "enableRuntimeMetrics",
     "enableCheckpointPersistence",
     "enableVerification",
-    "enableRepair"
+    "enableRepair",
+    "enableShadowRuntime",
+    "enableParityValidation"
 ]);
 
 const ALLOWED_MODES = new Set(["LEGACY", "MODULAR", "SHADOW"]);
@@ -91,7 +93,9 @@ function validateRuntimeConfig(config) {
         "enableRuntimeMetrics",
         "enableCheckpointPersistence",
         "enableVerification",
-        "enableRepair"
+        "enableRepair",
+        "enableShadowRuntime",
+        "enableParityValidation"
     ];
     for (const boolField of booleans) {
         if (config.hasOwnProperty(boolField) && typeof config[boolField] !== "boolean") {
@@ -154,7 +158,9 @@ function createRuntimeConfig(config) {
         enableRuntimeMetrics: !!(config && config.enableRuntimeMetrics),
         enableCheckpointPersistence: !!(config && config.enableCheckpointPersistence),
         enableVerification: !!(config && config.enableVerification),
-        enableRepair: !!(config && config.enableRepair)
+        enableRepair: !!(config && config.enableRepair),
+        enableShadowRuntime: !!(config && config.enableShadowRuntime),
+        enableParityValidation: !!(config && config.enableParityValidation)
     };
 
     const frozen = deepFreezeRuntimeConfig(finalized);
@@ -194,6 +200,8 @@ function loadRuntimeConfig() {
     const rawCheckpoint = process.env.ENABLE_CHECKPOINT_PERSISTENCE === "true";
     const rawVerification = process.env.ENABLE_VERIFICATION === "true";
     const rawRepair = process.env.ENABLE_REPAIR === "true";
+    const rawShadowRuntime = process.env.ENABLE_SHADOW_RUNTIME === "true";
+    const rawParityValidation = process.env.ENABLE_PARITY_VALIDATION === "true";
 
     const config = {
         runtimeMode: rawMode,
@@ -202,7 +210,9 @@ function loadRuntimeConfig() {
         enableRuntimeMetrics: rawMetrics,
         enableCheckpointPersistence: rawCheckpoint,
         enableVerification: rawVerification,
-        enableRepair: rawRepair
+        enableRepair: rawRepair,
+        enableShadowRuntime: rawShadowRuntime,
+        enableParityValidation: rawParityValidation
     };
 
     const res = createRuntimeConfig(config);

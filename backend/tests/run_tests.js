@@ -112,6 +112,12 @@ require("./core/runtime/verificationRepairBridge.test.js")(suite, test);
 // Register Worker Pool Tests (Phase 11A-6)
 require("./core/runtime/workerPool.test.js")(suite, test);
 
+// Register Parity Validator Tests (Phase 11A-7)
+require("./core/runtime/parityValidator.test.js")(suite, test);
+
+// Register Shadow Runtime Tests (Phase 11A-7)
+require("./core/runtime/shadowRuntime.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

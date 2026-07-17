@@ -49,6 +49,22 @@ const {
     WORKER_POOL_VERSION
 } = require("./workerPool");
 
+const {
+    createShadowRuntime,
+    executeShadow,
+    SHADOW_RUNTIME_VERSION
+} = require("./shadowRuntime");
+
+const {
+    createParityValidator,
+    validateParity,
+    generateParityReport,
+    PARITY_VALIDATOR_VERSION
+} = require("./parityValidator");
+
+const { shadowRuntimeErrorCodes } = require("./shadowRuntimeErrors");
+const { parityValidatorErrorCodes } = require("./parityValidatorErrors");
+
 module.exports = {
     createRuntimeConfig,
     loadRuntimeConfig,
@@ -83,5 +99,14 @@ module.exports = {
     getActiveWorkers,
     validateWorkerPool,
     workerPoolErrorCodes,
-    WORKER_POOL_VERSION
+    WORKER_POOL_VERSION,
+    createShadowRuntime,
+    executeShadow,
+    SHADOW_RUNTIME_VERSION,
+    createParityValidator,
+    validateParity,
+    generateParityReport,
+    PARITY_VALIDATOR_VERSION,
+    shadowRuntimeErrorCodes,
+    parityValidatorErrorCodes
 };

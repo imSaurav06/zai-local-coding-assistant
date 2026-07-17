@@ -272,7 +272,13 @@ async function execute(request) {
             }
         };
 
-        return deepFreezeExecutionResponse(response);
+        const frozenResponse = deepFreezeExecutionResponse(response);
+
+        // Run Shadow Runtime if configured (Parity validation is isolated within)
+        const { executeShadow } = require("./shadowRuntime");
+        await executeShadow(this, request, frozenResponse);
+
+        return frozenResponse;
     } catch (err) {
         // Let standard adapter errors bubble directly
         const adapterErrorCodes = new Set([
