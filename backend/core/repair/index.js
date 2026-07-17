@@ -29,6 +29,16 @@ const {
     REPAIR_PLANNER_VERSION
 } = require("./repairPlanner");
 
+const {
+    createRepairPipeline,
+    executeRepairPipeline,
+    validateRepairPipelineResult,
+    isRepairPipelineResult,
+    deepFreezeRepairPipelineResult,
+    repairPipelineErrorCodes,
+    REPAIR_PIPELINE_VERSION
+} = require("./repairPipeline");
+
 module.exports = {
     createRepairRequest,
     validateRepairRequest,
@@ -47,5 +57,12 @@ module.exports = {
     isRepairPlan,
     deepFreezeRepairPlan,
     repairPlannerErrorCodes,
-    REPAIR_PLANNER_VERSION
+    REPAIR_PLANNER_VERSION,
+    createRepairPipeline,
+    executeRepairPipeline,
+    validateRepairPipelineResult,
+    isRepairPipelineResult,
+    deepFreezeRepairPipelineResult,
+    repairPipelineErrorCodes,
+    REPAIR_PIPELINE_VERSION
 };

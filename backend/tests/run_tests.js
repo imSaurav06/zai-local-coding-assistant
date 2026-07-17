@@ -88,6 +88,9 @@ require("./core/repair/patchModel.test.js")(suite, test);
 // Register Repair Planner Tests (Phase 10C-3)
 require("./core/repair/repairPlanner.test.js")(suite, test);
 
+// Register Repair Pipeline Tests (Phase 10C-4)
+require("./core/repair/repairPipeline.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
