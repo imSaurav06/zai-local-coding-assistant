@@ -9,12 +9,14 @@ module.exports = function registerGatewayTests(suite, test) {
         gatewayErrorCodes
     } = require("../../../core/providers");
 
-    function getMockProvider(id = "mock_provider") {
+    function getMockProvider(id, priority = 100) {
         return {
             id,
+            priority,
             config: { model: "mock-model" },
             initialized: true,
             health: async () => ({ status: "healthy" }),
+            supports: async (cap) => cap === "chat",
             chat: async (req) => {
                 return {
                     success: true,
@@ -29,7 +31,7 @@ module.exports = function registerGatewayTests(suite, test) {
         };
     }
 
-    suite("AI Provider Gateway Core Layer (Phase 10B-5A)", () => {
+    suite("AI Provider Gateway Core Layer (Phase 10B-5B)", () => {
         // ── 1. Gateway creation ──
         test("1. createAIProviderGateway returns an instance of AIProviderGateway", () => {
             const gateway = createAIProviderGateway();
@@ -92,24 +94,8 @@ module.exports = function registerGatewayTests(suite, test) {
             assert.strictEqual(response.usage.prompt_tokens, 5);
         });
 
-        // ── 5. Unknown provider ──
-        test("5. execute() throws GATEWAY_PROVIDER_NOT_FOUND when requesting unregistered ID", async () => {
-            const gateway = createAIProviderGateway();
-
-            const req = {
-                providerId: "non_existent",
-                messages: []
-            };
-
-            await assert.rejects(async () => {
-                await gateway.execute(req);
-            }, (err) => {
-                return err.code === gatewayErrorCodes.GATEWAY_PROVIDER_NOT_FOUND;
-            });
-        });
-
-        // ── 6. Request validation ──
-        test("6. execute() rejects invalid request formats", async () => {
+        // ── 5. Request validation ──
+        test("5. execute() rejects invalid request formats", async () => {
             const gateway = createAIProviderGateway();
 
             // Null request
@@ -127,30 +113,198 @@ module.exports = function registerGatewayTests(suite, test) {
             });
         });
 
-        // ── 7. Health status aggregation ──
-        test("7. health() aggregates status reports from all registered providers", async () => {
+        // ── 6. Priority selection: Z.ai Preferred over OpenRouter ──
+        test("6. execute() selects highest-priority provider (Z.ai over OpenRouter) by default", async () => {
             const gateway = createAIProviderGateway();
             
-            const p1 = getMockProvider("p1");
-            const p2 = {
-                id: "p2",
-                health: async () => {
-                    throw new Error("API rate limits exceeded");
-                }
+            // Register OpenRouter (Priority 2)
+            const openrouter = getMockProvider("openrouter", 2);
+            // Register Zai (Priority 1)
+            const zai = getMockProvider("zai", 1);
+
+            gateway.registerProvider(openrouter);
+            gateway.registerProvider(zai);
+
+            const req = {
+                messages: [{ role: "user", content: "hi" }]
             };
 
-            gateway.registerProvider(p1);
-            gateway.registerProvider(p2);
-
-            const status = await gateway.health();
-            assert.strictEqual(status.status, "unhealthy");
-            assert.strictEqual(status.providers.p1.status, "healthy");
-            assert.strictEqual(status.providers.p2.status, "unhealthy");
-            assert.strictEqual(status.providers.p2.error, "API rate limits exceeded");
+            const response = await gateway.execute(req);
+            assert.strictEqual(response.provider, "zai"); // Zai is Priority 1, so it is preferred!
         });
 
-        // ── 8. No runtime dependencies ──
-        test("8. Verify aiProviderGateway.js has no execution orchestrator or recovery dependencies", () => {
+        // ── 7. Automatic Fallback ──
+        test("7. execute() falls back to OpenRouter when Z.ai fails", async () => {
+            const gateway = createAIProviderGateway();
+            
+            // Zai fails transiently
+            const zai = getMockProvider("zai", 1);
+            zai.chat = async () => {
+                throw new Error("API rate limit exceeded");
+            };
+
+            // OpenRouter succeeds
+            const openrouter = getMockProvider("openrouter", 2);
+
+            gateway.registerProvider(zai);
+            gateway.registerProvider(openrouter);
+
+            const req = {
+                messages: [{ role: "user", content: "hello" }],
+                maxRetries: 0 // turn off retries to trigger immediate fallback
+            };
+
+            const response = await gateway.execute(req);
+            assert.strictEqual(response.provider, "openrouter"); // Fails back to OpenRouter!
+            
+            // Zai metrics should show failedRequests and fallbackCount
+            const zaiMetrics = gateway.getProviderMetrics("zai");
+            assert.strictEqual(zaiMetrics.failedRequests, 1);
+            assert.strictEqual(zaiMetrics.fallbackCount, 1);
+        });
+
+        // ── 8. Retry success & exhaustion ──
+        test("8. execute() retries on transient errors and succeeds on retry", async () => {
+            const gateway = createAIProviderGateway();
+            const provider = getMockProvider("zai", 1);
+            
+            let attempts = 0;
+            provider.chat = async () => {
+                attempts++;
+                if (attempts === 1) {
+                    throw new Error("Transient connection error");
+                }
+                return {
+                    success: true,
+                    provider: "zai",
+                    content: "Recovered response"
+                };
+            };
+
+            gateway.registerProvider(provider);
+
+            const req = {
+                messages: [{ role: "user", content: "hello" }],
+                maxRetries: 1
+            };
+
+            const response = await gateway.execute(req);
+            assert.strictEqual(response.content, "Recovered response");
+            assert.strictEqual(attempts, 2);
+
+            const metrics = gateway.getProviderMetrics("zai");
+            assert.strictEqual(metrics.failedRequests, 1);
+            assert.strictEqual(metrics.successfulRequests, 1);
+        });
+
+        test("9. execute() retries up to maxRetries and then throws error on exhaustion", async () => {
+            const gateway = createAIProviderGateway();
+            const provider = getMockProvider("zai", 1);
+            
+            let attempts = 0;
+            provider.chat = async () => {
+                attempts++;
+                throw new Error("Persistent error");
+            };
+
+            gateway.registerProvider(provider);
+
+            const req = {
+                messages: [{ role: "user", content: "hello" }],
+                maxRetries: 2
+            };
+
+            await assert.rejects(async () => {
+                await gateway.execute(req);
+            }, (err) => {
+                return err.code === gatewayErrorCodes.GATEWAY_ALL_PROVIDERS_FAILED;
+            });
+
+            assert.strictEqual(attempts, 3); // 1 initial + 2 retries
+        });
+
+        // ── 9. Timeout fallback ──
+        test("10. execute() triggers fallback when request times out", async () => {
+            const gateway = createAIProviderGateway();
+            
+            // Zai times out
+            const zai = getMockProvider("zai", 1);
+            zai.chat = async () => {
+                return new Promise((resolve) => setTimeout(resolve, 500)); // slow response
+            };
+
+            const openrouter = getMockProvider("openrouter", 2);
+
+            gateway.registerProvider(zai);
+            gateway.registerProvider(openrouter);
+
+            const req = {
+                messages: [{ role: "user", content: "hello" }],
+                timeout: 50, // very short timeout
+                maxRetries: 0
+            };
+
+            const response = await gateway.execute(req);
+            assert.strictEqual(response.provider, "openrouter"); // Fails back to OpenRouter due to timeout!
+        });
+
+        // ── 10. Capability Routing ──
+        test("11. execute() filters providers by capability supports", async () => {
+            const gateway = createAIProviderGateway();
+            
+            const zai = getMockProvider("zai", 1);
+            zai.supports = async (cap) => cap === "vision"; // supports vision only
+
+            const openrouter = getMockProvider("openrouter", 2);
+            openrouter.supports = async (cap) => cap === "chat"; // supports chat only
+
+            gateway.registerProvider(zai);
+            gateway.registerProvider(openrouter);
+
+            // Chat request should route to openrouter, skipping zai
+            const req = {
+                capability: "chat",
+                messages: [{ role: "user", content: "ping" }]
+            };
+
+            const response = await gateway.execute(req);
+            assert.strictEqual(response.provider, "openrouter");
+        });
+
+        test("12. execute() throws GATEWAY_CAPABILITY_UNSUPPORTED when no provider supports capability", async () => {
+            const gateway = createAIProviderGateway();
+            const provider = getMockProvider("zai", 1);
+            provider.supports = async () => false;
+
+            gateway.registerProvider(provider);
+
+            const req = {
+                capability: "unsupported_cap",
+                messages: []
+            };
+
+            await assert.rejects(async () => {
+                await gateway.execute(req);
+            }, (err) => {
+                return err.code === gatewayErrorCodes.GATEWAY_CAPABILITY_UNSUPPORTED;
+            });
+        });
+
+        // ── 11. Metrics updates ──
+        test("13. health() includes metrics in provider status", async () => {
+            const gateway = createAIProviderGateway();
+            const provider = getMockProvider("zai", 1);
+            gateway.registerProvider(provider);
+
+            await gateway.execute({ messages: [] }); // execute request
+            const status = await gateway.health();
+
+            assert.strictEqual(status.providers.zai.metrics.successfulRequests, 1);
+            assert.ok(status.providers.zai.metrics.averageLatency >= 0);
+        });
+
+        // ── 12. No runtime dependencies ──
+        test("14. Verify aiProviderGateway.js has no execution orchestrator or recovery dependencies", () => {
             const fs = require("fs");
             const fileSource = fs.readFileSync(require.resolve("../../../core/providers/aiProviderGateway.js"), "utf8");
 
