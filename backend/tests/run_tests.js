@@ -64,6 +64,12 @@ require("./core/checkpoints/checkpointResumeLoader.test.js")(suite, test);
 // Register Checkpoint Recovery Integration Tests (Phase 10A-5C)
 require("./core/checkpoints/recoveryIntegration.test.js")(suite, test);
 
+// Register AI Provider Model Tests (Phase 10B-1)
+require("./core/providers/providerModel.test.js")(suite, test);
+
+// Register AI Provider Interface Tests (Phase 10B-2)
+require("./core/providers/providerInterface.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
