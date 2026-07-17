@@ -73,6 +73,9 @@ require("./core/providers/providerInterface.test.js")(suite, test);
 // Register OpenRouter Provider Tests (Phase 10B-3)
 require("./core/providers/openRouterProvider.test.js")(suite, test);
 
+// Register Z.ai Provider Tests (Phase 10B-4)
+require("./core/providers/zaiProvider.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

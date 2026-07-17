@@ -23,6 +23,10 @@ const {
     OpenRouterProvider
 } = require("./openRouterProvider");
 
+const {
+    ZaiProvider
+} = require("./zaiProvider");
+
 module.exports = {
     createProvider,
     validateProvider,
@@ -33,5 +37,6 @@ module.exports = {
     AIProvider,
     createProviderInterface,
     providerInterfaceErrorCodes,
-    OpenRouterProvider
+    OpenRouterProvider,
+    ZaiProvider
 };
