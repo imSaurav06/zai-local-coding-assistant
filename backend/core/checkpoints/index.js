@@ -28,6 +28,17 @@ const {
     MongoCheckpointStore,
     createMongoCheckpointStore
 } = require("./mongoCheckpointStore");
+const {
+    createInitialCheckpoint,
+    createRuntimeCheckpoint,
+    persistCheckpoint,
+    shouldCreateCheckpoint
+} = require("./checkpointLifecycle");
+const {
+    loadExecutionState,
+    restoreExecutionState,
+    validateRestorableCheckpoint
+} = require("./checkpointResumeLoader");
 
 module.exports = {
     createCheckpoint,
@@ -47,5 +58,12 @@ module.exports = {
     createCheckpointStore,
     checkpointStoreErrorCodes,
     MongoCheckpointStore,
-    createMongoCheckpointStore
+    createMongoCheckpointStore,
+    createInitialCheckpoint,
+    createRuntimeCheckpoint,
+    persistCheckpoint,
+    shouldCreateCheckpoint,
+    loadExecutionState,
+    restoreExecutionState,
+    validateRestorableCheckpoint
 };

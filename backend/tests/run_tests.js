@@ -55,6 +55,12 @@ require("./core/checkpoints/checkpointStore.test.js")(suite, test);
 // Register Mongo Checkpoint Store Tests (Phase 10A-4)
 require("./core/checkpoints/mongoCheckpointStore.test.js")(suite, test);
 
+// Register Checkpoint Lifecycle Tests (Phase 10A-5A)
+require("./core/checkpoints/checkpointLifecycle.test.js")(suite, test);
+
+// Register Checkpoint Resume Loader Tests (Phase 10A-5B)
+require("./core/checkpoints/checkpointResumeLoader.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
