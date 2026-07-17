@@ -82,6 +82,9 @@ require("./core/providers/aiProviderGateway.test.js")(suite, test);
 // Register Repair Domain Model Tests (Phase 10C-1)
 require("./core/repair/repairModel.test.js")(suite, test);
 
+// Register Patch Domain Model Tests (Phase 10C-2)
+require("./core/repair/patchModel.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
