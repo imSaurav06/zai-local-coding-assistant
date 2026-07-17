@@ -9,6 +9,14 @@ const {
 const { checkpointErrorCodes } = require("./checkpointErrors");
 const { createResumeState } = require("./resumeState");
 const { validateCheckpoint } = require("./checkpointValidator");
+const {
+    serializeCheckpoint,
+    deserializeCheckpoint,
+    cloneCheckpoint,
+    normalizeCheckpoint,
+    isSerializedCheckpoint,
+    CURRENT_SERIALIZER_VERSION
+} = require("./checkpointSerializer");
 
 module.exports = {
     createCheckpoint,
@@ -17,5 +25,11 @@ module.exports = {
     CHECKPOINT_MODEL_VERSION,
     checkpointErrorCodes,
     createResumeState,
-    validateCheckpoint
+    validateCheckpoint,
+    serializeCheckpoint,
+    deserializeCheckpoint,
+    cloneCheckpoint,
+    normalizeCheckpoint,
+    isSerializedCheckpoint,
+    CURRENT_SERIALIZER_VERSION
 };
