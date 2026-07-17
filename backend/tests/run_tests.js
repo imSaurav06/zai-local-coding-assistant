@@ -8630,6 +8630,194 @@ suite("Bounded Targeted Repair — Phase 9A", () => {
     });
 });
 
+suite("Execution Domain Model (Phase 9A)", () => {
+    const { createExecutionState, executionErrorCodes } = require(path.join(backendRoot, "core/execution"));
+
+    const makeValidNode = (idNum, stableId = null, displayId = null) => {
+        const sid = stableId || `req_v1_${idNum}`;
+        const did = displayId || `REQ-${String(idNum).padStart(3, "0")}`;
+        return {
+            stableId: sid,
+            displayId: did,
+            kind: "backend",
+            semanticKey: "backend",
+            status: "PENDING",
+            dependencies: [],
+            dependents: [],
+            metadata: {},
+            payload: {}
+        };
+    };
+
+    const makeMockTaskGraph = (nodes) => {
+        const graph = {
+            graphVersion: "1.0",
+            metadata: {
+                graphVersion: "1.0",
+                identityVersion: "1.0",
+                createdBy: "test",
+                totalNodes: nodes.length
+            },
+            nodes: nodes
+        };
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(graph);
+    };
+
+    // ── 1. Invalid input rejected ─────────────────────────────────────────────
+    test("1. Rejects invalid input (null, undefined, arrays, functions)", () => {
+        const badInputs = [null, undefined, [], () => {}, "string", 42];
+        for (const bad of badInputs) {
+            const res = createExecutionState(bad);
+            assert.strictEqual(res.success, false);
+            assert.strictEqual(res.executionState, null);
+            assert.strictEqual(res.errors[0].code, executionErrorCodes.EXECUTION_INVALID_INPUT);
+        }
+    });
+
+    // ── 2. Mutable input rejected ─────────────────────────────────────────────
+    test("2. Rejects mutable input", () => {
+        const graph = {
+            graphVersion: "1.0",
+            metadata: { graphVersion: "1.0", identityVersion: "1.0", createdBy: "test" },
+            nodes: []
+        };
+        // Unfrozen root
+        const res1 = createExecutionState(graph);
+        assert.strictEqual(res1.success, false);
+        assert.strictEqual(res1.errors[0].code, executionErrorCodes.EXECUTION_MUTABLE_INPUT);
+
+        // Unfrozen nodes array inside frozen root
+        const graph2 = Object.freeze({
+            graphVersion: "1.0",
+            metadata: Object.freeze({ graphVersion: "1.0", identityVersion: "1.0", createdBy: "test" }),
+            nodes: [] // unfrozen
+        });
+        const res2 = createExecutionState(graph2);
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, executionErrorCodes.EXECUTION_MUTABLE_INPUT);
+    });
+
+    // ── 3. Duplicate task ids rejected ────────────────────────────────────────
+    test("3. Rejects duplicate task stableIds or displayIds", () => {
+        // Duplicate stableId
+        const node1 = makeValidNode(1, "dup_sid", "REQ-001");
+        const node2 = makeValidNode(2, "dup_sid", "REQ-002");
+        const dupSidGraph = makeMockTaskGraph([node1, node2]);
+        const res1 = createExecutionState(dupSidGraph);
+        assert.strictEqual(res1.success, false);
+        assert.strictEqual(res1.errors[0].code, executionErrorCodes.EXECUTION_DUPLICATE_TASK);
+
+        // Duplicate displayId
+        const node3 = makeValidNode(1, "sid1", "dup_did");
+        const node4 = makeValidNode(2, "sid2", "dup_did");
+        const dupDidGraph = makeMockTaskGraph([node3, node4]);
+        const res2 = createExecutionState(dupDidGraph);
+        assert.strictEqual(res2.success, false);
+        assert.strictEqual(res2.errors[0].code, executionErrorCodes.EXECUTION_DUPLICATE_TASK);
+    });
+
+    // ── 4. READY initialization ───────────────────────────────────────────────
+    test("4. Initialized successfully to READY status", () => {
+        const node = makeValidNode(1);
+        const graph = makeMockTaskGraph([node]);
+        const res = createExecutionState(graph);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.executionState.version, "1.0");
+        assert.strictEqual(res.executionState.metadata.status, "READY");
+        assert.strictEqual(res.executionState.metadata.executionId, null);
+        assert.strictEqual(res.executionState.metadata.createdAt, null);
+    });
+
+    // ── 5. Queue initialization ───────────────────────────────────────────────
+    test("5. Queues initialized correctly", () => {
+        const node1 = makeValidNode(1);
+        const node2 = makeValidNode(2);
+        const graph = makeMockTaskGraph([node1, node2]);
+        const res = createExecutionState(graph);
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(res.executionState.queues.pending, [node1.stableId, node2.stableId]);
+        assert.deepStrictEqual(res.executionState.queues.running, []);
+        assert.deepStrictEqual(res.executionState.queues.completed, []);
+        assert.deepStrictEqual(res.executionState.queues.failed, []);
+    });
+
+    // ── 6. Statistics initialization ──────────────────────────────────────────
+    test("6. Statistics initialized correctly", () => {
+        const node1 = makeValidNode(1);
+        const node2 = makeValidNode(2);
+        const graph = makeMockTaskGraph([node1, node2]);
+        const res = createExecutionState(graph);
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(res.executionState.statistics.totalTasks, 2);
+        assert.strictEqual(res.executionState.statistics.pending, 2);
+        assert.strictEqual(res.executionState.statistics.running, 0);
+        assert.strictEqual(res.executionState.statistics.completed, 0);
+        assert.strictEqual(res.executionState.statistics.failed, 0);
+    });
+
+    // ── 7. Error codes frozen ─────────────────────────────────────────────────
+    test("7. Error codes enum is deeply frozen", () => {
+        assert.ok(Object.isFrozen(executionErrorCodes));
+        const requiredCodes = [
+            "EXECUTION_INVALID_INPUT",
+            "EXECUTION_INVALID_TASK_GRAPH",
+            "EXECUTION_MUTABLE_INPUT",
+            "EXECUTION_DUPLICATE_TASK"
+        ];
+        for (const code of requiredCodes) {
+            assert.strictEqual(executionErrorCodes[code], code);
+        }
+    });
+
+    // ── 8. ExecutionState deeply frozen ───────────────────────────────────────
+    test("8. ExecutionState result is deeply frozen and immutable", () => {
+        const node = makeValidNode(1);
+        const graph = makeMockTaskGraph([node]);
+        const res = createExecutionState(graph);
+        assert.strictEqual(res.success, true);
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.executionState));
+        assert.ok(Object.isFrozen(res.executionState.metadata));
+        assert.ok(Object.isFrozen(res.executionState.queues));
+        assert.ok(Object.isFrozen(res.executionState.statistics));
+    });
+
+    // ── 9. Deterministic output ───────────────────────────────────────────────
+    test("9. Outputs deterministic queue sorting by displayId", () => {
+        const node1 = makeValidNode(1, "sid1", "REQ-001");
+        const node2 = makeValidNode(2, "sid2", "REQ-002");
+        const node3 = makeValidNode(3, "sid3", "REQ-003");
+        // Shuffle input order of nodes
+        const graphA = makeMockTaskGraph([node3, node1, node2]);
+        const graphB = makeMockTaskGraph([node1, node3, node2]);
+
+        const resA = createExecutionState(graphA);
+        const resB = createExecutionState(graphB);
+        assert.deepStrictEqual(resA, resB);
+        assert.deepStrictEqual(resA.executionState.queues.pending, ["sid1", "sid2", "sid3"]);
+    });
+
+    // ── 10. Caller input never mutated ────────────────────────────────────────
+    test("10. Caller input taskGraph is never mutated by createExecutionState", () => {
+        const node = makeValidNode(1);
+        const graph = makeMockTaskGraph([node]);
+        const snapshot = JSON.stringify(graph);
+        createExecutionState(graph);
+        assert.strictEqual(JSON.stringify(graph), snapshot);
+    });
+});
+
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);

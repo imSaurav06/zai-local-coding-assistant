@@ -666,23 +666,22 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 
 ---
 
-## Phase 9: Bounded Targeted Repair
+## Phase 9: ExecutionOrchestrator Foundation
 
-### Task Pack 9A: Isolated Single-File Repair Engine
+### Task Pack 9A: ExecutionOrchestrator Foundation (Execution Domain Model)
 - **Status**: DONE
-- **Started At**: 2026-07-17T13:59:00+05:30
-- **Completed At**: 2026-07-17T14:30:00+05:30
-- **Files Created**: `backend/core/repair/repairErrors.js`
-- **Files Changed**: `backend/services/targetedRepairService.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
-- **Architecture Summary**: Refactored `targetedRepairService.js` to implement a bounded, isolated single-file repair contract. Introduced `repairSingleFile(targetFileName, errors, diagnostics, allFiles, projectSpec, contracts, options)` as the primary Phase 9A API. Each call processes exactly one file, with no batching, no chaining, no automatic retries, and no recursion. On failure, a frozen structured failure object is returned immediately. The legacy `repairAffectedFiles` export is preserved as a backward-compatible adapter that calls `repairSingleFile` per file rather than batching 3 files together. Introduced `repairErrors.js` in `backend/core/repair/` with 11 immutable repair-specific error codes. All repair results are deeply frozen. Input arrays are never mutated.
-- **Public API**: `repairSingleFile`, `repairAffectedFiles` (legacy, backward-compatible), `mapErrorsToFiles`, `repairErrorCodes`
-- **Tests Added**: 20 unit tests in `run_tests.js` (Phase 9A suite) covering: frozen error codes, input validation for all fields, frozen failure results, caller non-mutation, mapErrorsToFiles correctness with both string and structured errors, fallback to all-files, single-file contract enforcement, export verification, determinism, and no-retry timing assertion.
+- **Started At**: 2026-07-17T15:15:00+05:30
+- **Completed At**: 2026-07-17T15:30:00+05:30
+- **Files Created**: `backend/core/execution/executionErrors.js`, `backend/core/execution/executionState.js`, `backend/core/execution/index.js`, `docs/migration/PHASE_9A_EXECUTION_DOMAIN_MODEL.md`
+- **Files Changed**: `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Architecture Summary**: Implemented the stateless, pure, deterministic Execution Domain Model for the generic `ExecutionOrchestrator`. It translates a validated, frozen `TaskGraph` into an initial `READY` execution state containing version, metadata, queues (pending queue sorted by `displayId` ascending), and statistics. It validates that the input is a deeply frozen task graph, rejects invalid inputs (null, undefined, arrays, functions, mutable objects), and checks for duplicate task stableIds/displayIds.
+- **Public API**: `createExecutionState(taskGraph)`, `executionErrorCodes` (frozen error enums: `EXECUTION_INVALID_INPUT`, `EXECUTION_INVALID_TASK_GRAPH`, `EXECUTION_MUTABLE_INPUT`, `EXECUTION_DUPLICATE_TASK`).
+- **Tests Added**: 10 unit tests in `run_tests.js` (Phase 9A Execution Domain Model suite) verifying invalid/mutable input rejection, duplicate task ID checks, status, queue, and stats initialization, frozen error codes, deeply frozen execution state, determinism, and caller non-mutation.
 - **Tests Run**: `node tests/run_tests.js`
-- **Test Result**: 532 Passed, 0 Failed, 0 Skipped.
+- **Test Result**: 549 Passed, 0 Failed.
 - **Known Issues**: None.
 - **Blockers**: None.
-- **Rollback**: NOT implemented. Rollback belongs exclusively to Phase 9B.
-- **Next Action**: STOP. Phase 9A is complete. Proceed to Task Pack 9B (VFS Rollback Integration).
+- **Next Action**: STOP. Proceed to Task Pack 9B (Worker Lifecycle).
 
 ---
 
@@ -698,7 +697,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 6** | ContextBuilder | **DONE** (All Task Packs 6A–6D Complete) | 2026-07-17 |
 | **Phase 7** | Structured / Transaction VFS File Operations | **DONE** (All Task Packs 7A–7E Complete) | 2026-07-17 |
 | **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Packs 8A–8C Complete) | TBD |
-| **Phase 9** | Bounded Targeted Repair | **IN_PROGRESS** (Task Pack 9A DONE) | TBD |
+| **Phase 9** | ExecutionOrchestrator Foundation | **IN_PROGRESS** (Task Pack 9A DONE) | TBD |
 | **Phase 10** | AIProviderGateway Hardening | NOT_STARTED | TBD |
 | **Phase 11** | Controlled Parallel Task Execution | NOT_STARTED | TBD |
 | **Phase 12** | Requirement / Integration / Security / Deployment Audits | NOT_STARTED | TBD |
