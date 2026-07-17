@@ -10,6 +10,16 @@ const {
     RUNTIME_CONFIG_VERSION
 } = require("./runtimeConfig");
 
+const {
+    createExecutionRuntimeAdapter,
+    validateExecutionRequest,
+    isExecutionRequest,
+    deepFreezeExecutionRequest,
+    deepFreezeExecutionResponse,
+    executionRuntimeAdapterErrorCodes,
+    EXECUTION_RUNTIME_ADAPTER_VERSION
+} = require("./executionRuntimeAdapter");
+
 module.exports = {
     createRuntimeConfig,
     loadRuntimeConfig,
@@ -17,5 +27,12 @@ module.exports = {
     isRuntimeConfig,
     deepFreezeRuntimeConfig,
     runtimeConfigErrorCodes,
-    RUNTIME_CONFIG_VERSION
+    RUNTIME_CONFIG_VERSION,
+    createExecutionRuntimeAdapter,
+    validateExecutionRequest,
+    isExecutionRequest,
+    deepFreezeExecutionRequest,
+    deepFreezeExecutionResponse,
+    executionRuntimeAdapterErrorCodes,
+    EXECUTION_RUNTIME_ADAPTER_VERSION
 };

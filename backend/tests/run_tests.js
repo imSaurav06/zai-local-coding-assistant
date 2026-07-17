@@ -100,6 +100,9 @@ require("./core/repair/repairSession.test.js")(suite, test);
 // Register Runtime Config Tests (Phase 11A-1)
 require("./core/runtime/runtimeConfig.test.js")(suite, test);
 
+// Register Execution Runtime Adapter Tests (Phase 11A-2)
+require("./core/runtime/executionRuntimeAdapter.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
