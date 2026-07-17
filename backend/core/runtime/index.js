@@ -38,6 +38,17 @@ const {
     VERIFICATION_REPAIR_BRIDGE_VERSION
 } = require("./verificationRepairBridge");
 
+const {
+    createWorkerPool,
+    allocateWorker,
+    releaseWorker,
+    getAvailableWorkers,
+    getActiveWorkers,
+    validateWorkerPool,
+    workerPoolErrorCodes,
+    WORKER_POOL_VERSION
+} = require("./workerPool");
+
 module.exports = {
     createRuntimeConfig,
     loadRuntimeConfig,
@@ -64,5 +75,13 @@ module.exports = {
     verifyAndRepair,
     validateVerificationRepairRequest,
     verificationRepairBridgeErrorCodes,
-    VERIFICATION_REPAIR_BRIDGE_VERSION
+    VERIFICATION_REPAIR_BRIDGE_VERSION,
+    createWorkerPool,
+    allocateWorker,
+    releaseWorker,
+    getAvailableWorkers,
+    getActiveWorkers,
+    validateWorkerPool,
+    workerPoolErrorCodes,
+    WORKER_POOL_VERSION
 };

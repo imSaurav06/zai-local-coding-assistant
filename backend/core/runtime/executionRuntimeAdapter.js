@@ -3,6 +3,7 @@
 const { isRuntimeConfig, createRuntimeConfig } = require("./runtimeConfig");
 const { createCheckpointBridge } = require("./checkpointBridge");
 const { createVerificationRepairBridge } = require("./verificationRepairBridge");
+const { createWorkerPool } = require("./workerPool");
 const { executionRuntimeAdapterErrorCodes } = require("./executionRuntimeAdapterErrors");
 
 const EXECUTION_RUNTIME_ADAPTER_VERSION = "1.0";
@@ -312,11 +313,13 @@ function createExecutionRuntimeAdapter(config = {}) {
 
     const checkpointBridge = createCheckpointBridge(finalConfig);
     const verificationRepairBridge = createVerificationRepairBridge(finalConfig);
+    const workerPool = createWorkerPool(finalConfig);
 
     return {
         config: finalConfig,
         checkpointBridge,
         verificationRepairBridge,
+        workerPool,
         execute
     };
 }
