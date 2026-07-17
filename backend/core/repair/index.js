@@ -49,6 +49,16 @@ const {
     VERIFICATION_ADAPTER_VERSION
 } = require("./verificationAdapter");
 
+const {
+    createRepairSession,
+    executeRepairSession,
+    validateRepairSession,
+    isRepairSession,
+    deepFreezeRepairSession,
+    repairSessionErrorCodes,
+    REPAIR_SESSION_VERSION
+} = require("./repairSession");
+
 module.exports = {
     createRepairRequest,
     validateRepairRequest,
@@ -81,5 +91,12 @@ module.exports = {
     isVerificationResult,
     deepFreezeVerificationResult,
     verificationAdapterErrorCodes,
-    VERIFICATION_ADAPTER_VERSION
+    VERIFICATION_ADAPTER_VERSION,
+    createRepairSession,
+    executeRepairSession,
+    validateRepairSession,
+    isRepairSession,
+    deepFreezeRepairSession,
+    repairSessionErrorCodes,
+    REPAIR_SESSION_VERSION
 };

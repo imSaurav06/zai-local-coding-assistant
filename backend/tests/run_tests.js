@@ -94,6 +94,9 @@ require("./core/repair/repairPipeline.test.js")(suite, test);
 // Register Verification Adapter Tests (Phase 10C-5)
 require("./core/repair/verificationAdapter.test.js")(suite, test);
 
+// Register Repair Session Tests (Phase 10C-6)
+require("./core/repair/repairSession.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
