@@ -24,6 +24,10 @@ const {
 const {
     checkpointStoreErrorCodes
 } = require("./checkpointStoreErrors");
+const {
+    MongoCheckpointStore,
+    createMongoCheckpointStore
+} = require("./mongoCheckpointStore");
 
 module.exports = {
     createCheckpoint,
@@ -41,5 +45,7 @@ module.exports = {
     CURRENT_SERIALIZER_VERSION,
     CheckpointStore,
     createCheckpointStore,
-    checkpointStoreErrorCodes
+    checkpointStoreErrorCodes,
+    MongoCheckpointStore,
+    createMongoCheckpointStore
 };
