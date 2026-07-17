@@ -19,6 +19,10 @@ const {
     providerInterfaceErrorCodes
 } = require("./providerInterfaceErrors");
 
+const {
+    OpenRouterProvider
+} = require("./openRouterProvider");
+
 module.exports = {
     createProvider,
     validateProvider,
@@ -28,5 +32,6 @@ module.exports = {
     PROVIDER_MODEL_VERSION,
     AIProvider,
     createProviderInterface,
-    providerInterfaceErrorCodes
+    providerInterfaceErrorCodes,
+    OpenRouterProvider
 };
