@@ -20,6 +20,15 @@ const {
 const { validatePatch } = require("./patchValidator");
 const { patchErrorCodes } = require("./patchErrors");
 
+const {
+    createRepairPlan,
+    validateRepairPlan,
+    isRepairPlan,
+    deepFreezeRepairPlan,
+    repairPlannerErrorCodes,
+    REPAIR_PLANNER_VERSION
+} = require("./repairPlanner");
+
 module.exports = {
     createRepairRequest,
     validateRepairRequest,
@@ -32,5 +41,11 @@ module.exports = {
     isPatch,
     deepFreezePatch,
     patchErrorCodes,
-    PATCH_MODEL_VERSION
+    PATCH_MODEL_VERSION,
+    createRepairPlan,
+    validateRepairPlan,
+    isRepairPlan,
+    deepFreezeRepairPlan,
+    repairPlannerErrorCodes,
+    REPAIR_PLANNER_VERSION
 };

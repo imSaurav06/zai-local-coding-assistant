@@ -85,6 +85,9 @@ require("./core/repair/repairModel.test.js")(suite, test);
 // Register Patch Domain Model Tests (Phase 10C-2)
 require("./core/repair/patchModel.test.js")(suite, test);
 
+// Register Repair Planner Tests (Phase 10C-3)
+require("./core/repair/repairPlanner.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
