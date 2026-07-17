@@ -39,6 +39,16 @@ const {
     REPAIR_PIPELINE_VERSION
 } = require("./repairPipeline");
 
+const {
+    createVerificationAdapter,
+    verifyPatch,
+    validateVerificationResult,
+    isVerificationResult,
+    deepFreezeVerificationResult,
+    verificationAdapterErrorCodes,
+    VERIFICATION_ADAPTER_VERSION
+} = require("./verificationAdapter");
+
 module.exports = {
     createRepairRequest,
     validateRepairRequest,
@@ -64,5 +74,12 @@ module.exports = {
     isRepairPipelineResult,
     deepFreezeRepairPipelineResult,
     repairPipelineErrorCodes,
-    REPAIR_PIPELINE_VERSION
+    REPAIR_PIPELINE_VERSION,
+    createVerificationAdapter,
+    verifyPatch,
+    validateVerificationResult,
+    isVerificationResult,
+    deepFreezeVerificationResult,
+    verificationAdapterErrorCodes,
+    VERIFICATION_ADAPTER_VERSION
 };

@@ -12,6 +12,9 @@ module.exports = function registerRepairPipelineTests(suite, test) {
         REPAIR_PIPELINE_VERSION
     } = require("../../../core/repair");
 
+    const verification = require("../../../core/verification");
+    const originalRun = verification.runVerification;
+
     function getValidRepairRequest(type = "SYNTAX", severity = "HIGH") {
         const config = {
             id: "rep_syntax_01",
@@ -29,10 +32,24 @@ module.exports = function registerRepairPipelineTests(suite, test) {
     }
 
     suite("Repair Pipeline Model Layer (Phase 10C-4)", () => {
+        
+        test("z. Restore verification runVerification", () => {
+            verification.runVerification = originalRun;
+        });
+
         // ── 1. Successful pipeline execution ──
         test("1. execute() successfully coordinates RepairPlanner and Patch models", async () => {
             const req = getValidRepairRequest("SYNTAX", "HIGH");
             const pipeline = createRepairPipeline();
+
+            verification.runVerification = () => {
+                return {
+                    success: true,
+                    errors: [],
+                    warnings: []
+                };
+            };
+
             const result = await pipeline.execute(req);
 
             assert.strictEqual(result.success, true);
@@ -42,6 +59,7 @@ module.exports = function registerRepairPipelineTests(suite, test) {
             assert.strictEqual(result.repairRequest, req);
             assert.ok(result.repairPlan);
             assert.ok(result.patch);
+            assert.ok(result.verificationResult);
 
             // Immutability checks
             assert.ok(Object.isFrozen(result));
@@ -123,6 +141,8 @@ module.exports = function registerRepairPipelineTests(suite, test) {
             const originalJson = JSON.stringify(req);
 
             const pipeline = createRepairPipeline();
+            verification.runVerification = () => ({ success: true });
+
             await pipeline.execute(req);
 
             assert.strictEqual(JSON.stringify(req), originalJson);
@@ -132,6 +152,8 @@ module.exports = function registerRepairPipelineTests(suite, test) {
         test("6. isRepairPipelineResult returns false for unfrozen or partially structured objects", async () => {
             const req = getValidRepairRequest();
             const pipeline = createRepairPipeline();
+            verification.runVerification = () => ({ success: true });
+
             const result = await pipeline.execute(req);
 
             const unfrozen = JSON.parse(JSON.stringify(result));
@@ -147,6 +169,8 @@ module.exports = function registerRepairPipelineTests(suite, test) {
             const req2 = getValidRepairRequest();
 
             const pipeline = createRepairPipeline();
+            verification.runVerification = () => ({ success: true, errors: [], warnings: [] });
+
             const res1 = await pipeline.execute(req1);
             const res2 = await pipeline.execute(req2);
 

@@ -1,0 +1,11 @@
+"use strict";
+
+const verificationAdapterErrorCodes = Object.freeze({
+    VERIFICATION_ADAPTER_INVALID_INPUT: "VERIFICATION_ADAPTER_INVALID_INPUT",
+    VERIFICATION_ADAPTER_FAILED: "VERIFICATION_ADAPTER_FAILED",
+    VERIFICATION_ADAPTER_INVALID_RESULT: "VERIFICATION_ADAPTER_INVALID_RESULT"
+});
+
+module.exports = {
+    verificationAdapterErrorCodes
+};

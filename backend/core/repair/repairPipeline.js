@@ -3,6 +3,7 @@
 const repairModel = require("./repairModel");
 const repairPlanner = require("./repairPlanner");
 const patchModel = require("./patchModel");
+const verificationAdapter = require("./verificationAdapter");
 const { repairPipelineErrorCodes } = require("./repairPipelineErrors");
 
 const REPAIR_PIPELINE_VERSION = "1.0";
@@ -12,6 +13,7 @@ const CANONICAL_RESULT_FIELDS = new Set([
     "repairRequest",
     "repairPlan",
     "patch",
+    "verificationResult",
     "status",
     "metadata"
 ]);
@@ -91,7 +93,7 @@ function validateRepairPipelineResult(result) {
     }
 
     // 2. Required properties check
-    const required = ["success", "repairRequest", "repairPlan", "patch", "status"];
+    const required = ["success", "repairRequest", "repairPlan", "patch", "verificationResult", "status"];
     for (const req of required) {
         if (!result.hasOwnProperty(req)) {
             errors.push({
@@ -123,6 +125,10 @@ function validateRepairPipelineResult(result) {
         errors.push({ code: repairPipelineErrorCodes.REPAIR_PIPELINE_INVALID_RESULT, path: "patch", message: "Invalid patch" });
     }
 
+    if (!verificationAdapter.isVerificationResult(result.verificationResult)) {
+        errors.push({ code: repairPipelineErrorCodes.REPAIR_PIPELINE_INVALID_RESULT, path: "verificationResult", message: "Invalid verificationResult" });
+    }
+
     if (!ALLOWED_PIPELINE_STATUSES.has(result.status)) {
         errors.push({
             code: repairPipelineErrorCodes.REPAIR_PIPELINE_INVALID_RESULT,
@@ -146,7 +152,7 @@ function validateRepairPipelineResult(result) {
 }
 
 /**
- * Executes the repair pipeline orchestration logic.
+ * Executes the repair pipeline orchestration logic, integrating VerificationAdapter checks.
  *
  * @param {Object} repairRequest The input RepairRequest context
  */
@@ -197,13 +203,25 @@ async function executeRepairPipeline(repairRequest) {
     }
     const patch = patchRes.patch;
 
-    // Step 4: Assemble results
+    // Step 4: Run Verification Adapter
+    let verificationResult;
+    try {
+        verificationResult = await verificationAdapter.verifyPatch(patch, {});
+    } catch (verErr) {
+        const err = new Error(`VerificationAdapter execute failed: ${verErr.message}`);
+        err.code = repairPipelineErrorCodes.REPAIR_PIPELINE_PATCH_FAILED; // Propagate verification failure as patch/pipeline execute error
+        err.originalError = verErr;
+        throw err;
+    }
+
+    // Step 5: Assemble results
     const result = {
-        success: true,
+        success: verificationResult.success,
         repairRequest,
         repairPlan,
         patch,
-        status: "SUCCESS",
+        verificationResult,
+        status: verificationResult.success ? "SUCCESS" : "FAILED",
         metadata: {}
     };
 
