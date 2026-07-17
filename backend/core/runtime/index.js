@@ -74,8 +74,8 @@ const {
     RUNTIME_ROUTER_VERSION
 } = require("./runtimeRouter");
 
-const { executeLegacy, LEGACY_RUNTIME_ADAPTER_VERSION } = require("./legacyRuntimeAdapter");
-const { executeModular, MODULAR_RUNTIME_ADAPTER_VERSION } = require("./modularRuntimeAdapter");
+const { createLegacyRuntimeAdapter, LEGACY_RUNTIME_ADAPTER_VERSION } = require("./legacyRuntimeAdapter");
+const { createModularRuntimeAdapter, MODULAR_RUNTIME_ADAPTER_VERSION } = require("./modularRuntimeAdapter");
 
 module.exports = {
     createRuntimeConfig,
@@ -123,12 +123,11 @@ module.exports = {
     parityValidatorErrorCodes,
     createRuntimeRouter,
     selectRuntime,
-    executeRuntime,
     validateRuntimeSelection,
     runtimeRouterErrorCodes,
     RUNTIME_ROUTER_VERSION,
-    executeLegacy,
+    createLegacyRuntimeAdapter,
     LEGACY_RUNTIME_ADAPTER_VERSION,
-    executeModular,
+    createModularRuntimeAdapter,
     MODULAR_RUNTIME_ADAPTER_VERSION
 };

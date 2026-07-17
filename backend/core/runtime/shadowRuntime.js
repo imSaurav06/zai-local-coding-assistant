@@ -92,8 +92,14 @@ async function executeShadow(adapter, request, legacyResponse) {
  * Factory instantiating a shadow runtime instance.
  */
 function createShadowRuntime() {
+    const { createLegacyRuntimeAdapter } = require("./legacyRuntimeAdapter");
+    const legacyAdapter = createLegacyRuntimeAdapter();
+
     return deepFreeze({
         executeShadow,
+        async execute(request) {
+            return await legacyAdapter.execute(request);
+        },
         version: SHADOW_RUNTIME_VERSION
     });
 }

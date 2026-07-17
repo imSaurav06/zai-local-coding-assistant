@@ -24,21 +24,32 @@ function deepFreeze(obj) {
 }
 
 /**
- * Executes execution request through the modular runtime (STUB ONLY in this phase).
+ * Deterministic stub response in MODULAR mode.
  *
- * @param {Object} adapter Execution adapter instance
  * @param {Object} request Validated request structure
  */
-async function executeModular(adapter, request) {
+async function execute(request) {
     const stub = {
+        success: false,
         runtime: "MODULAR",
         status: "NOT_IMPLEMENTED",
-        message: "Modular runtime activation is scheduled for Phase 11B-2."
+        message: "ExecutionPipeline activation is scheduled for Phase 11B-2."
     };
     return deepFreeze(stub);
 }
 
+/**
+ * Factory instantiating modular runtime adapter.
+ */
+function createModularRuntimeAdapter() {
+    return deepFreeze({
+        execute,
+        version: MODULAR_RUNTIME_ADAPTER_VERSION
+    });
+}
+
 module.exports = {
-    executeModular,
+    createModularRuntimeAdapter,
+    execute,
     MODULAR_RUNTIME_ADAPTER_VERSION
 };

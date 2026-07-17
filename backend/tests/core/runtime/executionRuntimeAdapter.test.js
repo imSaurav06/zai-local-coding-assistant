@@ -93,9 +93,10 @@ module.exports = function registerRuntimeAdapterTests(suite, test) {
                 if (mode === "MODULAR") {
                     assert.strictEqual(mockCalled, false);
                     assert.deepStrictEqual(res, {
+                        success: false,
                         runtime: "MODULAR",
                         status: "NOT_IMPLEMENTED",
-                        message: "Modular runtime activation is scheduled for Phase 11B-2."
+                        message: "ExecutionPipeline activation is scheduled for Phase 11B-2."
                     });
                 } else {
                     assert.strictEqual(mockCalled, true);

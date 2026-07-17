@@ -1,8 +1,8 @@
 "use strict";
 
 const { runtimeRouterErrorCodes } = require("./runtimeRouterErrors");
-const { executeLegacy } = require("./legacyRuntimeAdapter");
-const { executeModular } = require("./modularRuntimeAdapter");
+const { createLegacyRuntimeAdapter } = require("./legacyRuntimeAdapter");
+const { createModularRuntimeAdapter } = require("./modularRuntimeAdapter");
 
 const RUNTIME_ROUTER_VERSION = "1.0";
 
@@ -43,7 +43,7 @@ function validateRuntimeSelection(mode) {
 }
 
 /**
- * Selects the runtime mode from configuration.
+ * Selects the runtime adapter instance based on configuration.
  *
  * @param {Object} config Config containing runtimeMode
  */
@@ -53,68 +53,26 @@ function selectRuntime(config) {
         err.code = runtimeRouterErrorCodes.RUNTIME_ROUTER_INVALID_REQUEST;
         throw err;
     }
-    const mode = config.runtimeMode || "LEGACY";
-    validateRuntimeSelection(mode);
-    return mode;
-}
-
-/**
- * Executes the Shadow Runtime validation flow.
- */
-async function executeShadowFlow(adapter, request) {
-    const legacyResponse = await executeLegacy(adapter, request);
-
-    // Background modular validation triggered if enableShadowRuntime is active
-    const { executeShadow } = require("./shadowRuntime");
-    await executeShadow(adapter, request, legacyResponse);
-
-    return legacyResponse;
-}
-
-/**
- * Main routing entry method.
- *
- * @param {Object} adapter Execution adapter instance
- * @param {Object} request Executed request
- */
-async function executeRuntime(adapter, request) {
-    if (!adapter || typeof adapter !== "object" || !adapter.config) {
-        const err = new Error("Invalid adapter parameter.");
+    if (!Object.isFrozen(config)) {
+        const err = new Error("Config must be frozen.");
         err.code = runtimeRouterErrorCodes.RUNTIME_ROUTER_INVALID_REQUEST;
         throw err;
     }
+    const mode = config.runtimeMode || "LEGACY";
+    validateRuntimeSelection(mode);
 
-    const mode = selectRuntime(adapter.config);
-
-    try {
-        if (mode === "LEGACY") {
-            return await executeLegacy(adapter, request);
-        } else if (mode === "MODULAR") {
-            return await executeModular(adapter, request);
-        } else if (mode === "SHADOW") {
-            return await executeShadowFlow(adapter, request);
-        }
-    } catch (err) {
-        // Let bridge adapter validation errors bubble directly
-        const adapterErrorCodes = new Set([
-            "VERIFICATION_REPAIR_INVALID_INPUT",
-            "VERIFICATION_REPAIR_VERIFICATION_FAILED",
-            "VERIFICATION_REPAIR_REPAIR_FAILED",
-            "VERIFICATION_REPAIR_BRIDGE_FAILED"
-        ]);
-        if (err.code && (
-            adapterErrorCodes.has(err.code) || 
-            err.code === "PARITY_VALIDATION_FAILED" ||
-            err.code.startsWith("RUNTIME_ROUTER_") || 
-            err.code.startsWith("SHADOW_")
-        )) {
-            throw err;
-        }
-        const execErr = new Error(`Runtime routing execution failed: ${err.message}`);
-        execErr.code = runtimeRouterErrorCodes.RUNTIME_ROUTER_EXECUTION_FAILED;
-        execErr.originalError = err;
-        throw execErr;
+    if (mode === "LEGACY") {
+        return createLegacyRuntimeAdapter();
+    } else if (mode === "MODULAR") {
+        return createModularRuntimeAdapter();
+    } else if (mode === "SHADOW") {
+        const { createShadowRuntime } = require("./shadowRuntime");
+        return createShadowRuntime();
     }
+
+    const unknownErr = new Error(`Unknown adapter implementation for mode: '${mode}'`);
+    unknownErr.code = runtimeRouterErrorCodes.RUNTIME_ROUTER_UNKNOWN_ADAPTER;
+    throw unknownErr;
 }
 
 /**
@@ -128,9 +86,6 @@ function createRuntimeRouter(config) {
         selectRuntime() {
             return selectRuntime(this.config);
         },
-        executeRuntime(adapter, request) {
-            return executeRuntime(adapter, request);
-        },
         validateRuntimeSelection(mode) {
             return validateRuntimeSelection(mode);
         }
@@ -141,7 +96,6 @@ function createRuntimeRouter(config) {
 module.exports = {
     createRuntimeRouter,
     selectRuntime,
-    executeRuntime,
     validateRuntimeSelection,
     runtimeRouterErrorCodes,
     RUNTIME_ROUTER_VERSION
