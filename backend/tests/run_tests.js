@@ -49,6 +49,9 @@ require("./core/checkpoints/checkpoint.test.js")(suite, test);
 // Register Checkpoint Serializer Tests (Phase 10A-2)
 require("./core/checkpoints/checkpointSerializer.test.js")(suite, test);
 
+// Register Checkpoint Store Tests (Phase 10A-3)
+require("./core/checkpoints/checkpointStore.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

@@ -17,6 +17,13 @@ const {
     isSerializedCheckpoint,
     CURRENT_SERIALIZER_VERSION
 } = require("./checkpointSerializer");
+const {
+    CheckpointStore,
+    createCheckpointStore
+} = require("./checkpointStore");
+const {
+    checkpointStoreErrorCodes
+} = require("./checkpointStoreErrors");
 
 module.exports = {
     createCheckpoint,
@@ -31,5 +38,8 @@ module.exports = {
     cloneCheckpoint,
     normalizeCheckpoint,
     isSerializedCheckpoint,
-    CURRENT_SERIALIZER_VERSION
+    CURRENT_SERIALIZER_VERSION,
+    CheckpointStore,
+    createCheckpointStore,
+    checkpointStoreErrorCodes
 };
