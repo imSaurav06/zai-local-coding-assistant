@@ -43,6 +43,9 @@ const { buildSharedContracts, buildProjectManifest } = require(path.join(backend
 const { sanitizePackageJson } = require(path.join(backendRoot, "services/previewService"));
 const { calculateAdaptiveTimeout } = require(path.join(backendRoot, "services/aiGenerationExecutor"));
 
+// Register Checkpoint Tests (Phase 10A-1)
+require("./core/checkpoints/checkpoint.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

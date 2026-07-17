@@ -26,199 +26,301 @@ function deepFreeze(obj) {
 }
 
 /**
- * Creates a execution checkpoint from a validated Planner state.
- * 
- * @param {Object} planner The current Planner state
+ * Public helper to deep freeze checkpoint.
+ */
+function deepFreezeCheckpoint(checkpoint) {
+    return deepFreeze(checkpoint);
+}
+
+/**
+ * Checks if the given object has a valid checkpoint signature.
+ */
+function isCheckpoint(obj) {
+    if (obj === null || obj === undefined || typeof obj !== "object") {
+        return false;
+    }
+    return (
+        typeof obj.version === "string" &&
+        typeof obj.executionId === "string" &&
+        obj.metadata !== null &&
+        typeof obj.metadata === "object" &&
+        obj.queues !== null &&
+        typeof obj.queues === "object" &&
+        Array.isArray(obj.workers) &&
+        obj.statistics !== null &&
+        typeof obj.statistics === "object"
+    );
+}
+
+/**
+ * Creates a execution checkpoint from a validated Planner state (legacy) or a domain options object.
+ *
+ * @param {Object} input The planner state or checkpoint domain options
  * @param {String} createdBy Identity string of the checkpoint creator
  */
-function createCheckpoint(planner, createdBy = "planner") {
+function createCheckpoint(input, createdBy = "planner") {
     try {
-        // 1. Validation of planner structure
-        if (planner === null || planner === undefined || typeof planner !== "object") {
+        if (input === null || input === undefined) {
             return deepFreeze({
                 success: false,
                 checkpoint: null,
                 errors: [{
                     code: checkpointErrorCodes.CHECKPOINT_INVALID_INPUT,
                     path: "",
-                    message: "Planner input must be a non-null object."
+                    message: "Input must be a non-null object."
                 }]
             });
         }
 
-        if (!planner.hasOwnProperty("version") || typeof planner.version !== "string") {
+        if (typeof input !== "object" || Array.isArray(input)) {
             return deepFreeze({
                 success: false,
                 checkpoint: null,
                 errors: [{
-                    code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
-                    path: "version",
-                    message: "Planner version is missing or invalid."
+                    code: checkpointErrorCodes.CHECKPOINT_INVALID_INPUT,
+                    path: "",
+                    message: "Input must be an object."
                 }]
             });
         }
 
-        if (!planner.hasOwnProperty("metadata") || planner.metadata === null || typeof planner.metadata !== "object") {
-            return deepFreeze({
-                success: false,
-                checkpoint: null,
-                errors: [{
-                    code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
-                    path: "metadata",
-                    message: "Planner metadata is missing or invalid."
-                }]
-            });
-        }
+        // Detect if input is legacy Planner state
+        const isLegacyPlanner = input.hasOwnProperty("tasks") || !input.hasOwnProperty("queues");
 
-        if (!planner.hasOwnProperty("tasks") || !Array.isArray(planner.tasks)) {
-            return deepFreeze({
-                success: false,
-                checkpoint: null,
-                errors: [{
-                    code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
-                    path: "tasks",
-                    message: "Planner tasks array is missing or invalid."
-                }]
-            });
-        }
-
-        const seenStableIds = new Set();
-        const seenDisplayIds = new Set();
-        const tasksMap = new Map();
-
-        // 2. Validate tasks within planner and check duplicates
-        for (let i = 0; i < planner.tasks.length; i++) {
-            const task = planner.tasks[i];
-            const path = `tasks[${i}]`;
-
-            if (task === null || typeof task !== "object") {
+        if (isLegacyPlanner) {
+            // Validate legacy planner tasks structure
+            if (!input.hasOwnProperty("metadata") || input.metadata === null || typeof input.metadata !== "object") {
                 return deepFreeze({
                     success: false,
                     checkpoint: null,
                     errors: [{
                         code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
-                        path,
-                        message: "Planner task must be a non-null object."
+                        path: "metadata",
+                        message: "Planner metadata is missing or invalid."
                     }]
                 });
             }
 
-            const requiredTaskFields = ["stableId", "displayId", "status", "dependencies", "dependents"];
-            for (const field of requiredTaskFields) {
-                if (!task.hasOwnProperty(field)) {
+            const seenStableIds = new Set();
+            const seenDisplayIds = new Set();
+            const tasksMap = new Map();
+
+            for (let i = 0; i < input.tasks.length; i++) {
+                const task = input.tasks[i];
+                const path = `tasks[${i}]`;
+
+                if (task === null || typeof task !== "object") {
                     return deepFreeze({
                         success: false,
                         checkpoint: null,
                         errors: [{
                             code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
-                            path: `${path}.${field}`,
-                            message: `Task is missing required field: '${field}'`
+                            path,
+                            message: "Planner task must be a non-null object."
                         }]
                     });
                 }
+
+                const requiredTaskFields = ["stableId", "displayId", "status", "dependencies", "dependents"];
+                for (const field of requiredTaskFields) {
+                    if (!task.hasOwnProperty(field)) {
+                        return deepFreeze({
+                            success: false,
+                            checkpoint: null,
+                            errors: [{
+                                code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
+                                path: `${path}.${field}`,
+                                message: `Task is missing required field: '${field}'`
+                            }]
+                        });
+                    }
+                }
+
+                if (seenStableIds.has(task.stableId)) {
+                    return deepFreeze({
+                        success: false,
+                        checkpoint: null,
+                        errors: [{
+                            code: checkpointErrorCodes.CHECKPOINT_DUPLICATE_TASK,
+                            path: `${path}.stableId`,
+                            message: `Duplicate task stableId detected: '${task.stableId}'`
+                        }]
+                    });
+                }
+                seenStableIds.add(task.stableId);
+
+                if (seenDisplayIds.has(task.displayId)) {
+                    return deepFreeze({
+                        success: false,
+                        checkpoint: null,
+                        errors: [{
+                            code: checkpointErrorCodes.CHECKPOINT_DUPLICATE_TASK,
+                            path: `${path}.displayId`,
+                            message: `Duplicate task displayId detected: '${task.displayId}'`
+                        }]
+                    });
+                }
+                seenDisplayIds.add(task.displayId);
+
+                tasksMap.set(task.stableId, task);
             }
 
-            if (seenStableIds.has(task.stableId)) {
+            // Verify task linkages
+            for (const [stableId, task] of tasksMap) {
+                for (const depId of task.dependencies) {
+                    if (!tasksMap.has(depId)) {
+                        return deepFreeze({
+                            success: false,
+                            checkpoint: null,
+                            errors: [{
+                                code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
+                                path: `tasks[stableId:${stableId}].dependencies`,
+                                message: `Task refers to non-existent dependency stableId: '${depId}'`
+                            }]
+                        });
+                    }
+                }
+                for (const depId of task.dependents) {
+                    if (!tasksMap.has(depId)) {
+                        return deepFreeze({
+                            success: false,
+                            checkpoint: null,
+                            errors: [{
+                                code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
+                                path: `tasks[stableId:${stableId}].dependents`,
+                                message: `Task refers to non-existent dependent stableId: '${depId}'`
+                            }]
+                        });
+                    }
+                }
+            }
+
+            // Separate execution states and sort deterministically by displayId ascending
+            const completedTasks = [];
+            const runningTasks = [];
+            const pendingTasks = [];
+            const failedTasks = [];
+
+            const sortedTasks = [...input.tasks].sort((a, b) => a.displayId.localeCompare(b.displayId));
+
+            for (const task of sortedTasks) {
+                if (task.status === "COMPLETED") {
+                    completedTasks.push(task.stableId);
+                } else if (task.status === "RUNNING") {
+                    runningTasks.push(task.stableId);
+                } else if (task.status === "FAILED") {
+                    failedTasks.push(task.stableId);
+                } else {
+                    pendingTasks.push(task.stableId);
+                }
+            }
+
+            const clonedPlanner = JSON.parse(JSON.stringify(input));
+            const totalTasks = sortedTasks.length;
+
+            const checkpoint = {
+                version: CHECKPOINT_MODEL_VERSION,
+                metadata: {
+                    checkpointVersion: CHECKPOINT_MODEL_VERSION,
+                    plannerVersion: input.version,
+                    graphVersion: input.metadata.graphVersion || "1.0",
+                    identityVersion: input.metadata.identityVersion || "1.0",
+                    createdBy: createdBy
+                },
+                planner: clonedPlanner,
+                executionState: {
+                    completedTasks,
+                    runningTasks,
+                    pendingTasks,
+                    failedTasks
+                }
+            };
+
+            return deepFreeze({
+                success: true,
+                checkpoint,
+                errors: []
+            });
+        }
+
+        // Domain options creation mode
+        // Basic check for required root fields
+        const requiredFields = ["executionId", "metadata", "queues", "statistics"];
+        for (const field of requiredFields) {
+            if (!input.hasOwnProperty(field) || input[field] === null || input[field] === undefined) {
                 return deepFreeze({
                     success: false,
                     checkpoint: null,
                     errors: [{
-                        code: checkpointErrorCodes.CHECKPOINT_DUPLICATE_TASK,
-                        path: `${path}.stableId`,
-                        message: `Duplicate task stableId detected: '${task.stableId}'`
+                        code: checkpointErrorCodes.CHECKPOINT_INVALID_STRUCTURE,
+                        path: field,
+                        message: `Checkpoint missing required domain field: '${field}'`
                     }]
                 });
             }
-            seenStableIds.add(task.stableId);
-
-            if (seenDisplayIds.has(task.displayId)) {
-                return deepFreeze({
-                    success: false,
-                    checkpoint: null,
-                    errors: [{
-                        code: checkpointErrorCodes.CHECKPOINT_DUPLICATE_TASK,
-                        path: `${path}.displayId`,
-                        message: `Duplicate task displayId detected: '${task.displayId}'`
-                    }]
-                });
-            }
-            seenDisplayIds.add(task.displayId);
-
-            tasksMap.set(task.stableId, task);
         }
 
-        // Verify task linkages
-        for (const [stableId, task] of tasksMap) {
-            for (const depId of task.dependencies) {
-                if (!tasksMap.has(depId)) {
-                    return deepFreeze({
-                        success: false,
-                        checkpoint: null,
-                        errors: [{
-                            code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
-                            path: `tasks[stableId:${stableId}].dependencies`,
-                            message: `Task refers to non-existent dependency stableId: '${depId}'`
-                        }]
-                    });
-                }
-            }
-            for (const depId of task.dependents) {
-                if (!tasksMap.has(depId)) {
-                    return deepFreeze({
-                        success: false,
-                        checkpoint: null,
-                        errors: [{
-                            code: checkpointErrorCodes.CHECKPOINT_INVALID_PLANNER,
-                            path: `tasks[stableId:${stableId}].dependents`,
-                            message: `Task refers to non-existent dependent stableId: '${depId}'`
-                        }]
-                    });
-                }
-            }
-        }
+        // Cloned elements to remain pure and non-mutating
+        const clonedMetadata = JSON.parse(JSON.stringify(input.metadata));
+        const clonedQueues = JSON.parse(JSON.stringify(input.queues));
+        const clonedStatistics = JSON.parse(JSON.stringify(input.statistics));
+        const clonedWorkers = input.workers ? JSON.parse(JSON.stringify(input.workers)) : [];
 
-        // 3. Separate execution states
-        const completedTasks = [];
-        const runningTasks = [];
-        const pendingTasks = [];
-        const failedTasks = [];
-
-        // Sort execution arrays deterministically by displayId ascending
-        const sortedTasks = [...planner.tasks].sort((a, b) => a.displayId.localeCompare(b.displayId));
-
-        for (const task of sortedTasks) {
-            if (task.status === "COMPLETED") {
-                completedTasks.push(task.stableId);
-            } else if (task.status === "RUNNING") {
-                runningTasks.push(task.stableId);
-            } else if (task.status === "FAILED") {
-                failedTasks.push(task.stableId);
-            } else {
-                // Treat everything else (primarily PENDING) as pending
-                pendingTasks.push(task.stableId);
-            }
-        }
-
-        // 4. Construct deeply cloned and frozen Checkpoint object
-        const clonedPlanner = JSON.parse(JSON.stringify(planner));
+        // Backward compatibility mapping for recovery/resume
+        const completedTasks = clonedQueues.completed ? [...clonedQueues.completed] : undefined;
+        const runningTasks = clonedQueues.running ? [...clonedQueues.running] : undefined;
+        const pendingTasks = clonedQueues.pending ? [...clonedQueues.pending] : undefined;
+        const failedTasks = clonedQueues.failed ? [...clonedQueues.failed] : undefined;
 
         const checkpoint = {
-            version: CHECKPOINT_MODEL_VERSION,
+            version: input.version || CHECKPOINT_MODEL_VERSION,
+            executionId: input.executionId,
             metadata: {
-                checkpointVersion: CHECKPOINT_MODEL_VERSION,
-                plannerVersion: planner.version,
-                graphVersion: planner.metadata.graphVersion,
-                identityVersion: planner.metadata.identityVersion || "1.0",
-                createdBy: createdBy
+                checkpointVersion: clonedMetadata.checkpointVersion || CHECKPOINT_MODEL_VERSION,
+                plannerVersion: clonedMetadata.plannerVersion || "1.0",
+                graphVersion: clonedMetadata.graphVersion || "1.0",
+                identityVersion: clonedMetadata.identityVersion || "1.0",
+                createdBy: clonedMetadata.createdBy || "planner",
+                createdAt: clonedMetadata.createdAt || "2026-07-17T00:00:00.000Z",
+                updatedAt: clonedMetadata.updatedAt || "2026-07-17T00:00:00.000Z",
+                waveNumber: typeof clonedMetadata.waveNumber === "number" ? clonedMetadata.waveNumber : 0
             },
-            planner: clonedPlanner,
+            queues: {
+                pending: pendingTasks,
+                running: runningTasks,
+                completed: completedTasks,
+                failed: failedTasks
+            },
+            workers: clonedWorkers,
+            statistics: {
+                completedTasks: typeof clonedStatistics.completedTasks === "number" ? clonedStatistics.completedTasks : (completedTasks ? completedTasks.length : undefined),
+                failedTasks: typeof clonedStatistics.failedTasks === "number" ? clonedStatistics.failedTasks : (failedTasks ? failedTasks.length : undefined),
+                totalTasks: typeof clonedStatistics.totalTasks === "number" ? clonedStatistics.totalTasks : (
+                    (pendingTasks && runningTasks && completedTasks && failedTasks)
+                        ? (pendingTasks.length + runningTasks.length + completedTasks.length + failedTasks.length)
+                        : undefined
+                )
+            },
+            // Backward compatibility fields
             executionState: {
-                completedTasks,
-                runningTasks,
-                pendingTasks,
-                failedTasks
+                completedTasks: completedTasks || [],
+                runningTasks: runningTasks || [],
+                pendingTasks: pendingTasks || [],
+                failedTasks: failedTasks || []
             }
         };
+
+        if (input.planner) {
+            checkpoint.planner = JSON.parse(JSON.stringify(input.planner));
+        }
+
+        // Copy any unknown top-level properties from input to checkpoint so validator can reject them
+        const allowedKeys = ["version", "executionId", "metadata", "queues", "workers", "statistics", "planner", "executionState"];
+        for (const key of Object.keys(input)) {
+            if (!allowedKeys.includes(key)) {
+                checkpoint[key] = input[key];
+            }
+        }
 
         return deepFreeze({
             success: true,
@@ -241,5 +343,7 @@ function createCheckpoint(planner, createdBy = "planner") {
 
 module.exports = {
     createCheckpoint,
+    isCheckpoint,
+    deepFreezeCheckpoint,
     CHECKPOINT_MODEL_VERSION
 };
