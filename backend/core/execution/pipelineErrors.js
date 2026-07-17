@@ -1,0 +1,12 @@
+"use strict";
+
+const pipelineErrorCodes = Object.freeze({
+    PIPELINE_INVALID_INPUT: "PIPELINE_INVALID_INPUT",
+    PIPELINE_CONTEXT_ERROR: "PIPELINE_CONTEXT_ERROR",
+    PIPELINE_PROVIDER_ERROR: "PIPELINE_PROVIDER_ERROR",
+    PIPELINE_VERIFICATION_ERROR: "PIPELINE_VERIFICATION_ERROR"
+});
+
+module.exports = {
+    pipelineErrorCodes
+};

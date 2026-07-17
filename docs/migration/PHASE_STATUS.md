@@ -713,6 +713,36 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 - **Blockers**: None.
 - **Next Action**: STOP. Proceed to Task Pack 9D (Execution Pipeline).
 
+### Task Pack 9D: Execution Pipeline
+- **Status**: DONE
+- **Started At**: 2026-07-17T16:15:00+05:30
+- **Completed At**: 2026-07-17T16:30:00+05:30
+- **Files Created**: `backend/core/execution/executionPipeline.js`, `backend/core/execution/pipelineValidator.js`, `backend/core/execution/pipelineErrors.js`, `docs/migration/PHASE_9D_EXECUTION_PIPELINE.md`
+- **Files Changed**: `backend/core/execution/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Architecture Summary**: Implemented the Execution Pipeline Coordinator layer. It sequentially coordinates Scheduler -> ContextBuilder -> AIProviderGateway -> CodingWorker -> VFS -> Verification modules in a strict order. To remain lightweight and coordinate only, it contains no business logic or hidden globals. It accepts dependency injection parameters and returns deeply frozen `PipelineResult` structures.
+- **Public API**: `createExecutionPipeline(options?)`, `executePipeline(executionState, workerRegistry, taskGraph, executionOptions?)`, `validatePipeline(result)`, `pipelineErrorCodes` (frozen enums: `PIPELINE_INVALID_INPUT`, `PIPELINE_CONTEXT_ERROR`, `PIPELINE_PROVIDER_ERROR`, `PIPELINE_VERIFICATION_ERROR`).
+- **Tests Added**: 6 unit tests in `run_tests.js` (Phase 9D Execution Pipeline suite) verifying correct sequential ordering of modules, single invocation count per module, result validation schema, frozen enums, determinism, and caller non-mutation.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 577 Passed, 0 Failed.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Proceed to Task Pack 9E (Recovery).
+
+### Task Pack 9E: Recovery
+- **Status**: DONE
+- **Started At**: 2026-07-17T16:35:00+05:30
+- **Completed At**: 2026-07-17T16:50:00+05:30
+- **Files Created**: `backend/core/execution/recovery.js`, `backend/core/execution/recoveryValidator.js`, `backend/core/execution/recoveryErrors.js`, `docs/migration/PHASE_9E_RECOVERY.md`
+- **Files Changed**: `backend/core/execution/index.js`, `backend/tests/run_tests.js`, `docs/migration/PHASE_STATUS.md`, `docs/migration/HANDOFF.md`
+- **Architecture Summary**: Implemented the Recovery Layer decision manager. It classifies pipeline result errors into standard categories (`RECOVERABLE`, `NON_RECOVERABLE`, `VERIFICATION_FAILURE`, `PROVIDER_FAILURE`, `WORKER_FAILURE`, `CHECKPOINT_FAILURE`), computes retry policies with exponential backoff delays, checks checkpoint consistency against active state, and decides required checkpoint actions (`SAVE`, `RESTORE`, `NONE`) and recovery actions (`CONTINUE`, `RETRY`, `RESUME`, `ABORT`).
+- **Public API**: `createRecovery()`, `recoverExecution(executionState, checkpoint, pipelineResult, options)`, `validateRecovery(result)`, `failureCategories`, `recoveryErrorCodes` (frozen enums: `RECOVERY_INVALID_INPUT`, `RECOVERY_INVALID_CHECKPOINT`, `RECOVERY_INVALID_PIPELINE`, `RECOVERY_UNSUPPORTED_FAILURE`).
+- **Tests Added**: 6 unit tests in `run_tests.js` (Phase 9E Recovery suite) verifying invalid/mutable input rejection, failure classification mapping, retry policies and delay calculations under bounds, result schema validator, input non-mutation, and unsupported error handling.
+- **Tests Run**: `node tests/run_tests.js`
+- **Test Result**: 583 Passed, 0 Failed.
+- **Known Issues**: None.
+- **Blockers**: None.
+- **Next Action**: STOP. Proceed to Task Pack 9F (Orchestrator Integration).
+
 ---
 
 ## Future Migration Phases
@@ -727,7 +757,7 @@ This document tracks the execution progress of the Z.ai Application Builder arch
 | **Phase 6** | ContextBuilder | **DONE** (All Task Packs 6A–6D Complete) | 2026-07-17 |
 | **Phase 7** | Structured / Transaction VFS File Operations | **DONE** (All Task Packs 7A–7E Complete) | 2026-07-17 |
 | **Phase 8** | Incremental Verification Engine | **IN_PROGRESS** (Task Packs 8A–8C Complete) | TBD |
-| **Phase 9** | ExecutionOrchestrator Foundation | **IN_PROGRESS** (Task Packs 9A–9C DONE) | TBD |
+| **Phase 9** | ExecutionOrchestrator Foundation | **IN_PROGRESS** (Task Packs 9A–9E DONE) | TBD |
 | **Phase 10** | AIProviderGateway Hardening | NOT_STARTED | TBD |
 | **Phase 11** | Controlled Parallel Task Execution | NOT_STARTED | TBD |
 | **Phase 12** | Requirement / Integration / Security / Deployment Audits | NOT_STARTED | TBD |

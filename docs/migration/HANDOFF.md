@@ -19,22 +19,22 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ### 2. Current Migration State
 
 *   **CURRENT PHASE**: PHASE 9 (ExecutionOrchestrator Foundation)
-*   **CURRENT TASK PACK**: 9C (Scheduler)
-*   **LAST COMPLETED TASK PACK**: 9C (Scheduler)
-*   **Overall Status**: IN_PROGRESS (Task Pack 9C Complete)
+*   **CURRENT TASK PACK**: 9E (Recovery)
+*   **LAST COMPLETED TASK PACK**: 9E (Recovery)
+*   **Overall Status**: IN_PROGRESS (Task Pack 9E Complete)
 
 ---
 
 - **Git Branch**: `main`
 - **Working Tree State**: Unstaged changes (no commit or push performed).
-- **FILES CREATED BY 9C**:
-  - `backend/core/execution/scheduler.js`
-  - `backend/core/execution/schedulerValidator.js`
-  - `backend/core/execution/schedulerErrors.js`
-  - `docs/migration/PHASE_9C_SCHEDULER.md`
-- **FILES CHANGED BY 9C**:
+- **FILES CREATED BY 9E**:
+  - `backend/core/execution/recovery.js`
+  - `backend/core/execution/recoveryValidator.js`
+  - `backend/core/execution/recoveryErrors.js`
+  - `docs/migration/PHASE_9E_RECOVERY.md`
+- **FILES CHANGED BY 9E**:
   - `backend/core/execution/index.js` (Exposed public APIs)
-  - `backend/tests/run_tests.js` (Added 10 Phase 9C tests)
+  - `backend/tests/run_tests.js` (Added 6 Phase 9E tests)
   - `docs/migration/PHASE_STATUS.md` (Updated status)
   - `docs/migration/HANDOFF.md` (Updated — this document)
 
@@ -42,19 +42,15 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T16:10:00+05:30
-- **TEST RESULTS**: 571 passed, 0 failed.
-- **New Tests Added (Phase 9C)**: 10 unit tests in suite `Scheduler Decision Layer (Phase 9C)`:
-  1. Rejects invalid or mutable inputs
-  2. Discovers ready nodes (pending tasks with completed dependencies)
-  3. Blocks tasks that depend on unfinished/running/failed tasks
-  4. Schedules only to IDLE workers, ignoring active ones
-  5. Respects parallel concurrency limit of max 3 active workers
-  6. computeSchedule returns deeply frozen valid schedules
-  7. Scheduler error codes enum is deeply frozen
-  8. Ready tasks and idle workers sorted deterministically
-  9. computeSchedule never mutates inputs
-  10. Throws SCHEDULER_DEPENDENCY_ERROR for non-existent task reference
+- **TESTS LAST RUN**: 2026-07-17T16:50:00+05:30
+- **TEST RESULTS**: 583 passed, 0 failed.
+- **New Tests Added (Phase 9E)**: 6 unit tests in suite `Recovery Layer (Phase 9E)`:
+  1. Rejects invalid or mutable inputs in recoverExecution
+  2. Correctly classifies success, recoverable and non-recoverable failures
+  3. Enforces max retry limits and computes exponential backoff delays
+  4. recoverExecution returns deeply frozen valid recovery decisions
+  5. Input arguments are never mutated during recoverExecution
+  6. Throws RECOVERY_UNSUPPORTED_FAILURE for unknown pipeline error codes
 - **KNOWN FAILURES**: None.
 - **BLOCKERS**: None.
 
@@ -68,14 +64,14 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 
 ---
 
-## 6. Phase 9C Architecture Summary
+## 6. Phase 9E Architecture Summary
 
-### 6.1 Scheduler Decision Contract
-*   **PRIMARY API**: `computeSchedule(executionState, workerRegistry, taskGraph)`
-*   **DECISION TRANSITION**: Checks task dependencies and returns a deeply frozen `Schedule` object listing ready tasks, assignments, and blocked tasks.
-*   **ADR-006 PARALLELISM LIMIT**: Strictly limits assignments such that no more than `3` workers are active (`ASSIGNED` or `RUNNING` status) at any time.
-*   **DETERMINISM**: Ready tasks are sorted alphabetically by `displayId` ascending. Idle workers are sorted alphabetically by `workerId` ascending.
-*   **VALIDATOR**: `validateSchedule(schedule)` checks structural field values and freezing state.
+### 6.1 Recovery Layer Contract
+*   **PRIMARY API**: `createRecovery()` / `recoverExecution(executionState, checkpoint, pipelineResult, options)`
+*   **FAILURE CLASSIFICATION**: Standard categories map errors (`RECOVERABLE`, `NON_RECOVERABLE`, `VERIFICATION_FAILURE`, `PROVIDER_FAILURE`, `WORKER_FAILURE`, `CHECKPOINT_FAILURE`).
+*   **RETRY BACKOFF**: Retry actions compute exponential delays (`1s`, `2s`, `4s`...) up to retry limits.
+*   **CHECKPOINT COORDINATION**: Mismatch validation checks completed queues, triggers `"RESTORE"` checkpoint action, and `"SAVE"` on pipeline success.
+*   **VALIDATOR**: `validateRecovery(result)` verifies schema compliance.
 
 ---
 
@@ -85,15 +81,15 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 8. Next Exact Action
-Task Pack 9C is complete. Proceed to Task Pack 9D in the next session.
+Task Pack 9E is complete. Proceed to Task Pack 9F in the next session.
 
-**Task Pack 9D**: Execution Pipeline
-- Implement the Execution Orchestrator scheduling loop and state transitions.
+**Task Pack 9F**: Orchestrator Integration
+- Integrate components inside the generic `ExecutionOrchestrator`.
 
 **FILES TO READ FIRST**:
-- [scheduler.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/scheduler.js)
-- [schedulerValidator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/schedulerValidator.js)
-- [run_tests.js Phase 9C suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
+- [recovery.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/recovery.js)
+- [recoveryValidator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/recoveryValidator.js)
+- [run_tests.js Phase 9E suite](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/tests/run_tests.js)
 
 **DO NOT TOUCH**:
 - Existing generation orchestration logic.
@@ -110,4 +106,4 @@ Task Pack 9C is complete. Proceed to Task Pack 9D in the next session.
 - VFS structures (`backend/core/vfs/`).
 - VerificationEngine (`backend/core/verification/`).
 
-**STOP CONDITIONS**: Do not start Phase 9D in this session. Do not commit or push changes.
+**STOP CONDITIONS**: Do not start Phase 9F in this session. Do not commit or push changes.

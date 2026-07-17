@@ -9302,6 +9302,552 @@ suite("Scheduler Decision Layer (Phase 9C)", () => {
     });
 });
 
+suite("Execution Pipeline Coordinator (Phase 9D)", () => {
+    const {
+        createExecutionPipeline,
+        validatePipeline,
+        pipelineErrorCodes,
+        createExecutionState,
+        createWorkerRegistry,
+        createWorker
+    } = require(path.join(backendRoot, "core/execution"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const makeNode = (stableId, displayId, dependencies = [], dependents = []) => {
+        return {
+            stableId,
+            displayId,
+            kind: "backend",
+            semanticKey: "backend",
+            status: "PENDING",
+            dependencies,
+            dependents,
+            metadata: {},
+            payload: {}
+        };
+    };
+
+    const makeFrozenGraph = (nodes) => {
+        const graph = {
+            graphVersion: "1.0",
+            metadata: {
+                graphVersion: "1.0",
+                identityVersion: "1.0",
+                createdBy: "test",
+                totalNodes: nodes.length
+            },
+            nodes: nodes
+        };
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(graph);
+    };
+
+    const makeFrozenState = (pending, running = [], completed = [], failed = []) => {
+        const total = pending.length + running.length + completed.length + failed.length;
+        const state = {
+            version: "1.0",
+            metadata: { status: "RUNNING", executionId: null, createdAt: null },
+            queues: { pending, running, completed, failed },
+            statistics: { totalTasks: total, pending: pending.length, running: running.length, completed: completed.length, failed: failed.length }
+        };
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(state);
+    };
+
+    // ── 1. Invalid input rejection ──────────────────────────────────────────
+    test("1. Rejects invalid or mutable inputs", async () => {
+        const pipeline = createExecutionPipeline();
+        const state = makeFrozenState([]);
+        const reg = createWorkerRegistry();
+        const graph = makeFrozenGraph([]);
+
+        // Invalid State
+        await assert.rejects(async () => {
+            await pipeline.executePipeline(null, reg, graph);
+        }, (err) => {
+            return err.code === pipelineErrorCodes.PIPELINE_INVALID_INPUT;
+        });
+
+        // Mutable State
+        const mutableState = { version: "1.0", queues: { pending: [] } };
+        await assert.rejects(async () => {
+            await pipeline.executePipeline(mutableState, reg, graph);
+        }, (err) => {
+            return err.code === pipelineErrorCodes.PIPELINE_INVALID_INPUT;
+        });
+
+        // Invalid Registry
+        await assert.rejects(async () => {
+            await pipeline.executePipeline(state, null, graph);
+        }, (err) => {
+            return err.code === pipelineErrorCodes.PIPELINE_INVALID_INPUT;
+        });
+
+        // Invalid Graph
+        await assert.rejects(async () => {
+            await pipeline.executePipeline(state, reg, null);
+        }, (err) => {
+            return err.code === pipelineErrorCodes.PIPELINE_INVALID_INPUT;
+        });
+    });
+
+    // ── 2. Orchestration Sequence & Call Counts ──────────────────────────────
+    test("2. Invokes all pipeline modules in correct chronological sequence exactly once", async () => {
+        const order = [];
+        const callCounts = {
+            scheduler: 0,
+            contextBuilder: 0,
+            gateway: 0,
+            worker: 0,
+            vfs: 0,
+            verification: 0
+        };
+
+        const mockScheduler = {
+            computeSchedule: (state, reg, graph) => {
+                order.push("scheduler");
+                callCounts.scheduler++;
+                return {
+                    readyTasks: ["t1"],
+                    assignments: [{ workerId: "w1", taskId: "t1" }],
+                    blockedTasks: [],
+                    metadata: { availableWorkers: 1, blockedCount: 0, readyCount: 1 }
+                };
+            }
+        };
+
+        const mockContextBuilder = {
+            buildContext: (taskId) => {
+                order.push("contextBuilder");
+                callCounts.contextBuilder++;
+                return { success: true, context: "prompt-context-data" };
+            }
+        };
+
+        const mockGateway = {
+            generateResponse: async (context) => {
+                order.push("gateway");
+                callCounts.gateway++;
+                return { success: true, text: "ai-generated-code-block" };
+            }
+        };
+
+        const mockWorker = {
+            generateFile: (aiText, taskId) => {
+                order.push("worker");
+                callCounts.worker++;
+                return { success: true, file: { path: "src/app.js", content: aiText } };
+            }
+        };
+
+        const mockVfs = {
+            createFile: (state, file) => {
+                order.push("vfs");
+                callCounts.vfs++;
+                return { success: true, vfs: state, files: [file] };
+            }
+        };
+
+        const mockVerification = {
+            runVerification: (files, opts) => {
+                order.push("verification");
+                callCounts.verification++;
+                return { success: true, errors: [], diagnostics: { totalErrors: 0 } };
+            }
+        };
+
+        const pipeline = createExecutionPipeline({
+            scheduler: mockScheduler,
+            contextBuilder: mockContextBuilder,
+            aiProviderGateway: mockGateway,
+            codingWorker: mockWorker,
+            vfs: mockVfs,
+            verification: mockVerification
+        });
+
+        const state = makeFrozenState(["t1"]);
+        const reg = createWorkerRegistry().create("w1").registry;
+        const graph = makeFrozenGraph([makeNode("t1", "REQ-1")]);
+
+        const result = await pipeline.executePipeline(state, reg, graph);
+
+        // Check sequence order
+        const expectedOrder = ["scheduler", "contextBuilder", "gateway", "worker", "vfs", "verification"];
+        assert.deepStrictEqual(order, expectedOrder);
+
+        // Check all modules invoked exactly once
+        for (const mod in callCounts) {
+            assert.strictEqual(callCounts[mod], 1, `${mod} must be called exactly once.`);
+        }
+
+        // Check correct return format
+        assert.strictEqual(result.success, true);
+        assert.ok(result.execution.schedule);
+        assert.ok(result.verification);
+        assert.strictEqual(result.diagnostics.totalErrors, 0);
+        assert.strictEqual(result.metadata.taskId, "t1");
+        assert.strictEqual(result.metadata.workerId, "w1");
+        
+        // Immutability audit
+        assert.ok(Object.isFrozen(result));
+        assert.ok(Object.isFrozen(result.execution));
+        assert.ok(Object.isFrozen(result.metadata));
+    });
+
+    // ── 3. Pipeline validator success & failure ──────────────────────────────
+    test("3. validatePipeline distinguishes valid and invalid results", () => {
+        // Success
+        const validResult = Object.freeze({
+            success: true,
+            execution: Object.freeze({ schedule: {} }),
+            verification: Object.freeze({}),
+            diagnostics: Object.freeze({}),
+            metadata: Object.freeze({ taskId: "t1" })
+        });
+        const resValid = validatePipeline(validResult);
+        assert.strictEqual(resValid.success, true);
+        assert.strictEqual(resValid.errors.length, 0);
+
+        // Mutable rejection
+        const mutableResult = {
+            success: true,
+            execution: { schedule: {} },
+            verification: {},
+            diagnostics: {},
+            metadata: {}
+        };
+        const resMutable = validatePipeline(mutableResult);
+        assert.strictEqual(resMutable.success, false);
+        assert.strictEqual(resMutable.errors[0].code, pipelineErrorCodes.PIPELINE_INVALID_INPUT);
+
+        // Missing field rejection
+        const missingResult = Object.freeze({
+            success: true,
+            execution: {},
+            verification: {},
+            diagnostics: {}
+        });
+        const resMissing = validatePipeline(missingResult);
+        assert.strictEqual(resMissing.success, false);
+        assert.strictEqual(resMissing.errors[0].code, pipelineErrorCodes.PIPELINE_INVALID_INPUT);
+    });
+
+    // ── 4. Deterministic orchestration ────────────────────────────────────────
+    test("4. ExecutionPipeline orchestration is deterministic", async () => {
+        const mockScheduler = {
+            computeSchedule: (state, reg, graph) => ({
+                readyTasks: ["t1"],
+                assignments: [{ workerId: "w1", taskId: "t1" }],
+                blockedTasks: [],
+                metadata: { availableWorkers: 1, blockedCount: 0, readyCount: 1 }
+            })
+        };
+        const mockContextBuilder = { buildContext: () => ({ success: true, context: "p" }) };
+        const mockGateway = { generateResponse: async () => ({ success: true, text: "res" }) };
+        const mockWorker = { generateFile: () => ({ success: true, file: { path: "a.js", content: "c" } }) };
+        const mockVfs = { createFile: (state, file) => ({ success: true, vfs: state, files: [file] }) };
+        const mockVerification = { runVerification: () => ({ success: true, errors: [], diagnostics: { totalErrors: 0 } }) };
+
+        const pipeline = createExecutionPipeline({
+            scheduler: mockScheduler,
+            contextBuilder: mockContextBuilder,
+            aiProviderGateway: mockGateway,
+            codingWorker: mockWorker,
+            vfs: mockVfs,
+            verification: mockVerification
+        });
+
+        const state = makeFrozenState(["t1"]);
+        const reg = createWorkerRegistry().create("w1").registry;
+        const graph = makeFrozenGraph([makeNode("t1", "REQ-1")]);
+
+        const res1 = await pipeline.executePipeline(state, reg, graph);
+        const res2 = await pipeline.executePipeline(state, reg, graph);
+
+        assert.deepStrictEqual(res1, res2);
+    });
+
+    // ── 5. Input non-mutation ─────────────────────────────────────────────────
+    test("5. executePipeline does not mutate caller arguments", async () => {
+        const state = makeFrozenState(["t1"]);
+        const reg = createWorkerRegistry().create("w1").registry;
+        const graph = makeFrozenGraph([makeNode("t1", "REQ-1")]);
+
+        const pipeline = createExecutionPipeline();
+
+        const snapState = JSON.stringify(state);
+        const snapReg = JSON.stringify(reg);
+        const snapGraph = JSON.stringify(graph);
+
+        await pipeline.executePipeline(state, reg, graph);
+
+        assert.strictEqual(JSON.stringify(state), snapState);
+        assert.strictEqual(JSON.stringify(reg), snapReg);
+        assert.strictEqual(JSON.stringify(graph), snapGraph);
+    });
+
+    // ── 6. Frozen error enums ─────────────────────────────────────────────────
+    test("6. Pipeline error codes enum is deeply frozen", () => {
+        assert.ok(Object.isFrozen(pipelineErrorCodes));
+        const required = ["PIPELINE_INVALID_INPUT", "PIPELINE_CONTEXT_ERROR", "PIPELINE_PROVIDER_ERROR", "PIPELINE_VERIFICATION_ERROR"];
+        for (const code of required) {
+            assert.strictEqual(pipelineErrorCodes[code], code);
+        }
+    });
+});
+
+
+suite("Recovery Layer (Phase 9E)", () => {
+    const {
+        createRecovery,
+        recoverExecution,
+        failureCategories,
+        recoveryErrorCodes,
+        createExecutionState,
+        createWorkerRegistry
+    } = require(path.join(backendRoot, "core/execution"));
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    const makeFrozenState = (pending, running = [], completed = [], failed = []) => {
+        const total = pending.length + running.length + completed.length + failed.length;
+        const state = {
+            version: "1.0",
+            metadata: { status: "RUNNING", executionId: null, createdAt: null },
+            queues: { pending, running, completed, failed },
+            statistics: { totalTasks: total, pending: pending.length, running: running.length, completed: completed.length, failed: failed.length }
+        };
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(state);
+    };
+
+    const makeFrozenCheckpoint = (completedTasks = [], retryCount = 0) => {
+        const checkpoint = {
+            version: "1.0",
+            metadata: { checkpointVersion: "1.0", plannerVersion: "1.0", graphVersion: "1.0", identityVersion: "1.0", createdBy: "test", retryCount },
+            planner: { version: "1.0", tasks: [] },
+            executionState: { completedTasks, runningTasks: [], pendingTasks: [], failedTasks: [] }
+        };
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(checkpoint);
+    };
+
+    const makeFrozenPipelineResult = (success, errorCode = null) => {
+        const result = {
+            success,
+            execution: { schedule: {} },
+            verification: success ? {} : null,
+            diagnostics: success ? {} : null,
+            metadata: {
+                taskId: "t1",
+                workerId: "w1"
+            }
+        };
+        if (!success && errorCode) {
+            result.metadata.error = {
+                code: errorCode,
+                message: "Pipeline failure"
+            };
+        }
+        const deepFreeze = (obj) => {
+            if (obj === null || typeof obj !== "object") return obj;
+            Object.freeze(obj);
+            Object.getOwnPropertyNames(obj).forEach(prop => {
+                if (obj.hasOwnProperty(prop) && obj[prop] !== null && typeof obj[prop] === "object" && !Object.isFrozen(obj[prop])) {
+                    deepFreeze(obj[prop]);
+                }
+            });
+            return obj;
+        };
+        return deepFreeze(result);
+    };
+
+    // ── 1. Invalid input rejection ──────────────────────────────────────────
+    test("1. Rejects invalid or mutable inputs in recoverExecution", () => {
+        const state = makeFrozenState([]);
+        const checkpoint = makeFrozenCheckpoint([]);
+        const pResult = makeFrozenPipelineResult(true);
+
+        // Invalid state
+        assert.throws(() => recoverExecution(null, checkpoint, pResult), (err) => {
+            return err.code === recoveryErrorCodes.RECOVERY_INVALID_INPUT;
+        });
+        const mutableState = { queues: {} };
+        assert.throws(() => recoverExecution(mutableState, checkpoint, pResult), (err) => {
+            return err.code === recoveryErrorCodes.RECOVERY_INVALID_INPUT;
+        });
+
+        // Invalid checkpoint
+        assert.throws(() => recoverExecution(state, null, pResult), (err) => {
+            return err.code === recoveryErrorCodes.RECOVERY_INVALID_CHECKPOINT;
+        });
+        const mutableCheckpoint = { executionState: {} };
+        assert.throws(() => recoverExecution(state, mutableCheckpoint, pResult), (err) => {
+            return err.code === recoveryErrorCodes.RECOVERY_INVALID_CHECKPOINT;
+        });
+
+        // Invalid pipelineResult
+        assert.throws(() => recoverExecution(state, checkpoint, null), (err) => {
+            return err.code === recoveryErrorCodes.RECOVERY_INVALID_PIPELINE;
+        });
+        const mutablePipelineResult = { success: true };
+        assert.throws(() => recoverExecution(state, checkpoint, mutablePipelineResult), (err) => {
+            return err.code === recoveryErrorCodes.RECOVERY_INVALID_PIPELINE;
+        });
+    });
+
+    // ── 2. Failure classification ─────────────────────────────────────────────
+    test("2. Correctly classifies success, recoverable and non-recoverable failures", () => {
+        const state = makeFrozenState([]);
+        const checkpoint = makeFrozenCheckpoint([]);
+
+        // Successful run
+        const successRes = makeFrozenPipelineResult(true);
+        const decSuccess = recoverExecution(state, checkpoint, successRes);
+        assert.strictEqual(decSuccess.recoveryDecision, "CONTINUE");
+        assert.strictEqual(decSuccess.checkpointAction, "SAVE");
+        assert.strictEqual(decSuccess.retryPlan.shouldRetry, false);
+
+        // Non-recoverable (Context Error)
+        const contextErrorRes = makeFrozenPipelineResult(false, "PIPELINE_CONTEXT_ERROR");
+        const decContext = recoverExecution(state, checkpoint, contextErrorRes);
+        assert.strictEqual(decContext.recoveryDecision, "ABORT");
+        assert.strictEqual(decContext.checkpointAction, "NONE");
+        assert.strictEqual(decContext.metadata.failureCategory, failureCategories.NON_RECOVERABLE);
+
+        // Recoverable (Verification Error)
+        const verErrorRes = makeFrozenPipelineResult(false, "PIPELINE_VERIFICATION_ERROR");
+        const decVer = recoverExecution(state, checkpoint, verErrorRes);
+        assert.strictEqual(decVer.recoveryDecision, "RETRY");
+        assert.strictEqual(decVer.checkpointAction, "RESTORE");
+        assert.strictEqual(decVer.metadata.failureCategory, failureCategories.VERIFICATION_FAILURE);
+
+        // State & Checkpoint Mismatch (Checkpoint Error)
+        const stateMismatch = makeFrozenState([], [], ["t1"]); // state has completed t1
+        const checkpointMismatch = makeFrozenCheckpoint([]); // checkpoint does not have completed t1
+        const decMismatch = recoverExecution(stateMismatch, checkpointMismatch, verErrorRes);
+        assert.strictEqual(decMismatch.recoveryDecision, "RESUME");
+        assert.strictEqual(decMismatch.checkpointAction, "RESTORE");
+        assert.strictEqual(decMismatch.metadata.failureCategory, failureCategories.CHECKPOINT_FAILURE);
+    });
+
+    // ── 3. Retry decision & backoff computation ──────────────────────────────
+    test("3. Enforces max retry limits and computes exponential backoff delays", () => {
+        const state = makeFrozenState([]);
+        const errorRes = makeFrozenPipelineResult(false, "PIPELINE_VERIFICATION_ERROR");
+
+        // Retry 1: currentRetryCount = 0 (before increment)
+        const cp0 = makeFrozenCheckpoint([], 0);
+        const dec1 = recoverExecution(state, cp0, errorRes, { maxRetries: 3 });
+        assert.strictEqual(dec1.recoveryDecision, "RETRY");
+        assert.strictEqual(dec1.retryPlan.shouldRetry, true);
+        assert.strictEqual(dec1.retryPlan.retryCount, 1);
+        assert.strictEqual(dec1.retryPlan.delay, 1000); // 1000 * 2^0 = 1000ms
+
+        // Retry 2: currentRetryCount = 1
+        const cp1 = makeFrozenCheckpoint([], 1);
+        const dec2 = recoverExecution(state, cp1, errorRes, { maxRetries: 3 });
+        assert.strictEqual(dec2.retryPlan.retryCount, 2);
+        assert.strictEqual(dec2.retryPlan.delay, 2000); // 1000 * 2^1 = 2000ms
+
+        // Retry 3: currentRetryCount = 2
+        const cp2 = makeFrozenCheckpoint([], 2);
+        const dec3 = recoverExecution(state, cp2, errorRes, { maxRetries: 3 });
+        assert.strictEqual(dec3.retryPlan.retryCount, 3);
+        assert.strictEqual(dec3.retryPlan.delay, 4000); // 1000 * 2^2 = 4000ms
+
+        // Retry 4: currentRetryCount = 3 (limit reached, maxRetries = 3)
+        const cp3 = makeFrozenCheckpoint([], 3);
+        const dec4 = recoverExecution(state, cp3, errorRes, { maxRetries: 3 });
+        assert.strictEqual(dec4.recoveryDecision, "ABORT");
+        assert.strictEqual(dec4.retryPlan.shouldRetry, false);
+        assert.strictEqual(dec4.checkpointAction, "NONE");
+    });
+
+    // ── 4. Immutability & Validation ──────────────────────────────────────────
+    test("4. recoverExecution returns deeply frozen valid recovery decisions", () => {
+        const state = makeFrozenState([]);
+        const checkpoint = makeFrozenCheckpoint([]);
+        const pResult = makeFrozenPipelineResult(true);
+
+        const res = recoverExecution(state, checkpoint, pResult);
+        assert.ok(Object.isFrozen(res));
+        assert.ok(Object.isFrozen(res.retryPlan));
+        assert.ok(Object.isFrozen(res.metadata));
+
+        // Validate structure
+        const { validateRecovery } = require(path.join(backendRoot, "core/execution"));
+        const val = validateRecovery(res);
+        assert.strictEqual(val.success, true);
+        assert.strictEqual(val.errors.length, 0);
+    });
+
+    // ── 5. Input non-mutation ─────────────────────────────────────────────────
+    test("5. Input arguments are never mutated during recoverExecution", () => {
+        const state = makeFrozenState([]);
+        const checkpoint = makeFrozenCheckpoint([]);
+        const pResult = makeFrozenPipelineResult(false, "PIPELINE_VERIFICATION_ERROR");
+
+        const snapState = JSON.stringify(state);
+        const snapCheckpoint = JSON.stringify(checkpoint);
+        const snapResult = JSON.stringify(pResult);
+
+        recoverExecution(state, checkpoint, pResult);
+
+        assert.strictEqual(JSON.stringify(state), snapState);
+        assert.strictEqual(JSON.stringify(checkpoint), snapCheckpoint);
+        assert.strictEqual(JSON.stringify(pResult), snapResult);
+    });
+
+    // ── 6. Unsupported failure handling ───────────────────────────────────────
+    test("6. Throws RECOVERY_UNSUPPORTED_FAILURE for unknown pipeline error codes", () => {
+        const state = makeFrozenState([]);
+        const checkpoint = makeFrozenCheckpoint([]);
+        const unknownResult = makeFrozenPipelineResult(false, "UNKNOWN_PIPELINE_CODE");
+
+        assert.throws(() => recoverExecution(state, checkpoint, unknownResult), (err) => {
+            return err.code === recoveryErrorCodes.RECOVERY_UNSUPPORTED_FAILURE;
+        });
+    });
+});
+
 (async () => {
     for (const suite of suites) {
         console.log(`\n── ${suite.name} ──`);
