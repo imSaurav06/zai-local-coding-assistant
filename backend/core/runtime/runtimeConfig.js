@@ -9,7 +9,9 @@ const CANONICAL_KEYS = new Set([
     "maxConcurrentWorkers",
     "enableShadowValidation",
     "enableRuntimeMetrics",
-    "enableCheckpointPersistence"
+    "enableCheckpointPersistence",
+    "enableVerification",
+    "enableRepair"
 ]);
 
 const ALLOWED_MODES = new Set(["LEGACY", "MODULAR", "SHADOW"]);
@@ -84,7 +86,13 @@ function validateRuntimeConfig(config) {
     }
 
     // 4. Validate boolean flags
-    const booleans = ["enableShadowValidation", "enableRuntimeMetrics", "enableCheckpointPersistence"];
+    const booleans = [
+        "enableShadowValidation",
+        "enableRuntimeMetrics",
+        "enableCheckpointPersistence",
+        "enableVerification",
+        "enableRepair"
+    ];
     for (const boolField of booleans) {
         if (config.hasOwnProperty(boolField) && typeof config[boolField] !== "boolean") {
             errors.push({
@@ -144,7 +152,9 @@ function createRuntimeConfig(config) {
         maxConcurrentWorkers: (config && config.maxConcurrentWorkers !== undefined) ? config.maxConcurrentWorkers : 3,
         enableShadowValidation: !!(config && config.enableShadowValidation),
         enableRuntimeMetrics: !!(config && config.enableRuntimeMetrics),
-        enableCheckpointPersistence: !!(config && config.enableCheckpointPersistence)
+        enableCheckpointPersistence: !!(config && config.enableCheckpointPersistence),
+        enableVerification: !!(config && config.enableVerification),
+        enableRepair: !!(config && config.enableRepair)
     };
 
     const frozen = deepFreezeRuntimeConfig(finalized);
@@ -182,13 +192,17 @@ function loadRuntimeConfig() {
     const rawShadow = process.env.ENABLE_SHADOW_VALIDATION === "true";
     const rawMetrics = process.env.ENABLE_RUNTIME_METRICS === "true";
     const rawCheckpoint = process.env.ENABLE_CHECKPOINT_PERSISTENCE === "true";
+    const rawVerification = process.env.ENABLE_VERIFICATION === "true";
+    const rawRepair = process.env.ENABLE_REPAIR === "true";
 
     const config = {
         runtimeMode: rawMode,
         maxConcurrentWorkers: rawWorkers,
         enableShadowValidation: rawShadow,
         enableRuntimeMetrics: rawMetrics,
-        enableCheckpointPersistence: rawCheckpoint
+        enableCheckpointPersistence: rawCheckpoint,
+        enableVerification: rawVerification,
+        enableRepair: rawRepair
     };
 
     const res = createRuntimeConfig(config);

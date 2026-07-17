@@ -1,0 +1,1620 @@
+
+── Durable Checkpoint Domain Model (Phase 10A-1) ──
+  ✓ 1. Reject invalid checkpoint creation inputs
+  ✓ 2. Reject invalid checkpoint validation inputs
+  ✓ 3. Reject validation of non-frozen/mutable checkpoints
+  ✓ 4. Reject duplicate task IDs in queues
+  ✓ 5. Reject duplicate worker IDs
+  ✓ 6. Reject malformed queues structure
+  ✓ 7. Reject malformed statistics (totalTasks mismatch)
+  ✓ 8. Reject malformed metadata (negative waveNumber)
+  ✓ 9. Reject unknown top-level properties
+  ✓ 10. Deep freeze created checkpoints and validations
+  ✓ 11. deepFreezeCheckpoint returns deeply frozen object
+  ✓ 12. Deterministic execution states and properties
+  ✓ 13. Input arguments are never mutated
+  ✓ 14. Error codes enum is deeply frozen
+  ✓ 15. Verify all required Public APIs are exported
+
+── Checkpoint Serializer Layer (Phase 10A-2) ──
+  ✓ 1. Serialize valid checkpoint to JSON string
+  ✓ 2. Deserialize valid checkpoint from JSON string
+  ✓ 3. Deep freeze restored checkpoint
+  ✓ 4. Reject invalid serialization/deserialization inputs
+  ✓ 5. Reject deserialization of malformed JSON
+  ✓ 6. Reject deserialization of malformed structures
+  ✓ 7. Reject incompatible version with CHECKPOINT_INCOMPATIBLE_VERSION
+  ✓ 8. Reject unknown properties during normalization/deserialization
+  ✓ 9. Preserve timestamps during serialization roundtrip
+  ✓ 10. Preserve structural elements during roundtrip
+  ✓ 11. normalizeCheckpoint produces deterministic property ordering
+  ✓ 12. Input argument is never mutated during serialization
+  ✓ 13. cloneCheckpoint produces a deep clone that is deeply frozen
+  ✓ 14. isSerializedCheckpoint validates JSON strings and parsed objects correctly
+  ✓ 15. Verify all required Public APIs are exported
+  ✓ 16. Preserve queue list order and worker order exactly
+  ✓ 17. Reject functions in checkpoints during serialization
+  ✓ 18. Reject undefined values in checkpoints during serialization
+
+── CheckpointStore Interface Layer (Phase 10A-3) ──
+  ✓ 1. createCheckpointStore instantiates a default abstract CheckpointStore
+  ✓ 2. Verify CheckpointStore instance exports all abstract methods
+  ✓ 3. save() throws NOT_IMPLEMENTED error
+  ✓ 4. load() throws NOT_IMPLEMENTED error
+  ✓ 5. exists() throws NOT_IMPLEMENTED error
+  ✓ 6. delete() throws NOT_IMPLEMENTED error
+  ✓ 7. list() throws NOT_IMPLEMENTED error
+  ✓ 8. health() throws NOT_IMPLEMENTED error
+  ✓ 9. CheckpointStore error codes are deeply frozen and immutable
+  ✓ 10. CheckpointStore instance is frozen and cannot be modified
+  ✓ 11. Verify abstract CheckpointStore module does not load active runtime database drivers
+
+── MongoCheckpointStore Implementation (Phase 10A-4) ──
+  ✓ 0. Setup Mongoose Mocks
+  ✓ 1. createMongoCheckpointStore instantiates MongoCheckpointStore
+  ✓ 2. Save and Load a valid checkpoint from MongoDB
+  ✓ 3. Verify exists() checks record presence correctly
+  ✓ 4. Verify delete() removes checkpoints successfully
+  ✓ 5. Verify list() returns all active checkpoint execution IDs
+  ✓ 6. Verify health() reports connection healthy state
+  ✓ 7. Save invokes validateCheckpoint and serializeCheckpoint
+  ✓ 8. Save rejects invalid checkpoint and returns validator error code
+  ✓ 9. Load for non-existent checkpoint returns null
+  ✓ 10. Database failures are mapped to CHECKPOINT_STORE_OPERATION_FAILED
+  ✓ z. Restore Mongoose Mocks
+
+── Checkpoint Lifecycle Layer (Phase 10A-5A) ──
+  ✓ 1. createInitialCheckpoint creates a valid initial checkpoint (waveNumber = 0)
+  ✓ 2. createRuntimeCheckpoint creates a runtime checkpoint preserving waveNumber and active workers
+  ✓ 3. shouldCreateCheckpoint returns true for allowed lifecycle events
+  ✓ 4. shouldCreateCheckpoint returns false for unknown events
+  ✓ 5. persistCheckpoint delegates save operation to CheckpointStore
+  ✓ 6. createInitialCheckpoint rejects invalid inputs
+  ✓ 7. persistCheckpoint rejects invalid parameters
+  ✓ 8. Verify lifecycle module remains storage independent and isolated from execution components
+
+── Checkpoint Resume Loader Layer (Phase 10A-5B) ──
+  ✓ 1. loadExecutionState loads, validates, and restores ExecutionState correctly
+  ✓ 2. Restored ExecutionState must be deeply frozen
+  ✓ 3. loadExecutionState returns null when store returns null (missing checkpoint)
+  ✓ 4. restoreExecutionState throws checkpoint validator code for invalid checkpoints
+  ✓ 5. restoreExecutionState throws incompatible version error
+  ✓ 6. Store load failures are mapped to CHECKPOINT_STORE_OPERATION_FAILED
+  ✓ 7. Verify resume loader module does not import runtime execution/AI gateways
+
+── Checkpoint Recovery Integration Layer (Phase 10A-5C) ──
+  ✓ 1. recoverExecution successfully restores ExecutionState and returns RecoveryResult
+  ✓ 2. recoverExecution throws error when checkpoint is missing
+  ✓ 3. recoverExecution throws error when checkpoint is corrupted
+  ✓ 4. recoverExecution throws error when checkpoint version is incompatible
+  ✓ 5. recoverExecution maps store failures correctly
+  ✓ 6. recoverExecution returns deeply frozen RecoveryResult
+  ✓ 7. Verify recovery integration layer does not import or execute Scheduler or AI modules
+
+── AI Provider Domain Model Layer (Phase 10B-1) ──
+  ✓ 1. createProvider constructs a valid, deeply frozen Provider object
+  ✓ 2. createProvider rejects invalid inputs (null, undefined, arrays, non-objects)
+  ✓ 3. createProvider rejects missing or invalid canonical fields
+  ✓ 4. createProvider rejects duplicate capability items
+  ✓ 5. createProvider rejects unknown properties at the top-level
+  ✓ 6. createProvider does not mutate user input config
+  ✓ 7. isProvider returns false for unfrozen or partially structured objects
+  ✓ 8. Deterministic value equality is preserved across multiple instantiations
+
+── AI Provider Interface Layer (Phase 10B-2) ──
+  ✓ 1. createProviderInterface returns a frozen instance of AIProvider
+  ✓ 2. providerInterfaceErrorCodes is deeply frozen and immutable
+  ✓ 3. Every method on AIProvider interface throws PROVIDER_INTERFACE_NOT_IMPLEMENTED
+  ✓ 4. Verify interface module does not import axios, fetch, or runtime execution layers
+
+── OpenRouter Provider Adapter Layer (Phase 10B-3) ──
+  ✓ z. Restore axios post stub
+  ✓ 1. OpenRouterProvider implements AIProvider and validates interface inheritance
+  ✓ 2. initialize() configures the provider and throws if apiKey is missing
+  ✓ 3. health() verifies initialization state
+  ✓ 4. chat() dispatches request, calls axios.post, and normalizes the successful response
+  ✓ 5. chat() maps axios/API failures into deterministic provider errors
+  ✓ 6. complete() translates prompt into chat messages and normalizes response
+  ✓ 7. supports() returns correct capabilities and unsupported methods reject
+  ✓ 8. Verify openRouterProvider.js has no execution engine or recovery imports
+
+── Z.ai Provider Adapter Layer (Phase 10B-4) ──
+  ✓ z. Restore axios post stub
+  ✓ 1. ZaiProvider implements AIProvider and validates interface inheritance
+  ✓ 2. initialize() configures the provider and throws if apiKey is missing
+  ✓ 3. initialize() configures the provider with model override
+  ✓ 4. health() verifies initialization state
+  ✓ 5. chat() dispatches request, calls axios.post, and normalizes the successful response
+  ✓ 6. chat() maps axios/API failures into deterministic provider errors
+  ✓ 7. complete() translates prompt into chat messages and normalizes response
+  ✓ 8. supports() returns correct capabilities and unsupported methods reject
+  ✓ 9. Verify zaiProvider.js has no execution engine or recovery imports
+
+── AI Provider Gateway Core Layer (Phase 10B-5B) ──
+  ✓ 1. createAIProviderGateway returns an instance of AIProviderGateway
+  ✓ 2. registerProvider registers adapters and listProviders returns IDs
+  ✓ 3. registerProvider rejects duplicate provider IDs
+  ✓ 4. execute() resolves provider, invokes chat, and normalizes response
+  ✓ 5. execute() rejects invalid request formats
+  ✓ 6. execute() selects highest-priority provider (Z.ai over OpenRouter) by default
+  ✓ 7. execute() falls back to OpenRouter when Z.ai fails
+  ✓ 8. execute() retries on transient errors and succeeds on retry
+  ✓ 9. execute() retries up to maxRetries and then throws error on exhaustion
+  ✓ 10. execute() triggers fallback when request times out
+  ✓ 11. execute() filters providers by capability supports
+  ✓ 12. execute() throws GATEWAY_CAPABILITY_UNSUPPORTED when no provider supports capability
+  ✓ 13. health() includes metrics in provider status
+  ✓ 14. Verify aiProviderGateway.js has no execution orchestrator or recovery dependencies
+
+── Repair Request Domain Model Layer (Phase 10C-1) ──
+  ✓ 1. createRepairRequest constructs a valid, deeply frozen RepairRequest object
+  ✓ 2. createRepairRequest rejects invalid inputs (null, undefined, arrays, non-objects)
+  ✓ 3. createRepairRequest rejects missing or invalid canonical fields
+  ✓ 4. createRepairRequest rejects unknown top-level properties
+  ✓ 5. createRepairRequest rejects invalid type values
+  ✓ 6. createRepairRequest rejects invalid severity values
+  ✓ 7. createRepairRequest rejects invalid status values
+  ✓ 8. createRepairRequest rejects duplicate affectedFiles items
+  ✓ 9. createRepairRequest does not mutate config parameter
+  ✓ 10. isRepairRequest returns false for unfrozen or partially structured objects
+  ✓ 11. Deterministic value equality is preserved across multiple instantiations
+
+── Patch Domain Model Layer (Phase 10C-2) ──
+  ✓ 1. createPatch constructs a valid, deeply frozen Patch object
+  ✓ 2. createPatch rejects invalid inputs (null, undefined, arrays, non-objects)
+  ✓ 3. createPatch rejects missing or invalid canonical fields
+  ✓ 4. createPatch rejects unknown top-level properties
+  ✓ 5. createPatch rejects invalid strategy values
+  ✓ 6. createPatch rejects invalid status values
+  ✓ 7. createPatch rejects empty operations array
+  ✓ 8. createPatch rejects operations with invalid type or missing path
+  ✓ 9. createPatch rejects duplicate affectedFiles items
+  ✓ 10. createPatch does not mutate config parameter
+  ✓ 11. isPatch returns false for unfrozen or partially structured objects
+  ✓ 12. Deterministic value equality is preserved across multiple instantiations
+
+── Repair Planner Model Layer (Phase 10C-3) ──
+  ✓ 1. createRepairPlan constructs a valid, deeply frozen RepairPlan from RepairRequest
+  ✓ 2. Strategy is mapped to DETERMINISTIC or AI depending on request type
+  ✓ 3. createRepairPlan rejects invalid RepairRequests
+  ✓ 4. validateRepairPlan rejects invalid priority values
+  ✓ 5. validateRepairPlan rejects empty steps or steps with invalid types
+  ✓ 6. validateRepairPlan rejects duplicate step types
+  ✓ 7. createRepairPlan does not mutate the input RepairRequest
+  ✓ 8. isRepairPlan returns false for unfrozen or partially structured objects
+  ✓ 9. Deterministic value equality is preserved across multiple plan instantiations
+
+── Repair Pipeline Model Layer (Phase 10C-4) ──
+  ✓ z. Restore verification runVerification
+  ✓ 1. execute() successfully coordinates RepairPlanner and Patch models
+  ✓ 2. execute() throws REPAIR_PIPELINE_INVALID_INPUT for invalid requests
+  ✓ 3. execute() handles and throws planner failures
+  ✓ 4. execute() handles and throws patch validation failures
+  ✓ 5. execute() does not mutate input parameters
+  ✓ 6. isRepairPipelineResult returns false for unfrozen or partially structured objects
+  ✓ 7. Deterministic value equality is preserved across multiple pipeline execution runs
+
+── Verification Adapter Layer (Phase 10C-5) ──
+  ✓ 1. verifyPatch executes runVerification and returns PASSED VerificationResult
+  ✓ 2. verifyPatch executes runVerification and returns FAILED VerificationResult on syntax failures
+  ✓ 3. verifyPatch throws VERIFICATION_ADAPTER_INVALID_INPUT for invalid patches
+  ✓ 4. validateVerificationResult rejects invalid schemas
+  ✓ 5. verifyPatch catches underlying engine crashes and maps them to VERIFICATION_ADAPTER_FAILED
+  ✓ 6. verifyPatch does not mutate input patch
+  ✓ 7. Deterministic value equality is preserved across multiple verify runs
+
+── Repair Session Model Layer (Phase 10C-6) ──
+  ✓ z. Restore verification runVerification
+  ✓ 1. execute() succeeds on the first pass when verification passes
+  ✓ 2. execute() succeeds on the second pass after a failed first pass
+  ✓ 3. execute() stops and returns EXHAUSTED when retry attempts are exceeded
+  ✓ 4. execute() throws REPAIR_SESSION_INVALID_INPUT for invalid requests
+  ✓ 5. validateRepairSession rejects invalid history list formats
+  ✓ 6. execute() does not mutate original parameters
+  ✓ 7. Deterministic value equality is preserved across multiple session runs
+
+── Runtime Configuration Model Layer (Phase 11A-1) ──
+  ✓ 1. createRuntimeConfig() successfully creates default config structure
+  ✓ 2. validates and accepts all supported modes
+  ✓ 3. rejects invalid mode strings
+  ✓ 4. rejects negative or non-integer worker counts
+  ✓ 5. rejects unknown/non-canonical configuration keys
+  ✓ 6. outputs are deeply frozen and immutable
+  ✓ 7. deterministic equality is preserved across matching instances
+  ✓ 8. does not mutate input config objects
+  ✓ 9. loadRuntimeConfig loads configuration from environment
+
+── Execution Runtime Adapter Layer (Phase 11A-2) ──
+  ✓ z. Restore legacy orchestrator
+  ✓ 1. createExecutionRuntimeAdapter() instantiates correct boundaries and default config
+  ✓ 2. execute() routes to legacy generationOrchestrator regardless of runtimeMode config
+  ✓ 3. execute() throws EXECUTION_RUNTIME_INVALID_REQUEST for invalid requests
+  ✓ 4. execute() validates ProjectSpec and rejects malformed schemas
+  ✓ 5. execute() wraps underlying legacy exceptions into EXECUTION_RUNTIME_EXECUTION_FAILED
+  ✓ 6. execute() does not mutate input execution requests
+  ✓ 7. validateExecutionRequest returns consistent schemas
+
+── Checkpoint Bridge Persistence Layer (Phase 11A-4B) ──
+  ✓ 1. createCheckpointBridge() default instantiates MongoCheckpointStore when enabled
+  ✓ 2. accepts an injected InMemoryCheckpointStore correctly
+  ✓ 3. throws CHECKPOINT_BRIDGE_INVALID_STORE when injected store is malformed
+  ✓ 4. bridge actions are no-op when enableCheckpointPersistence is false
+  ✓ 5. bridge translates store operational exceptions to CHECKPOINT_BRIDGE_FAILED
+  ✓ 6. bridge configuration and response layouts are frozen
+  ✓ 7. bridge executions do not mutate caller executionState
+
+── Verification & Repair Bridge Layer (Phase 11A-5) ──
+  ✓ 0. Setup runVerification mock delegation
+  ✓ 1. verifyAndRepair() returns result immediately when verification is disabled
+  ✓ 2. verifyAndRepair() succeeds without repair when verification passes
+  ✓ 3. verifyAndRepair() throws VERIFICATION_REPAIR_VERIFICATION_FAILED when verification fails and repair is disabled
+  ✓ 4. verifyAndRepair() triggers repair and returns repaired result on success
+  ✓ 5. verifyAndRepair() throws VERIFICATION_REPAIR_REPAIR_FAILED when repair attempts are exhausted
+  ✓ 6. verifyAndRepair() translates unexpected engine exceptions to VERIFICATION_REPAIR_BRIDGE_FAILED
+  ✓ 7. verifyAndRepair() does not mutate input generation result
+  ✓ 8. bridge configurations and response layouts are frozen
+  ✓ z. Restore verification runVerification
+
+── Content Guard (applyContentGuard) ──
+  ✓ accepts well-formed JSX file
+  ✓ rejects file with standalone '...' placeholder
+  ✓ rejects file with '(content given)' placeholder
+  ✓ rejects near-empty non-config source file
+  ✓ accepts legitimately tiny config files (postcss, tailwind)
+  ✓ rejects file with '{content}' template placeholder
+  ✓ rejects file with '// ... rest of component' pattern
+  ✓ handles multiple files - only flags offenders
+  ✓ rejects file with 'same as above' placeholder
+  ✓ rejects file with 'rest of code' placeholder
+  ✓ rejects file with 'implementation omitted' placeholder
+  ✓ rejects file with 'existing code here' placeholder
+  ✓ rejects file where AI returned markdown fence wrappers as raw content
+  ✓ does NOT reject README.md that legitimately contains markdown code fences
+  ✓ does NOT reject file with valid JSX that mentions 'code' in comments
+
+── validateProjectFiles — React/Vite Completeness ──
+  ✓ passes with all required React/Vite files present
+  ✓ flags missing src/main.jsx
+  ✓ flags missing src/App.jsx
+  ✓ flags missing index.html
+  ✓ flags src/App.jsx with boilerplate-only content
+  ✓ flags invalid JSON in package.json
+  ✓ flags undeclared external import
+
+── planGeneration — Strategy Selection ──
+  ✓ selects SCAFFOLD_AI for React/Vite projects
+  ✓ sets scaffoldAdapter to 'react-vite' for React/Vite
+  ✓ includes deterministic files for react-vite scaffold
+  ✓ returns maxAttempts repairPolicy
+  ✓ selects SCAFFOLD_AI for MERN stack (complex)
+  ✓ plan has tokenBudget > 0
+  ✓ plan has at least one generation unit
+
+── buildSharedContracts — Folder Structure ──
+  ✓ includes src/main.jsx for React frontend
+  ✓ includes src/App.jsx for React frontend
+  ✓ includes component paths derived from projectSpec.components
+  ✓ includes page paths derived from projectSpec.pagesAndRoutes
+  ✓ includes server.js and model paths for MERN spec
+  ✓ maps backendApis to apiEndpoints
+  ✓ maps databaseModels to databaseSchemas
+  ✓ no-backend spec does not include server.js
+
+── generateRichPlan — Markdown Content ──
+  ✓ includes project name in heading
+  ✓ includes Tech Stack section
+  ✓ includes Pages & Routes section with route table
+  ✓ includes UI Components section
+  ✓ includes Backend API table for MERN spec
+  ✓ includes Database Models for MERN spec
+  ✓ includes Assumptions section
+  ✓ includes Run & Build Commands section
+  ✓ no-backend spec does not include Backend API section
+
+── generateRichReadme — Content Validation ──
+  ✓ includes project name as H1 heading
+  ✓ includes Features section with page names
+  ✓ includes Tech Stack section
+  ✓ includes Getting Started with npm commands
+  ✓ includes Environment Variables table for MERN spec
+  ✓ includes API Endpoints table for MERN spec
+  ✓ includes Project Structure section
+  ✓ includes Prerequisites with Node.js when package.json exists
+  ✓ includes license section
+  ✓ MERN spec includes Data Models section
+
+── JS/JSX Syntax Validation ──
+  ✓ rejects malformed JSX
+  ✓ rejects unterminated JSX
+  ✓ rejects invalid import syntax
+  ✓ accepts valid JSX
+  ✓ accepts valid JS
+[REPAIR DEBUG 9A] Raw AI response for 'src/App.jsx':
+--- START_FILES ---
+--- FILE: src/App.jsx ---
+export default function App() { return <div>broken
+--- END_FILE ---
+--- END_FILES ---
+  ✓ rejects syntax-invalid repair output and keeps valid previous content
+  ✓ fails generation if repair budget is exhausted
+
+── Hardened Content Guard Semantics ──
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+export default function LandingPage() { return <div>Repaired, fully implemented Landing Page!</div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+
+--- GENERATION SUMMARY METRICS ---
+strategy=SCAFFOLD_AI
+planningMs=0
+scaffoldMs=0
+primaryAiCalls=0
+parallelAiCalls=0
+aiGenerationMs=0
+retries=0
+retryWaitMs=0
+timeouts=0
+networkErrors=0
+validationMs=0
+repairCalls=9
+repairMs=0
+databaseSaveMs=0
+totalMs=41
+----------------------------------
+
+  ✓ invalid file reaches targeted repair and revalidates
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: package.json ---
+```jsx
+{
+  "name": "fitzone",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.3.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  }
+}
+```
+--- END_FILE ---
+--- FILE: index.html ---
+```jsx
+<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+```
+--- END_FILE ---
+--- FILE: vite.config.js ---
+```jsx
+import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });
+```
+--- END_FILE ---
+--- FILE: src/main.jsx ---
+```jsx
+import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+```
+--- END_FILE ---
+--- FILE: src/App.jsx ---
+```jsx
+import React from 'react'; export default function App() { return <div className="text-white bg-gray-900 min-h-screen">Hello FitZone!</div>; }
+```
+--- END_FILE ---
+--- FILE: src/index.css ---
+```jsx
+@tailwind base; @tailwind components; @tailwind utilities; body { margin: 0; }
+```
+--- END_FILE ---
+--- FILE: README.md ---
+```jsx
+# FitZone
+
+A React landing page that is fully complete and has more than thirty characters to pass validation checks.
+```
+--- END_FILE ---
+--- FILE: src/components/Navbar.jsx ---
+```jsx
+import React from 'react'; export default function Navbar() { return <nav className="bg-gray-800 text-white p-4 flex justify-between items-center"><span className="font-bold">FitZone</span></nav>; }
+```
+--- END_FILE ---
+--- FILE: src/components/HeroSection.jsx ---
+```jsx
+import React from 'react'; export default function HeroSection() { return <section className="min-h-screen bg-gray-900 flex items-center justify-center"><h1 className="text-5xl font-bold text-white">Transform Your Body</h1></section>; }
+```
+--- END_FILE ---
+--- FILE: src/components/FeatureCard.jsx ---
+```jsx
+import React from 'react'; export default function FeatureCard({ title, desc }) { return <div className="bg-gray-800 rounded-xl p-6 text-white"><h3 className="font-bold text-xl mb-2">{title}</h3><p>{desc}</p></div>; }
+```
+--- END_FILE ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+... (content given)
+```
+--- END_FILE ---
+--- FILE: src/pages/ClassesPage.jsx ---
+```jsx
+import React from 'react'; export default function ClassesPage() { return <div className="bg-gray-900 min-h-screen py-16 px-8"><h1 className="text-3xl font-bold text-white mb-8">Our Classes</h1><p className="text-gray-400">Browse our full schedule of gym classes and find the perfect fit.</p></div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: package.json ---
+```jsx
+{
+  "name": "fitzone",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.3.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  }
+}
+```
+--- END_FILE ---
+--- FILE: index.html ---
+```jsx
+<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+```
+--- END_FILE ---
+--- FILE: vite.config.js ---
+```jsx
+import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });
+```
+--- END_FILE ---
+--- FILE: src/main.jsx ---
+```jsx
+import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+```
+--- END_FILE ---
+--- FILE: src/App.jsx ---
+```jsx
+import React from 'react'; export default function App() { return <div className="text-white bg-gray-900 min-h-screen">Hello FitZone!</div>; }
+```
+--- END_FILE ---
+--- FILE: src/index.css ---
+```jsx
+@tailwind base; @tailwind components; @tailwind utilities; body { margin: 0; }
+```
+--- END_FILE ---
+--- FILE: README.md ---
+```jsx
+# FitZone
+
+A React landing page that is fully complete and has more than thirty characters to pass validation checks.
+```
+--- END_FILE ---
+--- FILE: src/components/Navbar.jsx ---
+```jsx
+import React from 'react'; export default function Navbar() { return <nav className="bg-gray-800 text-white p-4 flex justify-between items-center"><span className="font-bold">FitZone</span></nav>; }
+```
+--- END_FILE ---
+--- FILE: src/components/HeroSection.jsx ---
+```jsx
+import React from 'react'; export default function HeroSection() { return <section className="min-h-screen bg-gray-900 flex items-center justify-center"><h1 className="text-5xl font-bold text-white">Transform Your Body</h1></section>; }
+```
+--- END_FILE ---
+--- FILE: src/components/FeatureCard.jsx ---
+```jsx
+import React from 'react'; export default function FeatureCard({ title, desc }) { return <div className="bg-gray-800 rounded-xl p-6 text-white"><h3 className="font-bold text-xl mb-2">{title}</h3><p>{desc}</p></div>; }
+```
+--- END_FILE ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+... (content given)
+```
+--- END_FILE ---
+--- FILE: src/pages/ClassesPage.jsx ---
+```jsx
+import React from 'react'; export default function ClassesPage() { return <div className="bg-gray-900 min-h-screen py-16 px-8"><h1 className="text-3xl font-bold text-white mb-8">Our Classes</h1><p className="text-gray-400">Browse our full schedule of gym classes and find the perfect fit.</p></div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/pages/LandingPage.jsx':
+--- START_FILES ---
+--- FILE: package.json ---
+```jsx
+{
+  "name": "fitzone",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.3.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  }
+}
+```
+--- END_FILE ---
+--- FILE: index.html ---
+```jsx
+<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+```
+--- END_FILE ---
+--- FILE: vite.config.js ---
+```jsx
+import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });
+```
+--- END_FILE ---
+--- FILE: src/main.jsx ---
+```jsx
+import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+```
+--- END_FILE ---
+--- FILE: src/App.jsx ---
+```jsx
+import React from 'react'; export default function App() { return <div className="text-white bg-gray-900 min-h-screen">Hello FitZone!</div>; }
+```
+--- END_FILE ---
+--- FILE: src/index.css ---
+```jsx
+@tailwind base; @tailwind components; @tailwind utilities; body { margin: 0; }
+```
+--- END_FILE ---
+--- FILE: README.md ---
+```jsx
+# FitZone
+
+A React landing page that is fully complete and has more than thirty characters to pass validation checks.
+```
+--- END_FILE ---
+--- FILE: src/components/Navbar.jsx ---
+```jsx
+import React from 'react'; export default function Navbar() { return <nav className="bg-gray-800 text-white p-4 flex justify-between items-center"><span className="font-bold">FitZone</span></nav>; }
+```
+--- END_FILE ---
+--- FILE: src/components/HeroSection.jsx ---
+```jsx
+import React from 'react'; export default function HeroSection() { return <section className="min-h-screen bg-gray-900 flex items-center justify-center"><h1 className="text-5xl font-bold text-white">Transform Your Body</h1></section>; }
+```
+--- END_FILE ---
+--- FILE: src/components/FeatureCard.jsx ---
+```jsx
+import React from 'react'; export default function FeatureCard({ title, desc }) { return <div className="bg-gray-800 rounded-xl p-6 text-white"><h3 className="font-bold text-xl mb-2">{title}</h3><p>{desc}</p></div>; }
+```
+--- END_FILE ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+... (content given)
+```
+--- END_FILE ---
+--- FILE: src/pages/ClassesPage.jsx ---
+```jsx
+import React from 'react'; export default function ClassesPage() { return <div className="bg-gray-900 min-h-screen py-16 px-8"><h1 className="text-3xl font-bold text-white mb-8">Our Classes</h1><p className="text-gray-400">Browse our full schedule of gym classes and find the perfect fit.</p></div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+  ✓ exhausted repair budget for Content Guard fails generation
+
+── Preview State Machine & Preconditions ──
+  ✓ invalid LandingPage.jsx cannot start preview (precondition fail)
+  ✓ syntax-invalid JSX cannot start preview (precondition fail)
+[Preview Service] Running install step 'npm install' in '.'...
+[MOCK SPAWN] cmd = npm.cmd args = [ 'install' ]
+[Preview Service] Running build step 'npm run build' in '.'...
+[MOCK SPAWN] cmd = npm.cmd args = [ 'run', 'build' ]
+[MOCK SPAWN] cmd = npx.cmd args = [ 'vite', '--port', '58407', '--strictPort', '--host', '127.0.0.1' ]
+[Preview Process stdout]: Vite compilation error: Failed to parse React components
+  ✓ Vite compilation error transitions to FAILED
+[Preview Service] Running install step 'npm install' in '.'...
+[Preview Service] Running build step 'npm run build' in '.'...
+  ✓ child process early exit transitions to FAILED
+
+── E2E Fix Regressions ──
+  ✓ sanitizePackageJson preserves build script
+  ✓ calculateAdaptiveTimeout stays within 120s–240s bounds
+
+── MERN Scaffold Registry & Contract Builder ──
+  ✓ isMernStack detects MERN correctly
+  ✓ generateScaffoldFiles returns mern adapter files
+  ✓ MERN frontend/package.json has react-router-dom and axios
+  ✓ MERN backend/package.json has express, mongoose, jsonwebtoken, bcryptjs
+  ✓ MERN backend/.env.example has PORT, MONGO_URI, JWT_SECRET
+  ✓ MERN vite.config.js has proxy to backend :5000
+  ✓ MERN contract has frontend and backend folder structure paths
+  ✓ MERN contract does not use flat server.js path
+
+── MERN Generation Planner — Strategy & Units ──
+  ✓ MERN spec selects CHUNKED strategy
+  ✓ MERN spec uses 'mern' scaffold adapter
+  ✓ MERN spec generates 6 MERN-specific generation units
+  ✓ MERN deterministic files include backend and frontend scaffold files
+  ✓ MERN plan isMern flag is true
+
+── validateProjectFiles — MERN Stack ──
+  ✓ passes with all required MERN files present
+  ✓ flags missing backend/server.js in MERN project
+  ✓ flags missing frontend/src/main.jsx in MERN project
+  ✓ flags missing backend/.env.example in MERN project
+  ✓ flags boilerplate-only frontend/src/App.jsx in MERN project
+
+── Content Guard — MERN Config File Exemptions ──
+  ✓ does not flag frontend/package.json as near-empty
+  ✓ does not flag frontend/vite.config.js as near-empty
+  ✓ does not flag backend/.env.example as near-empty
+  ✓ does not flag frontend/tailwind.config.js as near-empty
+
+── Generalized Stack Profiles & Project Manifests ──
+  ✓ Vanilla HTML/CSS/JS spec creates correct manifest
+  ✓ Next.js spec creates correct manifest
+  ✓ Express API spec creates correct manifest
+  ✓ FastAPI spec creates correct manifest
+
+── Mongoose Options Sanitization & Backend Readiness ──
+  ✓ detectProfile returns correct previewTimeoutMs for stacks
+[Sanitizer] Stripped obsolete Mongoose options from server.js
+  ✓ sanitizeMongooseConnectOptions strips useNewUrlParser and useUnifiedTopology
+[Preview Service] Running install step 'npm install' in '.'...
+[Preview Service] Starting single-tier backend on port 58409...
+[Preview Service] Backend readiness check succeeded. Live Preview is READY!
+  ✓ delayed server startup eventually becomes READY
+[Preview Service] Running install step 'npm install' in '.'...
+[Preview Service] Starting single-tier backend on port 58410...
+DEBUG child exits status: FAILED errors: [ 'Backend server closed early with code 1' ]
+  ✓ child exits before readiness transitions to FAILED
+[Preview Service] Running install step 'npm install' in '.'...
+[Preview Service] Starting single-tier backend on port 58411...
+DEBUG deadline exceeded status: FAILED errors: [
+  'Backend server did not become healthy within timeout: connect ECONNREFUSED'
+]
+  ✓ readiness deadline exceeded transitions to FAILED
+
+── Requirement Analysis Characterization (Phase 1A) ──
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 1/3)...
+[analyze /api/project/analyze] Received analysis response {
+  stage: 'parseSpec',
+  provider: 'mock',
+  model: 'mock-model',
+  contentLength: 614
+}
+  ✓ Valid requirement-analysis response parsing
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 1/3)...
+[analyze /api/project/analyze] Received analysis response {
+  stage: 'parseSpec',
+  provider: 'mock',
+  model: 'mock-model',
+  contentLength: 139
+}
+  ✓ Fenced JSON extraction with leading/trailing prose
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 1/3)...
+[analyze /api/project/analyze] Received analysis response {
+  stage: 'parseSpec',
+  provider: 'mock',
+  model: 'mock-model',
+  contentLength: 26
+}
+  ✓ Missing/partial fields defaults
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 1/3)...
+[analyze /api/project/analyze] Received analysis response {
+  stage: 'parseSpec',
+  provider: 'mock',
+  model: 'mock-model',
+  contentLength: 24
+}
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 2/3)...
+[analyze /api/project/analyze] Received analysis response {
+  stage: 'parseSpec',
+  provider: 'mock',
+  model: 'mock-model',
+  contentLength: 30
+}
+  ✓ Malformed AI output fallback retry success
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 1/3)...
+[analyze /api/project/analyze] Received analysis response {
+  stage: 'parseSpec',
+  provider: 'mock',
+  model: 'mock-model',
+  contentLength: 0
+}
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 2/3)...
+[analyze /api/project/analyze] Received analysis response {
+  stage: 'parseSpec',
+  provider: 'mock',
+  model: 'mock-model',
+  contentLength: 35
+}
+  ✓ Empty response behavior and retrying
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 1/3)...
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 2/3)...
+PROJECT SERVICE: Analyzing requirements via providerRouter (attempt 3/3)...
+  ✓ Provider failure retrying and propagation
+  ✓ Stack profiles mapping (unknown/dynamic stack)
+  ✓ projectSpec immutability under planner and contract building
+  ✓ Collision: React and Express without Mongo maps to dynamic fallback if React is in projectType
+  ✓ Collision: React and Express without Mongo maps to express if React is only in frontend field
+  ✓ Collision: Next.js and React maps to nextjs
+  ✓ Collision: Django backend maps to dynamic generating django files
+  ✓ Collision: Vanilla fallback maps correctly on empty backend/database
+
+── Canonical ProjectSpec Schema & Validation (Phase 1B) ──
+  ✓ 1. Complete valid canonical ProjectSpec passes
+  ✓ 2. Validation does not mutate input
+  ✓ 3. Validated output does not share nested mutable references with input
+  ✓ 4. Validated output is deeply immutable
+  ✓ 5. Missing schemaVersion fails
+  ✓ 6. Unsupported schemaVersion fails
+  ✓ 7. Missing required top-level field fails
+  ✓ 8. Wrong primitive type fails
+  ✓ 9. Wrong array element type fails
+  ✓ 10. Malformed pagesAndRoutes entry fails
+  ✓ 11. Malformed components entry fails
+  ✓ 12. Malformed backendApis entry fails
+  ✓ 13. Invalid HTTP method fails
+  ✓ 14. Malformed API path fails
+  ✓ 15. Duplicate API method/path fails
+  ✓ 16. Duplicate page route fails
+  ✓ 17. Duplicate component name fails
+  ✓ 18. Malformed databaseModels entry fails
+  ✓ 19. Duplicate database model name fails
+  ✓ 20. Invalid environment variable name fails
+  ✓ 21. Invalid dependency name fails according to documented policy
+  ✓ 22. Missing runBuildRequirements key fails
+  ✓ 23. Unknown top-level field behavior matches strictness policy
+  ✓ 24. Unknown nested field behavior matches strictness policy
+  ✓ 25. Empty/whitespace-only string behavior matches policy
+  ✓ 26. Multiple validation errors are returned where practical
+  ✓ 27. Validation error ordering is deterministic
+  ✓ 28. Same candidate produces deterministic validation result
+  ✓ 29. Total boundary checks with arbitrary inputs (null, undefined, date, class, functions)
+  ✓ 30. Sparse arrays are caught and fail validation
+  ✓ 31. Prototype pollution / inherited property bypasses are prevented
+  ✓ 32. Throwing getters are caught safely without crashing
+  ✓ 33. Route / API path strict validations
+  ✓ 34. Dependency name format rules (NPM scopes, versions, spaces)
+  ✓ 35. Environment variable name format rules (digits, lower, symbols)
+
+── ProjectSpec Compiler / Adapter (Phase 1C) ──
+  ✓ 1. Complete canonical-compatible legacy payload compiles successfully
+  ✓ 2. schemaVersion is assigned by compiler
+  ✓ 3. Caller-supplied schemaVersion cannot override compiler-owned version
+  ✓ 4. Missing array fields normalize to []
+  ✓ 5. Missing string fields normalize to characterized defaults
+  ✓ 6. Missing projectName defaults to MyProject
+  ✓ 7. Missing projectType defaults to Web Application
+  ✓ 8. Missing runBuildRequirements gets characterized default
+  ✓ 9. Input is not mutated
+  ✓ 10. Successful output shares no nested mutable references
+  ✓ 11. Successful output is deeply immutable
+  ✓ 12. Missing nested keys behavior for pagesAndRoutes
+  ✓ 13. Missing nested keys behavior for components
+  ✓ 14. Missing nested keys behavior for backendApis
+  ✓ 15. Missing nested keys behavior for databaseModels
+  ✓ 16. Extra nested fields policy
+  ✓ 17. Unknown top-level field policy
+  ✓ 18. Wrong top-level primitive type rejection
+  ✓ 19. Wrong collection type rejection
+  ✓ 20. Primitive nested array element rejection
+  ✓ 21. Sparse array rejection
+  ✓ 22. Null handling
+  ✓ 23. undefined handling
+  ✓ 24. Empty-string policy
+  ✓ 25. Whitespace-only policy
+  ✓ 26. 'None' casing/whitespace policy
+  ✓ 27. runBuildRequirements partial object behavior
+  ✓ 28. Invalid HTTP method delegated to validator
+  ✓ 29. Invalid route delegated to validator
+  ✓ 30. Duplicate route delegated to validator
+  ✓ 31. Duplicate API delegated to validator
+  ✓ 32. Invalid env var delegated to validator
+  ✓ 33. Invalid dependency delegated to validator
+  ✓ 34. Case preservation for stack fields, dependencies, env vars, routes, component/model names, and free text
+  ✓ 35. Stack semantic fields preserved and stack-selection quirks are not altered
+  ✓ 36. Missing, undefined, and null normalization policies matrix
+  ✓ 37. Validation errors remain structured
+  ✓ 38. Compiler errors are distinguishable from validator errors
+  ✓ 39. Error ordering deterministic
+  ✓ 40. Repeated compilation deterministic
+  ✓ 41. Arbitrary JS input does not unexpectedly throw
+  ✓ 42. Throwing getter safely rejected if testable
+  ✓ 43. Circular reference safely rejected
+
+── Requirement Identity (Phase 1D) ──
+  ✓ 1. Valid canonical ProjectSpec derives requirements successfully
+  ✓ 2. Identity API revalidates malformed ProjectSpec
+  ✓ 3. Input is not mutated
+  ✓ 4. Output shares no mutable nested references with input
+  ✓ 5. Output is deeply immutable
+  ✓ 6. Identity version exported
+  ✓ 7. Same ProjectSpec produces identical stableIds
+  ✓ 8. Same ProjectSpec produces identical displayIds
+  ✓ 9. Repeated derivation result is deterministic
+  ✓ 10. Reordering pages changes display order/displayIds as documented
+  ✓ 11. Reordering pages does not change stableIds
+  ✓ 12. Reordering APIs does not change stableIds
+  ✓ 13. Reordering components does not change stableIds
+  ✓ 14. Reordering database models does not change stableIds
+  ✓ 15. Semantic page change changes stableId
+  ✓ 16. Semantic API change changes stableId
+  ✓ 17. Semantic component change changes stableId
+  ✓ 18. Semantic database model change changes stableId
+  ✓ 19. projectName does not create a requirement
+  ✓ 20. schemaVersion does not create a requirement
+  ✓ 21. 'None' authentication produces no requirement
+  ✓ 22. Empty arrays produce no requirements
+  ✓ 23. assumptions follow documented non-requirement policy
+  ✓ 24. runBuildRequirements follows documented classification
+  ✓ 25. frontend classification behavior
+  ✓ 26. backend classification behavior
+  ✓ 27. database classification behavior
+  ✓ 28. authentication classification behavior
+  ✓ 29. designRequirements classification behavior
+  ✓ 30. deploymentRequirements classification behavior
+  ✓ 31. one route produces one route requirement
+  ✓ 32. one component produces one component requirement
+  ✓ 33. one API produces one API requirement
+  ✓ 34. one model produces one model requirement
+  ✓ 35. one integration produces one integration requirement if classified traceable
+  ✓ 36. one architecture constraint produces one requirement if classified traceable
+  ✓ 37. duplicate same-kind semantic requirements follow duplicate policy
+  ✓ 38. same semantic payload under different kinds does not accidentally collide
+  ✓ 39. duplicate metadata preserves source occurrences if policy requires it
+  ✓ 40. display IDs are REQ-001 format
+  ✓ 41. display IDs continue correctly beyond REQ-999
+  ✓ 42. source paths are precise
+  ✓ 43. sourcePath/index is not part of stableId
+  ✓ 44. identity version affects stableId namespace/input
+  ✓ 45. no timestamp/randomness
+  ✓ 46. malformed arbitrary JS inputs return structured failures
+  ✓ 47. throwing getter does not unexpectedly escape if safely testable
+  ✓ 48. circular input returns structured failure
+  ✓ 49. validation errors remain structured
+  ✓ 50. identity-layer errors remain structured
+  ✓ 51. error ordering deterministic
+  ✓ 52. full SHA-256 digest format is correct if selected
+  ✓ 53. collision-detection branch is testable without weakening production hash algorithm, if practical via internal dependency injection/test seam
+  ✓ 54. semanticKey is deterministically derived and caller-provided semanticKey is not allowed
+  ✓ 55. databaseModel field sorting preserves stableId, changed fields change stableId, duplicate fields are preserved
+  ✓ 56. exact None sentinel matches, other case-insensitive or integration none remain requirements
+  ✓ 57. property insertion order differences in object payloads do not alter stableId
+  ✓ 58. duplicate metadata contract checks
+
+── Pipeline Integration (Phase 1E) ──
+  ✓ 1. prepareCanonicalProjectSpec compiles, validates and derives identities
+  ✓ 2. prepareCanonicalProjectSpec throws PROJECT_PREPARATION_COMPILE_FAILED on invalid spec
+  ✓ 3. Canonical ProjectSpec and Requirement Identity are deeply immutable and isolated
+  ✓ 4. Generation planner and contract builder accept canonical ProjectSpec verbatim
+  ✓ 5. Stack selection quirks are preserved on compiled canonical boundary
+  ✓ 6. Already-canonical bypass check avoids double compilation but derives identities
+  ✓ 7. Exactly-once execution tracking in prepareCanonicalProjectSpec
+  ✓ 8. Compiler failure causes zero identity derivation calls and halts
+  ✓ 9. Persistence adapter strips schemaVersion and deep-clones ProjectSpec
+  ✓ 10. Immutable actual consumer audit checks compatibility
+  ✓ 11. Identity failure prevents all generation side effects
+  ✓ 12. analyzeRequirements observable contract remains unchanged
+  ✓ 13. Pre-1E vs Post-1E Project.create persistence shape equivalence
+  ✓ 14. Pre-1E vs Post-1E History.create persistence shape equivalence
+  ✓ 15. Public API response shape does not leak internal sidecar data
+  ✓ 16. Stack selection across multiple profiles through compiled canonical boundary
+  ✓ 17. Error propagation: compile failure thrown through orchestrateGeneration boundary
+  ✓ 18. Error propagation: identity failure thrown through orchestrateGeneration boundary
+  ✓ 19. Requirement Identity sidecar is retained in orchestrateGeneration return value
+  ✓ 20. Rollback boundary: reverting 1E changes removes all new imports and functions
+  ✓ 21. adaptProjectSpecForPersistence handles null/undefined gracefully
+
+── Requirement Classification (Phase 2A) ──
+  ✓ 1. Rejects invalid non-array input with appropriate error
+  ✓ 2. Rejects individual requirements missing critical fields
+  ✓ 3. Primary category maps strictly by requirement kind
+  ✓ 4. Changing keywords never changes primaryCategory
+  ✓ 5. Secondary tags are deterministic, sorted, and unique
+  ✓ 6. Output is deeply immutable and frozen
+  ✓ 7. Classification runs are deterministic and identical
+
+── RTM-Lite Model (Phase 2B) ──
+  ✓ 1. Rejects invalid non-array inputs
+  ✓ 2. Rejects individual requirements missing required fields
+  ✓ 3. Detects duplicate stableId and rejects creation
+  ✓ 4. Instantiates default status and empty evidence
+  ✓ 5. Populates correct deterministic metadata structure
+  ✓ 6. Output data structure is deeply frozen and immutable
+  ✓ 7. Creation is stateless, pure, and deterministic
+
+── RTM-Lite Builder (Phase 2C) ──
+  ✓ 1. Rejects invalid non-array inputs
+  ✓ 2. Invokes classifyRequirements and createRTM exactly once
+  ✓ 3. Classification failure prevents RTM creation and returns error
+  ✓ 4. createRTM failure propagates correctly
+  ✓ 5. Builder is deterministic and returns deeply frozen structure
+  ✓ 6. Caller input is never mutated
+
+── RTM-Lite Validator (Phase 2D) ──
+  ✓ 1. Valid frozen RTM is successfully accepted
+  ✓ 2. Rejects invalid root structures
+  ✓ 3. Rejects non-frozen RTM structures
+  ✓ 4. Rejects invalid status in entries
+  ✓ 5. Rejects invalid primaryCategory in entries
+  ✓ 6. Rejects invalid secondaryTags array patterns
+  ✓ 7. Rejects duplicate stableId across entries
+  ✓ 8. Rejects duplicate displayId across entries
+  ✓ 9. Rejects duplicate semanticKey within same kind
+  ✓ 10. Validation is deterministic and never mutates input
+
+── RTM Pipeline Integration (Phase 2E) ──
+  ✓ 1. RTM builder executes exactly once in preparation pipeline
+  ✓ 2. RTM validator executes exactly once in preparation pipeline
+  ✓ 3. Builder failure prevents generation and throws correct error code
+  ✓ 4. Validator failure prevents generation and throws correct error code
+  ✓ 5. RTM remains frozen in preparation result
+  ✓ 6. RTM never reaches persistence adapter
+  ✓ 7. RTM sidecar is not returned by public orchestrateGeneration result
+
+── TaskGraph Domain Model (Phase 3A) ──
+  ✓ 1. Rejects invalid non-array inputs
+  ✓ 2. Rejects individual requirements missing required fields
+  ✓ 3. Detects duplicate stableId and rejects creation
+  ✓ 4. Instantiates default status and empty dependencies
+  ✓ 5. Populates correct deterministic metadata structure
+  ✓ 6. Output data structure is deeply frozen and immutable
+  ✓ 7. Creation is stateless, pure, and deterministic
+  ✓ 8. Caller input is never mutated
+
+── Dependency Rule Engine (Phase 3B) ──
+  ✓ 1. Known kinds return expected dependency arrays
+  ✓ 2. Unknown or empty kinds are rejected with correct error codes
+  ✓ 3. Rules structure and returned arrays are deeply immutable and frozen
+  ✓ 4. Dependency mapping is deterministic and pure
+
+── TaskGraph Builder (Phase 3C) ──
+  ✓ 1. Rejects invalid requirements arrays or elements
+  ✓ 2. Correctly builds dependency edges and maps to stableId only
+  ✓ 3. Correctly populates dependents map on target nodes
+  ✓ 4. Tolerates missing dependency kinds in supplied payload
+  ✓ 5. Deep freezing guarantees immutable output
+  ✓ 6. Builds are stateless, pure, and deterministic
+  ✓ 7. Input parameters are never mutated
+
+── TaskGraph Validator (Phase 3D) ──
+  ✓ 1. Accepts a valid pre-built frozen TaskGraph
+  ✓ 2. Rejects root graph structures that are not frozen
+  ✓ 3. Rejects nodes containing duplicate stableId or displayId keys
+  ✓ 4. Rejects self dependencies (self-loops)
+  ✓ 5. Rejects asymmetric edges (A depends on B, but B has no dependent edge for A)
+  ✓ 6. Rejects broken references (dependencies pointing to non-existent nodes)
+  ✓ 7. Cycle detection correctly rejects graphs with cyclic dependencies
+  ✓ 8. Validation is deterministic and does not mutate graph parameters
+
+── TaskGraph Pipeline Integration (Phase 3E) ──
+  ✓ 1. TaskGraph Builder executes once in preparation pipeline
+  ✓ 2. TaskGraph Validator executes once in preparation pipeline
+  ✓ 3. Builder failure halts preparation and throws correct error code
+  ✓ 4. Validator failure halts preparation and throws correct error code
+  ✓ 5. TaskGraph remains frozen in preparation result
+  ✓ 6. TaskGraph never reaches persistence adapter
+  ✓ 7. TaskGraph sidecar is not returned by public orchestrateGeneration result
+
+── Planner Domain Model (Phase 4A) ──
+  ✓ 1. Rejects invalid non-object inputs
+  ✓ 2. Rejects invalid TaskGraph structures
+  ✓ 3. Rejects duplicate task stableId or displayId keys
+  ✓ 4. Instantiates PENDING status, ready=false, and blocked=false by default
+  ✓ 5. Populates correct metadata mapping
+  ✓ 6. Planner data structures are deeply frozen and immutable
+  ✓ 7. Planner creation is stateless and pure
+  ✓ 8. Caller taskGraph input parameters are never mutated
+
+── Topological Planner Foundation (Phase 4B) ──
+  ✓ 1. Correctly orders a simple Directed Acyclic Graph (DAG)
+  ✓ 2. Deterministically resolves sibling branches with multiple roots via displayId sorting
+  ✓ 3. Correctly orders a diamond graph structure
+  ✓ 4. Deterministically schedules multiple independent branches
+  ✓ 5. Rejects graph cycles with PLANNER_TOPOLOGY_CYCLE
+  ✓ 6. Creation is deterministic, pure, and does not mutate planner parameters
+
+── Ready Queue Builder (Phase 4C) ──
+  ✓ 1. Tasks without dependencies are READY if pending and not blocked
+  ✓ 2. Completed dependencies unlock tasks
+  ✓ 3. Blocked tasks are excluded from ready queue
+  ✓ 4. Pending dependencies block downstream tasks
+  ✓ 5. Ordering uses displayId ascending
+  ✓ 6. Planner input is never mutated, repeated runs are identical and output is frozen
+
+── Planner Validator (Phase 4D) ──
+  ✓ 1. Accepts a valid pre-built frozen Planner
+  ✓ 2. Rejects invalid root structures
+  ✓ 3. Rejects duplicate stableId across tasks
+  ✓ 4. Rejects duplicate displayId across tasks
+  ✓ 5. Rejects broken references in dependencies
+  ✓ 6. Rejects self-dependencies
+  ✓ 7. Rejects asymmetric edges
+  ✓ 8. Rejects invalid statuses
+  ✓ 9. Rejects non-frozen planners
+  ✓ 10. Validation is deterministic, pure, and does not mutate planner parameter
+
+── Planner Pipeline Integration (Phase 4E) ──
+  ✓ 1. Planner Model executes exactly once in preparation pipeline
+  ✓ 2. Planner Topology executes exactly once in preparation pipeline
+  ✓ 3. Ready Queue Builder executes exactly once in preparation pipeline
+  ✓ 4. Planner Validator executes exactly once in preparation pipeline
+  ✓ 5. Planner Model failure prevents planning and throws correct error code
+  ✓ 6. Planner Topology failure prevents planning and throws correct error code
+  ✓ 7. Ready Queue failure prevents planning and throws correct error code
+  ✓ 8. Planner validation failure prevents planning and throws correct error code
+  ✓ 9. Planner remains frozen in preparation result
+  ✓ 10. Planner never reaches persistence adapter
+  ✓ 11. Planner sidecar is not returned by public orchestrateGeneration result
+
+── Checkpoint Domain Model (Phase 5A) ──
+  ✓ 1. Rejects invalid non-object planner inputs
+  ✓ 2. Rejects invalid planner structures
+  ✓ 3. Rejects duplicate task IDs
+  ✓ 4. Checkpoint initializes correctly and populates executionState groups
+  ✓ 5. Checkpoint is deeply frozen and immutable
+  ✓ 6. Creation is stateless, pure, and deterministic
+  ✓ 7. Input parameters are never mutated
+
+── Resume State Foundation (Phase 5B) ──
+  ✓ 1. Rejects invalid non-object checkpoint inputs
+  ✓ 2. Rejects malformed checkpoint structure
+  ✓ 3. Resume state initializes correctly and preserves metadata
+  ✓ 4. Completed/pending/running/failed tasks arrays are correctly preserved
+  ✓ 5. Resume state output is deeply frozen and immutable
+  ✓ 6. Resume state creation is stateless, pure, and deterministic
+  ✓ 7. Input parameters are never mutated
+
+── Checkpoint Validator (Phase 5C) ──
+  ✓ 1. Accepts a valid pre-built frozen Checkpoint
+  ✓ 2. Rejects invalid root structures
+  ✓ 3. Rejects invalid metadata attributes
+  ✓ 4. Rejects duplicate task IDs across planner tasks
+  ✓ 5. Rejects non-frozen checkpoint configurations
+  ✓ 6. Validation process is pure, side-effect-free, and deterministic
+  ✓ 7. Input parameters are never mutated
+
+── Checkpoint Pipeline Integration (Phase 5D) ──
+  ✓ 1. Checkpoint Builder executes exactly once in preparation pipeline
+  ✓ 2. Checkpoint Validator executes exactly once in preparation pipeline
+  ✓ 3. Resume State Builder executes exactly once in preparation pipeline
+  ✓ 4. Checkpoint creation failure halts preparation and throws correct error code
+  ✓ 5. Checkpoint validation failure halts preparation and throws correct error code
+  ✓ 6. Resume state creation failure halts preparation and throws correct error code
+  ✓ 7. Checkpoint and ResumeState remain frozen in preparation result
+  ✓ 8. Checkpoint and ResumeState never reach persistence adapter
+  ✓ 9. Checkpoint and ResumeState sidecars are not returned by public orchestrateGeneration result
+
+── Context Builder Foundation (Phase 6A) ──
+  ✓ 1. Rejects invalid non-object inputs
+  ✓ 2. Rejects malformed projectSpec
+  ✓ 3. Rejects malformed requirement
+  ✓ 4. Rejects malformed plannerTask
+  ✓ 5. Rejects mismatched requirement/task identifiers
+  ✓ 6. Context initializes correctly with metadata and fields
+  ✓ 7. Context output is deeply frozen and immutable
+  ✓ 8. Context creation is stateless, pure, and deterministic
+  ✓ 9. Input parameters are never mutated
+
+── Repository-Aware Context (Phase 6B) ──
+  ✓ 1. Rejects invalid repository (not an array)
+  ✓ 2. Rejects missing target file in repository
+  ✓ 3. Resolves direct relative imports correctly
+  ✓ 4. Only direct imports resolved (no recursion)
+  ✓ 5. Ordering of importedFiles is deterministic (sorted by path)
+  ✓ 6. Output repositoryContext is deeply frozen
+  ✓ 7. Input parameters are never mutated
+
+── Symbol-Aware Context Resolution (Phase 6C) ──
+  ✓ 1. Reject malformed import metadata
+  ✓ 2. Correct extraction of default imports
+  ✓ 3. Correct extraction of named imports
+  ✓ 4. Correct extraction of namespace imports
+  ✓ 5. Ignore unsupported import styles
+  ✓ 6. Deterministic ordering
+  ✓ 7. Deep immutability
+  ✓ 8. No caller mutation
+  ✓ 9. Existing repository context remains unchanged
+
+── ContextBuilder ↔ RequirementIdentity Integration Alignment (Phase 6D) ──
+  ✓ 1. RequirementIdentity output has semanticKey (not description)
+  ✓ 2. ContextBuilder accepts canonical RequirementIdentity output directly
+  ✓ 3. ContextBuilder accepts all derived RequirementIdentity requirements
+  ✓ 4. ContextBuilder preserves semanticKey in context requirement copy
+  ✓ 5. ContextBuilder rejects a requirement with description but no semanticKey
+  ✓ 6. ContextBuilder rejects a requirement with empty semanticKey string
+  ✓ 7. Interface alignment confirmed: zero mismatch between producers and consumer
+
+── Transactional VFS Domain Model (Phase 7A) ──
+  ✓ 1. Reject invalid input
+  ✓ 2. Reject duplicate paths
+  ✓ 3. Correct initialization
+  ✓ 4. Default status assignment
+  ✓ 5. Deep immutability
+  ✓ 6. Deterministic creation
+  ✓ 7. No caller mutation
+
+── VFS Transaction Management (Phase 7B) ──
+  ✓ 1. beginTransaction activates transaction
+  ✓ 2. Nested beginTransaction rejected
+  ✓ 3. commitTransaction succeeds
+  ✓ 4. rollbackTransaction restores snapshot
+  ✓ 5. commit without active transaction rejected
+  ✓ 6. rollback without active transaction rejected
+  ✓ 7. Buffered operations cleared after commit
+  ✓ 8. Buffered operations cleared after rollback
+  ✓ 9. Deep immutability preserved
+  ✓ 10. Deterministic behavior
+  ✓ 11. No caller mutation
+
+── VFS File Modification Operations (Phase 7C) ──
+  ✓ 1. Create succeeds
+  ✓ 2. Duplicate rejected
+  ✓ 3. Update succeeds
+  ✓ 4. Update non-existent rejected
+  ✓ 5. Delete succeeds
+  ✓ 6. Delete non-existent rejected
+  ✓ 7. Transaction required
+  ✓ 8. Deterministic ordering
+  ✓ 9. Deep immutability
+  ✓ 10. Caller input unchanged
+
+── VFS State Sync & Verification (Phase 7D) ──
+  ✓ 1. Canonical synchronization succeeds
+  ✓ 2. Duplicate canonical paths rejected
+  ✓ 3. Verification succeeds on valid VFS
+  ✓ 4. Malformed VFS rejected
+  ✓ 5. Deterministic output
+  ✓ 6. Immutable output
+  ✓ 7. Caller input unchanged
+
+── Verification Engine (Phase 8A) ──
+  ✓ 1. Syntax checker success
+  ✓ 2. Syntax checker failures
+  ✓ 3. Import checker success
+  ✓ 4. Import checker failures
+  ✓ 5. Dependency checker success
+  ✓ 6. Dependency checker failures
+  ✓ 7. VerificationEngine aggregation and README validation
+  ✓ 8. Deterministic output
+  ✓ 9. Deep immutability
+  ✓ 10. Caller parameter non-mutation
+  ✓ 11. Compatibility wrapper inside validationProfiles
+
+── Verification Engine Integration (Phase 8B) ──
+  ✓ 1. VerificationEngine executes exactly once per verification stage call
+  ✓ 2. Successful verification allows orchestration to continue
+  ✓ 3. Verification failure produces structured errors
+  ✓ 4. Persistence never executes after verification failure (pipeline abort)
+  ✓ 5. Verification receives only generated files, not the whole repository
+  ✓ 6. Repeated executions remain deterministic
+  ✓ 7. No caller mutation
+
+── Verification Quality & Diagnostics (Phase 8C) ──
+  ✓ 1. verificationSeverity is frozen with correct values
+  ✓ 2. verificationCategory is frozen with correct values
+  ✓ 3. Syntax checker errors include severity and category
+  ✓ 4. Import checker errors include severity and category
+  ✓ 5. Dependency checker errors include severity and category
+  ✓ 6. VerificationEngine inline errors include severity and category
+  ✓ 7. computeDiagnostics rejects non-object input
+  ✓ 8. computeDiagnostics returns zero totals for a passing result
+  ✓ 9. computeDiagnostics returns correct error count for a failing result
+  ✓ 10. computeDiagnostics bySeverity counts are correct
+  ✓ 11. computeDiagnostics byCategory counts sum to totalErrors
+  ✓ 12. computeDiagnostics output is frozen
+  ✓ 13. computeDiagnostics does not mutate the caller's VerificationResult
+  ✓ 14. buildReport rejects non-object input
+  ✓ 15. buildReport shows PASS for a successful result
+  ✓ 16. buildReport shows FAIL for a failing result
+  ✓ 17. buildReport includes duration when provided
+  ✓ 18. buildReport includes all error entries with severity and category
+  ✓ 19. measureVerification returns result and non-negative durationMs
+  ✓ 20. measureVerification output is frozen and result matches runVerification
+
+── Bounded Targeted Repair — Phase 9A ──
+  ✓ 1. repairErrorCodes is frozen with required error code keys
+  ✓ 2. repairSingleFile rejects empty targetFileName with structured failure
+  ✓ 3. repairSingleFile rejects non-string targetFileName
+  ✓ 4. repairSingleFile rejects empty errors array
+  ✓ 5. repairSingleFile rejects non-array errors
+  ✓ 6. repairSingleFile rejects non-array files
+  ✓ 7. repairSingleFile rejects null projectSpec
+  ✓ 8. repairSingleFile rejects null contracts
+  ✓ 9. Repair failure result is frozen and immutable
+  ✓ 10. Caller files array is never mutated by repairSingleFile
+[REPAIR DEBUG 9A] Raw AI response for 'src/index.js':
+--- START_FILES ---
+--- FILE: package.json ---
+```jsx
+{
+  "name": "fitzone",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.3.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  }
+}
+```
+--- END_FILE ---
+--- FILE: index.html ---
+```jsx
+<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+```
+--- END_FILE ---
+--- FILE: vite.config.js ---
+```jsx
+import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });
+```
+--- END_FILE ---
+--- FILE: src/main.jsx ---
+```jsx
+import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+```
+--- END_FILE ---
+--- FILE: src/App.jsx ---
+```jsx
+import React from 'react'; export default function App() { return <div className="text-white bg-gray-900 min-h-screen">Hello FitZone!</div>; }
+```
+--- END_FILE ---
+--- FILE: src/index.css ---
+```jsx
+@tailwind base; @tailwind components; @tailwind utilities; body { margin: 0; }
+```
+--- END_FILE ---
+--- FILE: README.md ---
+```jsx
+# FitZone
+
+A React landing page that is fully complete and has more than thirty characters to pass validation checks.
+```
+--- END_FILE ---
+--- FILE: src/components/Navbar.jsx ---
+```jsx
+import React from 'react'; export default function Navbar() { return <nav className="bg-gray-800 text-white p-4 flex justify-between items-center"><span className="font-bold">FitZone</span></nav>; }
+```
+--- END_FILE ---
+--- FILE: src/components/HeroSection.jsx ---
+```jsx
+import React from 'react'; export default function HeroSection() { return <section className="min-h-screen bg-gray-900 flex items-center justify-center"><h1 className="text-5xl font-bold text-white">Transform Your Body</h1></section>; }
+```
+--- END_FILE ---
+--- FILE: src/components/FeatureCard.jsx ---
+```jsx
+import React from 'react'; export default function FeatureCard({ title, desc }) { return <div className="bg-gray-800 rounded-xl p-6 text-white"><h3 className="font-bold text-xl mb-2">{title}</h3><p>{desc}</p></div>; }
+```
+--- END_FILE ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+... (content given)
+```
+--- END_FILE ---
+--- FILE: src/pages/ClassesPage.jsx ---
+```jsx
+import React from 'react'; export default function ClassesPage() { return <div className="bg-gray-900 min-h-screen py-16 px-8"><h1 className="text-3xl font-bold text-white mb-8">Our Classes</h1><p className="text-gray-400">Browse our full schedule of gym classes and find the perfect fit.</p></div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/utils.js':
+--- START_FILES ---
+--- FILE: package.json ---
+```jsx
+{
+  "name": "fitzone",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.3.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  }
+}
+```
+--- END_FILE ---
+--- FILE: index.html ---
+```jsx
+<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+```
+--- END_FILE ---
+--- FILE: vite.config.js ---
+```jsx
+import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });
+```
+--- END_FILE ---
+--- FILE: src/main.jsx ---
+```jsx
+import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+```
+--- END_FILE ---
+--- FILE: src/App.jsx ---
+```jsx
+import React from 'react'; export default function App() { return <div className="text-white bg-gray-900 min-h-screen">Hello FitZone!</div>; }
+```
+--- END_FILE ---
+--- FILE: src/index.css ---
+```jsx
+@tailwind base; @tailwind components; @tailwind utilities; body { margin: 0; }
+```
+--- END_FILE ---
+--- FILE: README.md ---
+```jsx
+# FitZone
+
+A React landing page that is fully complete and has more than thirty characters to pass validation checks.
+```
+--- END_FILE ---
+--- FILE: src/components/Navbar.jsx ---
+```jsx
+import React from 'react'; export default function Navbar() { return <nav className="bg-gray-800 text-white p-4 flex justify-between items-center"><span className="font-bold">FitZone</span></nav>; }
+```
+--- END_FILE ---
+--- FILE: src/components/HeroSection.jsx ---
+```jsx
+import React from 'react'; export default function HeroSection() { return <section className="min-h-screen bg-gray-900 flex items-center justify-center"><h1 className="text-5xl font-bold text-white">Transform Your Body</h1></section>; }
+```
+--- END_FILE ---
+--- FILE: src/components/FeatureCard.jsx ---
+```jsx
+import React from 'react'; export default function FeatureCard({ title, desc }) { return <div className="bg-gray-800 rounded-xl p-6 text-white"><h3 className="font-bold text-xl mb-2">{title}</h3><p>{desc}</p></div>; }
+```
+--- END_FILE ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+... (content given)
+```
+--- END_FILE ---
+--- FILE: src/pages/ClassesPage.jsx ---
+```jsx
+import React from 'react'; export default function ClassesPage() { return <div className="bg-gray-900 min-h-screen py-16 px-8"><h1 className="text-3xl font-bold text-white mb-8">Our Classes</h1><p className="text-gray-400">Browse our full schedule of gym classes and find the perfect fit.</p></div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+[REPAIR DEBUG 9A] Raw AI response for 'src/components/A.js':
+--- START_FILES ---
+--- FILE: package.json ---
+```jsx
+{
+  "name": "fitzone",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.3.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  }
+}
+```
+--- END_FILE ---
+--- FILE: index.html ---
+```jsx
+<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+```
+--- END_FILE ---
+--- FILE: vite.config.js ---
+```jsx
+import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });
+```
+--- END_FILE ---
+--- FILE: src/main.jsx ---
+```jsx
+import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+```
+--- END_FILE ---
+--- FILE: src/App.jsx ---
+```jsx
+import React from 'react'; export default function App() { return <div className="text-white bg-gray-900 min-h-screen">Hello FitZone!</div>; }
+```
+--- END_FILE ---
+--- FILE: src/index.css ---
+```jsx
+@tailwind base; @tailwind components; @tailwind utilities; body { margin: 0; }
+```
+--- END_FILE ---
+--- FILE: README.md ---
+```jsx
+# FitZone
+
+A React landing page that is fully complete and has more than thirty characters to pass validation checks.
+```
+--- END_FILE ---
+--- FILE: src/components/Navbar.jsx ---
+```jsx
+import React from 'react'; export default function Navbar() { return <nav className="bg-gray-800 text-white p-4 flex justify-between items-center"><span className="font-bold">FitZone</span></nav>; }
+```
+--- END_FILE ---
+--- FILE: src/components/HeroSection.jsx ---
+```jsx
+import React from 'react'; export default function HeroSection() { return <section className="min-h-screen bg-gray-900 flex items-center justify-center"><h1 className="text-5xl font-bold text-white">Transform Your Body</h1></section>; }
+```
+--- END_FILE ---
+--- FILE: src/components/FeatureCard.jsx ---
+```jsx
+import React from 'react'; export default function FeatureCard({ title, desc }) { return <div className="bg-gray-800 rounded-xl p-6 text-white"><h3 className="font-bold text-xl mb-2">{title}</h3><p>{desc}</p></div>; }
+```
+--- END_FILE ---
+--- FILE: src/pages/LandingPage.jsx ---
+```jsx
+... (content given)
+```
+--- END_FILE ---
+--- FILE: src/pages/ClassesPage.jsx ---
+```jsx
+import React from 'react'; export default function ClassesPage() { return <div className="bg-gray-900 min-h-screen py-16 px-8"><h1 className="text-3xl font-bold text-white mb-8">Our Classes</h1><p className="text-gray-400">Browse our full schedule of gym classes and find the perfect fit.</p></div>; }
+```
+--- END_FILE ---
+--- END_FILES ---
+  ✓ 11. Caller files array is never mutated by repairAffectedFiles (legacy adapter)
+  ✓ 12. mapErrorsToFiles correctly identifies files mentioned in errors
+  ✓ 13. mapErrorsToFiles falls back to all files when no specific match
+  ✓ 14. mapErrorsToFiles handles structured error objects from Phase 8 verification
+  ✓ 15. repairSingleFile processes exactly one file — validated by contract signature
+  ✓ 16. repairAffectedFiles is backward-compatible and still exported
+  ✓ 17. repairSingleFile is exported as a function
+  ✓ 18. mapErrorsToFiles is exported and backward-compatible
+  ✓ 19. repairSingleFile is deterministic — same inputs produce same failure output
+  ✓ 20. No retry loop — repair failure propagates immediately without retry
+
+── Execution Domain Model (Phase 9A) ──
+  ✓ 1. Rejects invalid input (null, undefined, arrays, functions)
+  ✓ 2. Rejects mutable input
+  ✓ 3. Rejects duplicate task stableIds or displayIds
+  ✓ 4. Initialized successfully to READY status
+  ✓ 5. Queues initialized correctly
+  ✓ 6. Statistics initialized correctly
+  ✓ 7. Error codes enum is deeply frozen
+  ✓ 8. ExecutionState result is deeply frozen and immutable
+  ✓ 9. Outputs deterministic queue sorting by displayId
+  ✓ 10. Caller input taskGraph is never mutated by createExecutionState
+
+── Worker Lifecycle (Phase 9B) ──
+  ✓ 1. createWorker constructs a valid IDLE worker object
+  ✓ 2. Rejects invalid input values in createWorker and validateWorker
+  ✓ 3. Rejects invalid worker status
+  ✓ 4. Registry detects duplicate worker IDs on creation
+  ✓ 5. createWorkerRegistry initializes successfully
+  ✓ 6. Registry lookup finds registered workers and returns null otherwise
+  ✓ 7. Registry existence validation returns correct boolean states
+  ✓ 8. Registry is deeply frozen and does not mutate historical state
+  ✓ 9. validateWorker correctly distinguishes valid and invalid structures
+  ✓ 10. Worker error codes enum is deeply frozen
+  ✓ 11. Worker creation is pure and deterministic
+  ✓ 12. validateWorker and createWorkerRegistry never mutate inputs
+
+── Scheduler Decision Layer (Phase 9C) ──
+  ✓ 1. Rejects invalid or mutable inputs
+  ✓ 2. Discovers ready nodes (pending tasks with completed dependencies)
+  ✓ 3. Blocks tasks that depend on unfinished/running/failed tasks
+  ✓ 4. Schedules only to IDLE workers, ignoring active ones
+  ✓ 5. Respects parallel concurrency limit of max 3 active workers
+  ✓ 6. computeSchedule returns deeply frozen valid schedules
+  ✓ 7. Scheduler error codes enum is deeply frozen
+  ✓ 8. Ready tasks and idle workers sorted deterministically
+  ✓ 9. computeSchedule never mutates inputs
+  ✓ 10. Throws SCHEDULER_DEPENDENCY_ERROR for non-existent task reference
+
+── Execution Pipeline Coordinator (Phase 9D) ──
+  ✓ 1. Rejects invalid or mutable inputs
+  ✓ 2. Invokes all pipeline modules in correct chronological sequence exactly once
+  ✓ 3. validatePipeline distinguishes valid and invalid results
+  ✓ 4. ExecutionPipeline orchestration is deterministic
+  ✓ 5. executePipeline does not mutate caller arguments
+  ✓ 6. Pipeline error codes enum is deeply frozen
+
+── Recovery Layer (Phase 9E) ──
+  ✓ 1. Rejects invalid or mutable inputs in recoverExecution
+  ✓ 2. Correctly classifies success, recoverable and non-recoverable failures
+  ✓ 3. Enforces max retry limits and computes exponential backoff delays
+  ✓ 4. recoverExecution returns deeply frozen valid recovery decisions
+  ✓ 5. Input arguments are never mutated during recoverExecution
+  ✓ 6. Throws RECOVERY_UNSUPPORTED_FAILURE for unknown pipeline error codes
+
+==================================================
+Z.ai Backend Unit Test Results
+==================================================
+Total:  795
+Passed: 795  ✓
+Failed: 0  ✗
+==================================================
+
+All tests passed. ✓
+
+[Preview Service] Cleaning up all active preview sessions...

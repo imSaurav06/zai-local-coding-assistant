@@ -13,47 +13,51 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 - Transactional virtual file system (VFS) staging edits.
 - Incremental verification gates and isolated file repairs.
 - Durable checkpoint stores saving progress wave states to MongoDB.
+- Modular Execution Runtime and integration adapters.
 
 ---
 
 ## 2. Current Migration State
 
-*   **CURRENT PHASE**: PHASE 10 (AI Provider Gateway & Repair Engine Foundation)
-*   **LAST COMPLETED TASK PACK**: Phase 10C-7 (Repair Engine Production Readiness Audit)
-*   **Overall Status**: COMPLETE (Phase 10 Foundation, Gateway, and Repair Complete)
+*   **CURRENT PHASE**: PHASE 11A (Execution Runtime Integration - Bridge Layer)
+*   **LAST COMPLETED TASK PACK**: Phase 11A-5 (Verification + Repair Integration)
+*   **Overall Status**: COMPLETE (Phase 11A Features and Adapter Bridges Integrated)
 *   **Completed Phases**:
-    *   ✔ Phase 10A — Durable Checkpoint Foundation
-    *   ✔ Phase 10B — AI Provider Gateway
-    *   ✔ Phase 10C — Repair Engine
-*   **Working Tree State**: Clean
+    *   ✔ Phase 11A-1 — Feature Flag Foundation
+    *   ✔ Phase 11A-2 — Execution Runtime Adapter
+    *   ✔ Phase 11A-3 — Controller Integration
+    *   ✔ Phase 11A-4A — Checkpoint Bridge
+    *   ✔ Phase 11A-4B — Mongo Persistence Bridge
+    *   ✔ Phase 11A-5 — Verification + Repair Integration
+*   **Working Tree State**: Uncommitted Changes (All Phase 11A changes are present, tests verified)
 
 ---
 
-- **Git Branch**: `main`
-- **Working Tree State**: Unstaged changes.
-- **FILES MODIFIED / PATCHED IN 9F-A / 9F-B**:
-  - [generationOrchestrator.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/services/generationOrchestrator.js) (Added targeted repair bridge to loop, passed progress options)
-  - [recovery.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/recovery.js) (Refined mismatch invariant to check prefix-equality when allowProgress option is active)
-  - [executionPipeline.js](file:///c:/Users/LENOVO/OneDrive/Desktop/z.AI/backend/core/execution/executionPipeline.js) (Integrated into loop)
+## 3. Implementation Summary (Phase 11A)
 
----
+### 3.1 RuntimeConfig & Feature Flag Foundation
+- Added `enableVerification` and `enableRepair` configurations to `RuntimeConfig`.
+- Provided loading mappings from environment variables (`ENABLE_VERIFICATION` and `ENABLE_REPAIR`).
 
-## 3. Compatibility Patches (9F-A & 9F-B)
+### 3.2 Execution Runtime Adapter
+- Created `ExecutionRuntimeAdapter` class that implements runtime routing decisions.
+- Encapsulates execution boundaries, inputs validation, and backward compatibility.
 
-### 3.1 9F-A Legacy Targeted Repair Bridge
-*   **Root Cause**: The legacy file-targeted repair loop (`repairAffectedFiles`) was deleted in Phase 9F orchestrator integration, but the new `RepairEngine` is scheduled for a later phase. This disconnected verification-failed and placeholder-filled worker code from any repair execution, failing the legacy regression baseline.
-*   **Fix**: Added a compatibility bridge in the orchestrator execution loop's `RETRY` branch. If Recovery decides `RETRY` for `PROVIDER_FAILURE` or `WORKER_FAILURE` (triggered by content guard failures), the loop invokes `repairAffectedFiles` on the affected files, and merges repaired files back into the transactional VFS.
+### 3.3 Checkpoint Bridge & Mongo CheckpointStore
+- Created `CheckpointBridge` to manage Durability state transitions.
+- Integrated `MongoCheckpointStore` for persistent MongoDB state saves/updates.
 
-### 3.2 9F-B Recovery Checkpoint Invariant Refinement
-*   **Root Cause**: In 9F, Recovery naively checked for exact equality between the startup `checkpoint`'s `completedTasks` and the live `executionState.queues.completed` list. Under ADR-011, checkpoints are updated only at wave boundaries, meaning checkpoints naturally desynchronize/lag behind the state as tasks finish one-by-one inside a wave. Comparing them strictly on retries threw false-positive `CHECKPOINT_FAILURE` aborts.
-*   **Fix**: Refined the Recovery validation scope. An `allowProgress` option was introduced for in-progress waves. When enabled, checkpoint completion is verified via prefix-matching (ensuring the live state is a proper superset of the checkpoint and has not gone backward), while maintaining strict exact-equality checks by default for startup resume operations.
+### 3.4 Verification & Repair Bridge
+- Implemented `VerificationRepairBridge` coordinating `VerificationAdapter` and `RepairSession`.
+- Runs syntax validations on output code patches, triggers isolated repairs when errors are detected, and maps failures correctly.
+- Safely integrated into `ExecutionRuntimeAdapter` execution flow.
 
 ---
 
 ## 4. Discovered Test Baseline Summary
 - **Verified Regression Command**: `node tests/run_tests.js` inside `backend` directory.
-- **TESTS LAST RUN**: 2026-07-17T23:44:54+05:30
-- **TEST RESULTS**: 761 passed, 0 failed.
+- **TESTS LAST RUN**: 2026-07-17T20:30:49Z
+- **TEST RESULTS**: 795 passed, 0 failed.
 - **KNOWN FAILURES**: None.
 - **BLOCKERS**: None.
 - **AI Provider Configuration**:
@@ -72,10 +76,7 @@ Evolve the Z.ai Local Coding Assistant into a decoupled, high-reliability AI app
 ---
 
 ## 6. Next Exact Action
-- **Next Milestone**: Phase 11 — Execution Runtime Integration.
-- **Status**: No implementation has started.
+- **Next Milestone**: Phase 11B — Parallel Scheduler Integration.
 - **Objectives**:
-  - Integrate the new modular runtime.
-  - Replace legacy orchestration incrementally.
-  - Preserve backward compatibility.
-  - Maintain regression safety.
+  - Integrate modular topological scheduling.
+  - Implement concurrent parallel task workers.

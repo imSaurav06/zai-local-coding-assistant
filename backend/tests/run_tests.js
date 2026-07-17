@@ -106,6 +106,9 @@ require("./core/runtime/executionRuntimeAdapter.test.js")(suite, test);
 // Register Checkpoint Bridge Tests (Phase 11A-4A)
 require("./core/runtime/checkpointBridge.test.js")(suite, test);
 
+// Register Verification Repair Bridge Tests (Phase 11A-5)
+require("./core/runtime/verificationRepairBridge.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

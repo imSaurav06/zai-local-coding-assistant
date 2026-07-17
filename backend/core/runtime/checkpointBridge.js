@@ -259,24 +259,46 @@ function createCheckpointBridge(config = {}) {
     const enableCheckpointPersistence = !!config.enableCheckpointPersistence;
 
     let checkpointStore = config.checkpointStore || null;
-    if (enableCheckpointPersistence && !checkpointStore) {
-        checkpointStore = new InMemoryCheckpointStore();
+    if (enableCheckpointPersistence) {
+        if (!checkpointStore) {
+            const { createMongoCheckpointStore } = require("../checkpoints");
+            checkpointStore = createMongoCheckpointStore();
+        }
+
+        if (checkpointStore === null || checkpointStore === undefined) {
+            const err = new Error("CheckpointStore injection failed: store cannot be null when persistence is enabled.");
+            err.code = checkpointBridgeErrorCodes.CHECKPOINT_BRIDGE_INVALID_STORE;
+            throw err;
+        }
+
+        // Validate interface methods
+        const requiredMethods = ["save", "load", "exists", "delete", "list", "health"];
+        for (const m of requiredMethods) {
+            if (typeof checkpointStore[m] !== "function") {
+                const err = new Error(`Invalid CheckpointStore: method '${m}' is not implemented.`);
+                err.code = checkpointBridgeErrorCodes.CHECKPOINT_BRIDGE_INVALID_STORE;
+                throw err;
+            }
+        }
     }
 
-    return {
-        config: {
+    const bridge = {
+        config: Object.freeze({
             enableCheckpointPersistence,
             checkpointStore
-        },
+        }),
         initializeExecutionCheckpoint,
         updateExecutionCheckpoint,
         finalizeExecutionCheckpoint
     };
+
+    return Object.freeze(bridge);
 }
 
 module.exports = {
     createCheckpointBridge,
     validateCheckpointBridgeRequest,
     checkpointBridgeErrorCodes,
-    CHECKPOINT_BRIDGE_VERSION
+    CHECKPOINT_BRIDGE_VERSION,
+    InMemoryCheckpointStore
 };

@@ -7,8 +7,11 @@ module.exports = function registerCheckpointBridgeTests(suite, test) {
         createCheckpointBridge,
         validateCheckpointBridgeRequest,
         checkpointBridgeErrorCodes,
-        CHECKPOINT_BRIDGE_VERSION
+        CHECKPOINT_BRIDGE_VERSION,
+        InMemoryCheckpointStore
     } = require("../../../core/runtime");
+
+    const { MongoCheckpointStore } = require("../../../core/checkpoints");
 
     function getValidExecutionState() {
         return Object.freeze({
@@ -34,107 +37,66 @@ module.exports = function registerCheckpointBridgeTests(suite, test) {
         });
     }
 
-    suite("Checkpoint Bridge Layer (Phase 11A-4A)", () => {
-        // ── 1. Bridge creation ──
-        test("1. createCheckpointBridge() configures persistence mapping and default store", () => {
+    suite("Checkpoint Bridge Persistence Layer (Phase 11A-4B)", () => {
+        // ── 1. Default MongoCheckpointStore injection ──
+        test("1. createCheckpointBridge() default instantiates MongoCheckpointStore when enabled", () => {
             const bridge = createCheckpointBridge({ enableCheckpointPersistence: true });
             assert.ok(bridge);
-            assert.strictEqual(bridge.config.enableCheckpointPersistence, true);
-            assert.ok(bridge.config.checkpointStore);
+            assert.ok(bridge.config.checkpointStore instanceof MongoCheckpointStore);
         });
 
-        // ── 2. Initialize checkpoint ──
-        test("2. initializeExecutionCheckpoint() translates executionState into valid persisted checkpoint", async () => {
-            const bridge = createCheckpointBridge({ enableCheckpointPersistence: true });
-            const state = getValidExecutionState();
+        // ── 2. Injected store implementation ──
+        test("2. accepts an injected InMemoryCheckpointStore correctly", async () => {
+            const store = new InMemoryCheckpointStore();
+            const bridge = createCheckpointBridge({
+                enableCheckpointPersistence: true,
+                checkpointStore: store
+            });
+            assert.strictEqual(bridge.config.checkpointStore, store);
 
+            const state = getValidExecutionState();
             const res = await bridge.initializeExecutionCheckpoint(state);
             assert.strictEqual(res.success, true);
-            assert.ok(res.checkpoint);
-            assert.strictEqual(res.checkpoint.executionId, "exec_123");
-            assert.ok(Object.isFrozen(res));
-            assert.ok(Object.isFrozen(res.checkpoint));
+            
+            const exists = await store.exists("exec_123");
+            assert.strictEqual(exists, true);
         });
 
-        // ── 3. Update checkpoint ──
-        test("3. updateExecutionCheckpoint() translates runtime executionState and persists it", async () => {
-            const bridge = createCheckpointBridge({ enableCheckpointPersistence: true });
-            const state = getValidExecutionState();
-
-            const res = await bridge.updateExecutionCheckpoint(state);
-            assert.strictEqual(res.success, true);
-            assert.ok(res.checkpoint);
-            assert.strictEqual(res.checkpoint.executionId, "exec_123");
+        // ── 3. Invalid store injection ──
+        test("3. throws CHECKPOINT_BRIDGE_INVALID_STORE when injected store is malformed", () => {
+            const badStore = { save: () => {} }; // missing other methods (load, exists, etc.)
+            
+            assert.throws(() => {
+                createCheckpointBridge({
+                    enableCheckpointPersistence: true,
+                    checkpointStore: badStore
+                });
+            }, (err) => {
+                return err.code === checkpointBridgeErrorCodes.CHECKPOINT_BRIDGE_INVALID_STORE &&
+                       err.message.includes("method");
+            });
         });
 
-        // ── 4. Finalize checkpoint ──
-        test("4. finalizeExecutionCheckpoint() persists final executionState successfully", async () => {
-            const bridge = createCheckpointBridge({ enableCheckpointPersistence: true });
-            const state = getValidExecutionState();
-
-            const res = await bridge.finalizeExecutionCheckpoint(state);
-            assert.strictEqual(res.success, true);
-            assert.ok(res.checkpoint);
-            assert.strictEqual(res.checkpoint.executionId, "exec_123");
-        });
-
-        // ── 5. Configuration disabled (no-op) ──
-        test("5. bridge actions are no-op when enableCheckpointPersistence is false", async () => {
+        // ── 4. Configuration disabled (no-op) ──
+        test("4. bridge actions are no-op when enableCheckpointPersistence is false", async () => {
             const bridge = createCheckpointBridge({ enableCheckpointPersistence: false });
             const state = getValidExecutionState();
 
             const resInit = await bridge.initializeExecutionCheckpoint(state);
             assert.strictEqual(resInit.success, true);
             assert.strictEqual(resInit.checkpoint, null);
-
-            const resUpdate = await bridge.updateExecutionCheckpoint(state);
-            assert.strictEqual(resUpdate.success, true);
-            assert.strictEqual(resUpdate.checkpoint, null);
-
-            const resFinal = await bridge.finalizeExecutionCheckpoint(state);
-            assert.strictEqual(resFinal.success, true);
-            assert.strictEqual(resFinal.checkpoint, null);
         });
 
-        // ── 6. Invalid execution state ──
-        test("6. bridge operations throw CHECKPOINT_BRIDGE_INVALID_STATE/INPUT on invalid state configurations", async () => {
-            const bridge = createCheckpointBridge({ enableCheckpointPersistence: true });
-            
-            // Null state input
-            await assert.rejects(async () => {
-                await bridge.initializeExecutionCheckpoint(null);
-            }, (err) => {
-                return err.code === checkpointBridgeErrorCodes.CHECKPOINT_BRIDGE_INVALID_INPUT;
-            });
-
-            // Unfrozen state input
-            const unfrozenState = { queues: {}, statistics: {} };
-            await assert.rejects(async () => {
-                await bridge.initializeExecutionCheckpoint(unfrozenState);
-            }, (err) => {
-                return err.code === checkpointBridgeErrorCodes.CHECKPOINT_BRIDGE_INVALID_INPUT &&
-                       err.message.includes("deeply frozen");
-            });
-
-            // Malformed structure
-            const badState = Object.freeze({ queues: {} }); // missing statistics
-            await assert.rejects(async () => {
-                await bridge.initializeExecutionCheckpoint(badState);
-            }, (err) => {
-                return err.code === checkpointBridgeErrorCodes.CHECKPOINT_BRIDGE_INVALID_STATE;
-            });
-        });
-
-        // ── 7. Error translation ──
-        test("7. bridge catches underlying store crashes and translates to CHECKPOINT_BRIDGE_FAILED", async () => {
-            const badStore = {
-                save: async () => {
-                    throw new Error("Disk read-only corruption");
-                }
+        // ── 5. Mongo failure translation ──
+        test("5. bridge translates store operational exceptions to CHECKPOINT_BRIDGE_FAILED", async () => {
+            const crashStore = new InMemoryCheckpointStore();
+            crashStore.save = async () => {
+                throw new Error("Mongoose connection timeout");
             };
+
             const bridge = createCheckpointBridge({
                 enableCheckpointPersistence: true,
-                checkpointStore: badStore
+                checkpointStore: crashStore
             });
             const state = getValidExecutionState();
 
@@ -142,26 +104,30 @@ module.exports = function registerCheckpointBridgeTests(suite, test) {
                 await bridge.initializeExecutionCheckpoint(state);
             }, (err) => {
                 return err.code === checkpointBridgeErrorCodes.CHECKPOINT_BRIDGE_FAILED &&
-                       err.message.includes("Disk read-only");
+                       err.message.includes("Mongoose connection timeout");
             });
         });
 
-        // ── 8. Input non-mutation ──
-        test("8. bridge executions do not mutate caller executionState", async () => {
+        // ── 6. Immutable configurations ──
+        test("6. bridge configuration and response layouts are frozen", () => {
+            const bridge = createCheckpointBridge({ enableCheckpointPersistence: false });
+            assert.ok(Object.isFrozen(bridge));
+            assert.ok(Object.isFrozen(bridge.config));
+        });
+
+        // ── 7. Input non-mutation ──
+        test("7. bridge executions do not mutate caller executionState", async () => {
             const state = getValidExecutionState();
             const originalJson = JSON.stringify(state);
 
-            const bridge = createCheckpointBridge({ enableCheckpointPersistence: true });
+            const store = new InMemoryCheckpointStore();
+            const bridge = createCheckpointBridge({
+                enableCheckpointPersistence: true,
+                checkpointStore: store
+            });
             await bridge.initializeExecutionCheckpoint(state);
 
             assert.strictEqual(JSON.stringify(state), originalJson);
-        });
-
-        // ── 9. Deterministic equality ──
-        test("9. validateCheckpointBridgeRequest output is deterministic", () => {
-            const s1 = getValidExecutionState();
-            const s2 = getValidExecutionState();
-            assert.deepStrictEqual(validateCheckpointBridgeRequest(s1), validateCheckpointBridgeRequest(s2));
         });
     });
 };

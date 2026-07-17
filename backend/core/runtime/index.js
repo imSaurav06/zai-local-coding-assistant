@@ -24,8 +24,19 @@ const {
     createCheckpointBridge,
     validateCheckpointBridgeRequest,
     checkpointBridgeErrorCodes,
-    CHECKPOINT_BRIDGE_VERSION
+    CHECKPOINT_BRIDGE_VERSION,
+    InMemoryCheckpointStore
 } = require("./checkpointBridge");
+
+const {
+    createVerificationRepairBridge,
+    verifyExecutionResult,
+    repairExecutionResult,
+    verifyAndRepair,
+    validateVerificationRepairRequest,
+    verificationRepairBridgeErrorCodes,
+    VERIFICATION_REPAIR_BRIDGE_VERSION
+} = require("./verificationRepairBridge");
 
 module.exports = {
     createRuntimeConfig,
@@ -45,5 +56,13 @@ module.exports = {
     createCheckpointBridge,
     validateCheckpointBridgeRequest,
     checkpointBridgeErrorCodes,
-    CHECKPOINT_BRIDGE_VERSION
+    CHECKPOINT_BRIDGE_VERSION,
+    InMemoryCheckpointStore,
+    createVerificationRepairBridge,
+    verifyExecutionResult,
+    repairExecutionResult,
+    verifyAndRepair,
+    validateVerificationRepairRequest,
+    verificationRepairBridgeErrorCodes,
+    VERIFICATION_REPAIR_BRIDGE_VERSION
 };

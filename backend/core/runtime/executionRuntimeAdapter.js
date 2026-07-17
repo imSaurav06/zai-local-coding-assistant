@@ -2,6 +2,7 @@
 
 const { isRuntimeConfig, createRuntimeConfig } = require("./runtimeConfig");
 const { createCheckpointBridge } = require("./checkpointBridge");
+const { createVerificationRepairBridge } = require("./verificationRepairBridge");
 const { executionRuntimeAdapterErrorCodes } = require("./executionRuntimeAdapterErrors");
 
 const EXECUTION_RUNTIME_ADAPTER_VERSION = "1.0";
@@ -248,23 +249,41 @@ async function execute(request) {
             await this.checkpointBridge.finalizeExecutionCheckpoint(finalExecutionState);
         }
 
+        const rawResult = {
+            files: legacyResult.files,
+            runInstructions: legacyResult.runInstructions,
+            summary: legacyResult.summary,
+            model: legacyResult.model,
+            projectSpec: legacyResult.projectSpec
+        };
+
+        // Run Verification and optional Repair Bridge hooks
+        const verifyRepairRes = await this.verificationRepairBridge.verifyAndRepair(rawResult);
+
         const response = {
-            success: true,
+            success: verifyRepairRes.success,
             runtime: "LEGACY", // Hardcoded target for Phase 11A-2
-            result: {
-                files: legacyResult.files,
-                runInstructions: legacyResult.runInstructions,
-                summary: legacyResult.summary,
-                model: legacyResult.model,
-                projectSpec: legacyResult.projectSpec
-            },
+            result: verifyRepairRes.result,
             metadata: {
-                requirementIdentity: legacyResult.requirementIdentity
+                requirementIdentity: legacyResult.requirementIdentity,
+                verificationResult: verifyRepairRes.verificationResult,
+                repaired: verifyRepairRes.repaired
             }
         };
 
         return deepFreezeExecutionResponse(response);
     } catch (err) {
+        // Let standard adapter errors bubble directly
+        const adapterErrorCodes = new Set([
+            "VERIFICATION_REPAIR_INVALID_INPUT",
+            "VERIFICATION_REPAIR_VERIFICATION_FAILED",
+            "VERIFICATION_REPAIR_REPAIR_FAILED",
+            "VERIFICATION_REPAIR_BRIDGE_FAILED"
+        ]);
+        if (err.code && adapterErrorCodes.has(err.code)) {
+            throw err;
+        }
+
         const execErr = new Error(`Legacy execution failed: ${err.message}`);
         execErr.code = executionRuntimeAdapterErrorCodes.EXECUTION_RUNTIME_EXECUTION_FAILED;
         execErr.originalError = err;
@@ -292,10 +311,12 @@ function createExecutionRuntimeAdapter(config = {}) {
     }
 
     const checkpointBridge = createCheckpointBridge(finalConfig);
+    const verificationRepairBridge = createVerificationRepairBridge(finalConfig);
 
     return {
         config: finalConfig,
         checkpointBridge,
+        verificationRepairBridge,
         execute
     };
 }
