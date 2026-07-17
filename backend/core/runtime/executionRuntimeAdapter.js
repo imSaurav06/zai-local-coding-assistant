@@ -1,6 +1,7 @@
 "use strict";
 
 const { isRuntimeConfig, createRuntimeConfig } = require("./runtimeConfig");
+const { createCheckpointBridge } = require("./checkpointBridge");
 const { executionRuntimeAdapterErrorCodes } = require("./executionRuntimeAdapterErrors");
 
 const EXECUTION_RUNTIME_ADAPTER_VERSION = "1.0";
@@ -171,6 +172,35 @@ async function execute(request) {
         throw err;
     }
 
+    // Optional Checkpoint Bridge calls
+    const enableCheckpoint = this.config.enableCheckpointPersistence;
+    let initialExecutionState = null;
+    if (enableCheckpoint) {
+        initialExecutionState = Object.freeze({
+            version: "1.0",
+            metadata: {
+                status: "READY",
+                executionId: `exec_${Date.now()}`,
+                createdAt: new Date().toISOString()
+            },
+            queues: Object.freeze({
+                pending: ["task_01"],
+                running: [],
+                completed: [],
+                failed: []
+            }),
+            statistics: Object.freeze({
+                totalTasks: 1,
+                pending: 1,
+                running: 0,
+                completed: 0,
+                failed: 0
+            })
+        });
+
+        await this.checkpointBridge.initializeExecutionCheckpoint(initialExecutionState);
+    }
+
     // Phase 11A-2: Always execute legacy orchestrator.
     const legacyOrchestrator = require("../../services/generationOrchestrator");
 
@@ -191,6 +221,32 @@ async function execute(request) {
                 cancelSignal
             }
         );
+
+        if (enableCheckpoint) {
+            const finalExecutionState = Object.freeze({
+                version: "1.0",
+                metadata: {
+                    status: "SUCCESS",
+                    executionId: initialExecutionState.metadata.executionId,
+                    createdAt: initialExecutionState.metadata.createdAt
+                },
+                queues: Object.freeze({
+                    pending: [],
+                    running: [],
+                    completed: ["task_01"],
+                    failed: []
+                }),
+                statistics: Object.freeze({
+                    totalTasks: 1,
+                    pending: 0,
+                    running: 0,
+                    completed: 1,
+                    failed: 0
+                })
+            });
+
+            await this.checkpointBridge.finalizeExecutionCheckpoint(finalExecutionState);
+        }
 
         const response = {
             success: true,
@@ -235,8 +291,11 @@ function createExecutionRuntimeAdapter(config = {}) {
         finalConfig = buildRes.runtimeConfig;
     }
 
+    const checkpointBridge = createCheckpointBridge(finalConfig);
+
     return {
         config: finalConfig,
+        checkpointBridge,
         execute
     };
 }

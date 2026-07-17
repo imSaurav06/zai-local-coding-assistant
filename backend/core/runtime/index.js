@@ -20,6 +20,13 @@ const {
     EXECUTION_RUNTIME_ADAPTER_VERSION
 } = require("./executionRuntimeAdapter");
 
+const {
+    createCheckpointBridge,
+    validateCheckpointBridgeRequest,
+    checkpointBridgeErrorCodes,
+    CHECKPOINT_BRIDGE_VERSION
+} = require("./checkpointBridge");
+
 module.exports = {
     createRuntimeConfig,
     loadRuntimeConfig,
@@ -34,5 +41,9 @@ module.exports = {
     deepFreezeExecutionRequest,
     deepFreezeExecutionResponse,
     executionRuntimeAdapterErrorCodes,
-    EXECUTION_RUNTIME_ADAPTER_VERSION
+    EXECUTION_RUNTIME_ADAPTER_VERSION,
+    createCheckpointBridge,
+    validateCheckpointBridgeRequest,
+    checkpointBridgeErrorCodes,
+    CHECKPOINT_BRIDGE_VERSION
 };

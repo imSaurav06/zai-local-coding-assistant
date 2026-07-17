@@ -1,0 +1,11 @@
+"use strict";
+
+const checkpointBridgeErrorCodes = Object.freeze({
+    CHECKPOINT_BRIDGE_INVALID_INPUT: "CHECKPOINT_BRIDGE_INVALID_INPUT",
+    CHECKPOINT_BRIDGE_INVALID_STATE: "CHECKPOINT_BRIDGE_INVALID_STATE",
+    CHECKPOINT_BRIDGE_FAILED: "CHECKPOINT_BRIDGE_FAILED"
+});
+
+module.exports = {
+    checkpointBridgeErrorCodes
+};
