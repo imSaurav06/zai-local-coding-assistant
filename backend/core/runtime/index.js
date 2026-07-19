@@ -88,6 +88,10 @@ const {
 const { createLegacyRuntimeAdapter, LEGACY_RUNTIME_ADAPTER_VERSION } = require("./legacyRuntimeAdapter");
 const { createModularRuntimeAdapter, MODULAR_RUNTIME_ADAPTER_VERSION, modularRuntimeAdapterErrorCodes } = require("./modularRuntimeAdapter");
 
+const { createMetricsCollector } = require("./runtimeMetricsCollector");
+const { isMetricsSnapshot } = require("./runtimeMetrics");
+const { runtimeMetricsErrorCodes } = require("./runtimeMetricsErrors");
+
 module.exports = {
     createRuntimeConfig,
     loadRuntimeConfig,
@@ -146,5 +150,8 @@ module.exports = {
     LEGACY_RUNTIME_ADAPTER_VERSION,
     createModularRuntimeAdapter,
     MODULAR_RUNTIME_ADAPTER_VERSION,
-    modularRuntimeAdapterErrorCodes
+    modularRuntimeAdapterErrorCodes,
+    createMetricsCollector,
+    isMetricsSnapshot,
+    runtimeMetricsErrorCodes
 };

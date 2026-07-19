@@ -166,6 +166,16 @@ async function execute(request) {
         throw err;
     }
 
+    const metricsCollector = (request.options && request.options.metricsCollector) || require("./runtimeMetricsCollector").createMetricsCollector();
+    const requestCopy = {
+        ...request,
+        options: {
+            ...(request.options || {}),
+            metricsCollector
+        }
+    };
+    metricsCollector.startExecution(requestCopy.metadata ? requestCopy.metadata.executionId : `exec_${Date.now()}`);
+
     try {
         const selectedAdapter = this.runtimeRouter.selectRuntime();
         if (!selectedAdapter || typeof selectedAdapter.execute !== "function") {
@@ -174,7 +184,7 @@ async function execute(request) {
             throw err;
         }
 
-        const rawResult = await selectedAdapter.execute(request);
+        const rawResult = await selectedAdapter.execute(requestCopy);
 
         const isResponseShape = rawResult && typeof rawResult === "object" && rawResult.hasOwnProperty("runtime");
         const generationResult = isResponseShape ? rawResult.result : rawResult;
@@ -201,7 +211,7 @@ async function execute(request) {
             })
         });
 
-        await this.checkpointBridge.initializeExecutionCheckpoint(initialExecutionState);
+        await this.checkpointBridge.initializeExecutionCheckpoint(initialExecutionState, { metricsCollector });
 
         const finalExecutionState = Object.freeze({
             version: "1.0",
@@ -225,9 +235,12 @@ async function execute(request) {
             })
         });
 
-        await this.checkpointBridge.finalizeExecutionCheckpoint(finalExecutionState);
+        await this.checkpointBridge.finalizeExecutionCheckpoint(finalExecutionState, { metricsCollector });
 
-        const verifyRepairRes = await this.verificationRepairBridge.verifyAndRepair(generationResult);
+        const verifyRepairRes = await this.verificationRepairBridge.verifyAndRepair(generationResult, { metricsCollector });
+
+        metricsCollector.endExecution();
+        const metricsSnapshot = metricsCollector.getSnapshot();
 
         const reqIdentity = isResponseShape
             ? (rawResult.metadata && rawResult.metadata.requirementIdentity) || (rawResult.result && rawResult.result.requirementIdentity)

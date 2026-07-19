@@ -74,6 +74,7 @@ function createRepairBridge(config = {}) {
                 throw err;
             }
 
+            const metricsCollector = options.metricsCollector;
             const projectSpec = options.projectSpec || {};
             const { buildSharedContracts } = require("../../services/contractBuilder");
             const contracts = buildSharedContracts(projectSpec);
@@ -109,6 +110,9 @@ function createRepairBridge(config = {}) {
                 }
 
                 attemptNumber++;
+                if (metricsCollector && typeof metricsCollector.recordRepairAttempt === "function") {
+                    metricsCollector.recordRepairAttempt();
+                }
 
                 // Identify target files for this pass
                 const targetFiles = new Set();
@@ -194,6 +198,9 @@ function createRepairBridge(config = {}) {
             }
 
             const isSuccess = currentVerifiedResult.verificationReport && currentVerifiedResult.verificationReport.status === "PASSED";
+            if (isSuccess && metricsCollector && typeof metricsCollector.recordRepairSuccess === "function") {
+                metricsCollector.recordRepairSuccess();
+            }
             const endTime = Date.now();
 
             // Create initial raw session object for validation

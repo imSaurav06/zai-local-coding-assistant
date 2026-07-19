@@ -165,7 +165,7 @@ function validateCheckpointBridgeRequest(executionState) {
  *
  * @param {Object} executionState Mapped execution state
  */
-async function initializeExecutionCheckpoint(executionState) {
+async function initializeExecutionCheckpoint(executionState, options = {}) {
     if (!this.config.enableCheckpointPersistence) {
         return deepFreezeCheckpointResult({ success: true, checkpoint: null });
     }
@@ -181,6 +181,9 @@ async function initializeExecutionCheckpoint(executionState) {
     try {
         const checkpoint = createInitialCheckpoint(executionState);
         await persistCheckpoint(checkpoint, this.config.checkpointStore);
+        if (options.metricsCollector && typeof options.metricsCollector.recordCheckpointSave === "function") {
+            options.metricsCollector.recordCheckpointSave();
+        }
         return deepFreezeCheckpointResult({ success: true, checkpoint });
     } catch (err) {
         const bridgeErr = new Error(`Checkpoint initialize failed: ${err.message}`);
@@ -195,7 +198,7 @@ async function initializeExecutionCheckpoint(executionState) {
  *
  * @param {Object} executionState Mapped execution state
  */
-async function updateExecutionCheckpoint(executionState) {
+async function updateExecutionCheckpoint(executionState, options = {}) {
     if (!this.config.enableCheckpointPersistence) {
         return deepFreezeCheckpointResult({ success: true, checkpoint: null });
     }
@@ -211,6 +214,9 @@ async function updateExecutionCheckpoint(executionState) {
     try {
         const checkpoint = createRuntimeCheckpoint(executionState);
         await persistCheckpoint(checkpoint, this.config.checkpointStore);
+        if (options.metricsCollector && typeof options.metricsCollector.recordCheckpointSave === "function") {
+            options.metricsCollector.recordCheckpointSave();
+        }
         return deepFreezeCheckpointResult({ success: true, checkpoint });
     } catch (err) {
         const bridgeErr = new Error(`Checkpoint update failed: ${err.message}`);
@@ -225,7 +231,7 @@ async function updateExecutionCheckpoint(executionState) {
  *
  * @param {Object} executionState Mapped execution state
  */
-async function finalizeExecutionCheckpoint(executionState) {
+async function finalizeExecutionCheckpoint(executionState, options = {}) {
     if (!this.config.enableCheckpointPersistence) {
         return deepFreezeCheckpointResult({ success: true, checkpoint: null });
     }
@@ -241,6 +247,9 @@ async function finalizeExecutionCheckpoint(executionState) {
     try {
         const checkpoint = createRuntimeCheckpoint(executionState);
         await persistCheckpoint(checkpoint, this.config.checkpointStore);
+        if (options.metricsCollector && typeof options.metricsCollector.recordCheckpointSave === "function") {
+            options.metricsCollector.recordCheckpointSave();
+        }
         return deepFreezeCheckpointResult({ success: true, checkpoint });
     } catch (err) {
         const bridgeErr = new Error(`Checkpoint finalize failed: ${err.message}`);
@@ -290,14 +299,18 @@ function createCheckpointBridge(config = {}) {
         initializeExecutionCheckpoint,
         updateExecutionCheckpoint,
         finalizeExecutionCheckpoint,
-        async restoreExecutionCheckpoint(executionId, taskGraph) {
+        async restoreExecutionCheckpoint(executionId, taskGraph, options = {}) {
             if (!enableCheckpointPersistence) {
                 const err = new Error("Checkpoint persistence is disabled.");
                 err.code = "CHECKPOINT_RESUME_INVALID";
                 throw err;
             }
             const { loadCheckpoint } = require("../checkpoint/checkpointRestore");
-            return await loadCheckpoint(executionId, checkpointStore, taskGraph);
+            const checkpoint = await loadCheckpoint(executionId, checkpointStore, taskGraph);
+            if (options.metricsCollector && typeof options.metricsCollector.recordCheckpointRestore === "function") {
+                options.metricsCollector.recordCheckpointRestore();
+            }
+            return checkpoint;
         }
     };
 

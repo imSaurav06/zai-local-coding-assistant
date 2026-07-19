@@ -157,6 +157,12 @@ require("./core/execution/executionPipeline.repair.test.js")(suite, test);
 // Register Verification & Repair Modular Integration (Phase 11B-5B)
 require("./core/runtime/verificationRepair.integration.test.js")(suite, test);
 
+// Register Runtime Metrics Tests (Phase 11B-6)
+require("./core/runtime/runtimeMetrics.test.js")(suite, test);
+
+// Register Execution Pipeline Metrics Tests (Phase 11B-6)
+require("./core/execution/executionPipeline.metrics.test.js")(suite, test);
+
 
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {

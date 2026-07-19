@@ -177,6 +177,10 @@ async function execute(request) {
     // 1. Validate ExecutionRequest
     validateExecutionRequestLocal(request);
 
+    const options = request.options || {};
+    const metricsCollector = options.metricsCollector || require("./runtimeMetricsCollector").createMetricsCollector();
+    metricsCollector.startExecution(request.metadata ? request.metadata.executionId : `exec_${Date.now()}`);
+
     // 2. Prepare canonical project spec
     let prep;
     try {
@@ -334,7 +338,13 @@ No explanations. Output files block using standard separators.`;
         try {
             pipelineResult = await pipelineInstance.executePipeline(executionState, workerRegistry, prep.taskGraph, {
                 vfsState,
-                projectSpec: prep.projectSpec
+                projectSpec: prep.projectSpec,
+                enableVerification: request.options ? !!request.options.enableVerification : false,
+                enableRepair: request.options ? !!request.options.enableRepair : false,
+                maxRepairAttempts: request.options ? request.options.maxRepairAttempts : undefined,
+                resumeExecutionId: request.options ? request.options.resumeExecutionId : undefined,
+                checkpointStore: request.options ? request.options.checkpointStore : undefined,
+                metricsCollector
             });
         } catch (pipelineErr) {
             const failedErr = createError(`Pipeline execution failed with exception: ${pipelineErr.message}`, "MODULAR_RUNTIME_PIPELINE_FAILED");
@@ -421,6 +431,9 @@ No explanations. Output files block using standard separators.`;
     }
 
     sanitizeMongooseConnectOptions(finalFiles);
+
+    metricsCollector.endExecution();
+    const metricsSnapshot = metricsCollector.getSnapshot();
 
     const runInstructions = generateRunInstructions(prep.projectSpec, finalFiles);
     const richPlan = generateRichPlan(prep.projectSpec);

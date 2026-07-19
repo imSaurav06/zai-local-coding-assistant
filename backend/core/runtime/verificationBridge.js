@@ -25,6 +25,11 @@ function createVerificationBridge(config = {}) {
                 return executionResult;
             }
 
+            const metricsCollector = options.metricsCollector;
+            if (metricsCollector && typeof metricsCollector.recordVerificationRun === "function") {
+                metricsCollector.recordVerificationRun();
+            }
+
             if (!executionResult || typeof executionResult !== "object") {
                 const err = new Error("ExecutionResult must be a non-null object.");
                 err.code = "VERIFICATION_REPORT_INVALID";
@@ -84,6 +89,9 @@ function createVerificationBridge(config = {}) {
 
             if (report.status === "FAILED") {
                 output.success = false;
+                if (metricsCollector && typeof metricsCollector.recordVerificationFailure === "function") {
+                    metricsCollector.recordVerificationFailure();
+                }
             }
 
             // Deep freeze the output to guarantee immutability

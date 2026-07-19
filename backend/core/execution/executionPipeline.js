@@ -62,8 +62,18 @@ function createExecutionPipeline(options = {}) {
                 throw err;
             }
 
+            const hasMetricsCollector = !!executionOptions.metricsCollector;
+            const activeMetricsCollector = executionOptions.metricsCollector || require("../runtime/runtimeMetricsCollector").createMetricsCollector();
+            if (!executionOptions.metricsCollector) {
+                activeMetricsCollector.startExecution(executionState.metadata ? executionState.metadata.executionId : `exec_${Date.now()}`);
+            }
+
             let state = executionState;
             if (executionOptions.resumeExecutionId && executionOptions.checkpointStore) {
+                if (activeMetricsCollector) {
+                    activeMetricsCollector.recordResume();
+                    activeMetricsCollector.recordCheckpointRestore();
+                }
                 const { loadCheckpoint } = require("../checkpoint/checkpointRestore");
                 state = await loadCheckpoint(executionOptions.resumeExecutionId, executionOptions.checkpointStore, taskGraph);
             }
@@ -113,6 +123,9 @@ function createExecutionPipeline(options = {}) {
             while (activeScheduler.hasReadyWorkers()) {
                 const assignment = activeScheduler.nextWorker();
                 executedAny = true;
+                if (activeMetricsCollector) {
+                    activeMetricsCollector.recordSchedulerDecision();
+                }
 
                 // 1. Allocate worker
                 let allocRes;
@@ -120,7 +133,13 @@ function createExecutionPipeline(options = {}) {
                     allocRes = activeWorkerPool.allocateWorker({
                         stableId: assignment.taskId
                     });
+                    if (activeMetricsCollector) {
+                        activeMetricsCollector.recordWorkerAllocation();
+                    }
                 } catch (err) {
+                    if (activeMetricsCollector) {
+                        activeMetricsCollector.recordTaskFailed();
+                    }
                     const error = new Error(`Worker allocation failed: ${err.message}`);
                     error.code = "WORKERPOOL_ALLOCATION_FAILED";
                     error.originalError = err;
@@ -128,6 +147,9 @@ function createExecutionPipeline(options = {}) {
                 }
 
                 if (!allocRes || !allocRes.success || !allocRes.worker) {
+                    if (activeMetricsCollector) {
+                        activeMetricsCollector.recordTaskFailed();
+                    }
                     const err = new Error("Worker allocation failed.");
                     err.code = "WORKERPOOL_ALLOCATION_FAILED";
                     throw err;
@@ -149,15 +171,21 @@ function createExecutionPipeline(options = {}) {
                         projectSpec: executionOptions.projectSpec
                     });
 
+                    if (activeMetricsCollector) {
+                        activeMetricsCollector.recordWorkerExecution();
+                    }
+
                     // 2.5 Invoke Verification Bridge
                     let verifiedResult = await activeVerificationBridge.verifyResult(executeResult, {
-                        projectSpec: executionOptions.projectSpec
+                        projectSpec: executionOptions.projectSpec,
+                        metricsCollector: activeMetricsCollector
                     });
 
                     // 2.6 Run Repair Bridge if verification fails and repair is enabled
                     if (!verifiedResult.success && executionOptions.enableRepair) {
                         verifiedResult = await activeRepairBridge.repairResult(verifiedResult, {
-                            projectSpec: executionOptions.projectSpec
+                            projectSpec: executionOptions.projectSpec,
+                            metricsCollector: activeMetricsCollector
                         });
                     }
 
@@ -182,13 +210,23 @@ function createExecutionPipeline(options = {}) {
                     lastResult = verifiedResult;
 
                     if (!verifiedResult.success) {
+                        if (activeMetricsCollector) {
+                            activeMetricsCollector.recordTaskFailed();
+                        }
                         return deepFreeze(verifiedResult);
+                    }
+
+                    if (activeMetricsCollector) {
+                        activeMetricsCollector.recordTaskCompleted();
                     }
 
                     // Mark completed in Scheduler
                     activeScheduler.markCompleted(assignment.workerId);
 
                 } catch (error) {
+                    if (activeMetricsCollector) {
+                        activeMetricsCollector.recordTaskFailed();
+                    }
                     if (
                         error.code === "WORKERPOOL_ALLOCATION_FAILED" ||
                         error.code === "WORKERPOOL_RELEASE_FAILED" ||
@@ -214,8 +252,14 @@ function createExecutionPipeline(options = {}) {
                 break;
             }
 
+            if (!executionOptions.metricsCollector) {
+                activeMetricsCollector.endExecution();
+            }
+
+            const metricsSnapshot = activeMetricsCollector.getSnapshot();
+
             if (!executedAny) {
-                return deepFreeze({
+                const res = {
                     success: true,
                     execution: {
                         schedule: {
@@ -233,10 +277,21 @@ function createExecutionPipeline(options = {}) {
                     verification: null,
                     diagnostics: null,
                     metadata: { message: "No assignments computed by Scheduler." }
-                });
+                };
+                if (hasMetricsCollector) {
+                    res.metricsSnapshot = metricsSnapshot;
+                }
+                return deepFreeze(res);
             }
 
-            return deepFreeze(lastResult);
+            const resultWithMetrics = {
+                ...lastResult
+            };
+            if (hasMetricsCollector) {
+                resultWithMetrics.metricsSnapshot = metricsSnapshot;
+            }
+
+            return deepFreeze(resultWithMetrics);
         }
     };
 

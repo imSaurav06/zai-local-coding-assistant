@@ -221,7 +221,8 @@ async function repairExecutionResult(result, verificationResult) {
  *
  * @param {Object} result Mapped execution result
  */
-async function verifyAndRepair(result) {
+async function verifyAndRepair(result, options = {}) {
+    const metricsCollector = options.metricsCollector;
     if (!this.config.enableVerification) {
         return deepFreezeVerificationRepairResult({
             success: true,
@@ -229,6 +230,10 @@ async function verifyAndRepair(result) {
             result,
             verificationResult: null
         });
+    }
+
+    if (metricsCollector && typeof metricsCollector.recordVerificationRun === "function") {
+        metricsCollector.recordVerificationRun();
     }
 
     const verificationResult = await this.verifyExecutionResult(result);
@@ -241,6 +246,10 @@ async function verifyAndRepair(result) {
         });
     }
 
+    if (metricsCollector && typeof metricsCollector.recordVerificationFailure === "function") {
+        metricsCollector.recordVerificationFailure();
+    }
+
     if (!this.config.enableRepair) {
         const err = new Error(`Verification failed: ${verificationResult.summary}`);
         err.code = verificationRepairBridgeErrorCodes.VERIFICATION_REPAIR_VERIFICATION_FAILED;
@@ -248,7 +257,17 @@ async function verifyAndRepair(result) {
         throw err;
     }
 
-    return this.repairExecutionResult(result, verificationResult);
+    if (metricsCollector && typeof metricsCollector.recordRepairAttempt === "function") {
+        metricsCollector.recordRepairAttempt();
+    }
+
+    const repairRes = await this.repairExecutionResult(result, verificationResult);
+
+    if (repairRes.success && metricsCollector && typeof metricsCollector.recordRepairSuccess === "function") {
+        metricsCollector.recordRepairSuccess();
+    }
+
+    return repairRes;
 }
 
 /**
