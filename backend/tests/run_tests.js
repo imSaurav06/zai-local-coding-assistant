@@ -207,6 +207,13 @@ require("./core/audit/auditSummary.test.js")(suite, test);
 require("./core/audit/auditCertification.test.js")(suite, test);
 require("./core/audit/auditOrchestrator.test.js")(suite, test);
 
+// Register Release Qualification Framework Tests (Phase 13A)
+require("./core/release/releaseCriteria.test.js")(suite, test);
+require("./core/release/releaseScore.test.js")(suite, test);
+require("./core/release/releaseReport.test.js")(suite, test);
+require("./core/release/releaseQualifier.test.js")(suite, test);
+
+
 
 
 
