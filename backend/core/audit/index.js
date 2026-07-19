@@ -12,6 +12,12 @@ const { scanSecrets } = require("./secretScanner");
 const { auditDependencies } = require("./dependencyAudit");
 const { buildSecurityAuditReport } = require("./securityAuditReport");
 
+const { auditIntegration } = require("./integrationAuditor");
+const { integrationAuditErrorCodes } = require("./integrationAuditErrors");
+const { validatePipeline } = require("./pipelineAudit");
+const { validateContracts } = require("./contractAudit");
+const { buildIntegrationAuditReport } = require("./integrationAuditReport");
+
 module.exports = {
     // 12A Requirement Compliance Audit
     auditRequirements,
@@ -25,5 +31,12 @@ module.exports = {
     scanSecrets,
     auditDependencies,
     buildSecurityAuditReport,
-    securityAuditErrorCodes
+    securityAuditErrorCodes,
+
+    // 12C Integration Audit
+    auditIntegration,
+    validatePipeline,
+    validateContracts,
+    buildIntegrationAuditReport,
+    integrationAuditErrorCodes
 };

@@ -190,6 +190,13 @@ require("./core/audit/dependencyAudit.test.js")(suite, test);
 require("./core/audit/securityAuditReport.test.js")(suite, test);
 require("./core/audit/securityAuditor.test.js")(suite, test);
 
+// Register Integration Audit Tests (Phase 12C)
+require("./core/audit/pipelineAudit.test.js")(suite, test);
+require("./core/audit/contractAudit.test.js")(suite, test);
+require("./core/audit/integrationAuditReport.test.js")(suite, test);
+require("./core/audit/integrationAuditor.test.js")(suite, test);
+
+
 
 
 
