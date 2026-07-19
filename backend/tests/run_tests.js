@@ -213,6 +213,16 @@ require("./core/release/releaseScore.test.js")(suite, test);
 require("./core/release/releaseReport.test.js")(suite, test);
 require("./core/release/releaseQualifier.test.js")(suite, test);
 
+// Register Production Readiness Subsystem Tests (Phase 13B)
+require("./core/readiness/environmentValidator.test.js")(suite, test);
+require("./core/readiness/providerValidator.test.js")(suite, test);
+require("./core/readiness/configurationValidator.test.js")(suite, test);
+require("./core/readiness/buildValidator.test.js")(suite, test);
+require("./core/readiness/readinessScore.test.js")(suite, test);
+require("./core/readiness/readinessReport.test.js")(suite, test);
+require("./core/readiness/readinessValidator.test.js")(suite, test);
+
+
 
 
 
