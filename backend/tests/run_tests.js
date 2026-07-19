@@ -121,6 +121,12 @@ require("./core/runtime/parityValidator.test.js")(suite, test);
 // Register Shadow Runtime Tests (Phase 11A-7)
 require("./core/runtime/shadowRuntime.test.js")(suite, test);
 
+// Register Differential Validator Tests (Phase 11B-7A)
+require("./core/runtime/differentialValidator.test.js")(suite, test);
+
+// Register Runtime Parity Integration Tests (Phase 11B-7A)
+require("./core/runtime/runtimeParity.test.js")(suite, test);
+
 // Register Runtime Router Tests (Phase 11B-1)
 require("./core/runtime/runtimeRouter.test.js")(suite, test);
 

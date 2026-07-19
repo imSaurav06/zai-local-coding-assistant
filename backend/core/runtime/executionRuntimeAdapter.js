@@ -261,6 +261,75 @@ async function execute(request) {
 
         const frozenResponse = deepFreezeExecutionResponse(response);
 
+        if (this.config.enableShadowValidation) {
+            const currentMode = this.config.runtimeMode || "LEGACY";
+            let legacyResult = null;
+            let modularResult = null;
+
+            if (currentMode === "LEGACY" || currentMode === "SHADOW") {
+                legacyResult = frozenResponse;
+                try {
+                    const { createModularRuntimeAdapter } = require("./modularRuntimeAdapter");
+                    const modularAdapter = createModularRuntimeAdapter();
+                    const modularReq = {
+                        ...requestCopy,
+                        options: {
+                            ...(requestCopy.options || {}),
+                            metricsCollector: require("./runtimeMetricsCollector").createMetricsCollector()
+                        }
+                    };
+                    modularResult = await modularAdapter.execute(modularReq);
+                } catch (err) {
+                    if (global.__throwDifferentialMismatchInTest) {
+                        throw err;
+                    }
+                    console.error("[Differential Validation] Modular runtime secondary execution failed:", err);
+                }
+            } else if (currentMode === "MODULAR") {
+                modularResult = frozenResponse;
+                try {
+                    const { createLegacyRuntimeAdapter } = require("./legacyRuntimeAdapter");
+                    const legacyAdapter = createLegacyRuntimeAdapter();
+                    const legacyReq = {
+                        ...requestCopy,
+                        options: {
+                            ...(requestCopy.options || {}),
+                            metricsCollector: require("./runtimeMetricsCollector").createMetricsCollector()
+                        }
+                    };
+                    legacyResult = await legacyAdapter.execute(legacyReq);
+                } catch (err) {
+                    if (global.__throwDifferentialMismatchInTest) {
+                        throw err;
+                    }
+                    console.error("[Differential Validation] Legacy runtime secondary execution failed:", err);
+                }
+            }
+
+            if (legacyResult && modularResult) {
+                const { createDifferentialValidator } = require("./differentialValidator");
+                const validator = createDifferentialValidator();
+                try {
+                    const report = validator.generateReport(legacyResult, modularResult);
+                    if (global.__onDifferentialReport) {
+                        global.__onDifferentialReport(report);
+                    }
+                    if (!report.success && global.__throwDifferentialMismatchInTest) {
+                        const { differentialValidationErrorCodes } = require("./differentialValidationErrors");
+                        const diffErr = new Error("Differential validation failed.");
+                        diffErr.code = differentialValidationErrorCodes.DIFFERENTIAL_VALIDATION_FAILED;
+                        diffErr.report = report;
+                        throw diffErr;
+                    }
+                } catch (err) {
+                    if (global.__throwDifferentialMismatchInTest) {
+                        throw err;
+                    }
+                    console.error("[Differential Validation] Report generation/validation failed:", err);
+                }
+            }
+        }
+
         // Shadow execution if selected adapter is ShadowRuntime
         if (this.config.runtimeMode === "SHADOW" && typeof selectedAdapter.executeShadow === "function") {
             await selectedAdapter.executeShadow(this, request, frozenResponse);
@@ -276,7 +345,9 @@ async function execute(request) {
             "VERIFICATION_REPAIR_BRIDGE_FAILED",
             "RUNTIME_ROUTER_UNKNOWN_ADAPTER",
             "RUNTIME_ROUTER_INVALID_MODE",
-            "RUNTIME_ROUTER_INVALID_REQUEST"
+            "RUNTIME_ROUTER_INVALID_REQUEST",
+            "DIFFERENTIAL_VALIDATION_FAILED",
+            "DIFFERENTIAL_REPORT_INVALID"
         ]);
         if (err.code && transparentErrorCodes.has(err.code)) {
             throw err;
