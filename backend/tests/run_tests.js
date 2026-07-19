@@ -196,6 +196,13 @@ require("./core/audit/contractAudit.test.js")(suite, test);
 require("./core/audit/integrationAuditReport.test.js")(suite, test);
 require("./core/audit/integrationAuditor.test.js")(suite, test);
 
+// Register Deployment Qualification Tests (Phase 12D)
+require("./core/audit/deploymentChecks.test.js")(suite, test);
+require("./core/audit/deploymentScore.test.js")(suite, test);
+require("./core/audit/deploymentQualificationReport.test.js")(suite, test);
+require("./core/audit/deploymentQualifier.test.js")(suite, test);
+
+
 
 
 

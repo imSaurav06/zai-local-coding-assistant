@@ -18,6 +18,12 @@ const { validatePipeline } = require("./pipelineAudit");
 const { validateContracts } = require("./contractAudit");
 const { buildIntegrationAuditReport } = require("./integrationAuditReport");
 
+const { qualifyDeployment } = require("./deploymentQualifier");
+const { deploymentQualificationErrorCodes } = require("./deploymentQualificationErrors");
+const { checkArtifactCompleteness, checkPriorAuditResults, checkSpecDeploymentReadiness } = require("./deploymentChecks");
+const { calculateDeploymentScore } = require("./deploymentScore");
+const { buildDeploymentQualificationReport } = require("./deploymentQualificationReport");
+
 module.exports = {
     // 12A Requirement Compliance Audit
     auditRequirements,
@@ -38,5 +44,14 @@ module.exports = {
     validatePipeline,
     validateContracts,
     buildIntegrationAuditReport,
-    integrationAuditErrorCodes
+    integrationAuditErrorCodes,
+
+    // 12D Deployment Qualification
+    qualifyDeployment,
+    checkArtifactCompleteness,
+    checkPriorAuditResults,
+    checkSpecDeploymentReadiness,
+    calculateDeploymentScore,
+    buildDeploymentQualificationReport,
+    deploymentQualificationErrorCodes
 };
