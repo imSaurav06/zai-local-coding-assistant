@@ -228,6 +228,21 @@ require("./core/benchmark/benchmarkScoring.test.js")(suite, test);
 require("./core/benchmark/benchmarkReport.test.js")(suite, test);
 require("./core/benchmark/benchmarkEngine.test.js")(suite, test);
 
+// Register Benchmark Suite Framework Tests (Phase 13D)
+require("./core/benchmark-suite/benchmarkScenario.test.js")(suite, test);
+require("./core/benchmark-suite/benchmarkRegistry.test.js")(suite, test);
+require("./core/benchmark-suite/benchmarkAggregator.test.js")(suite, test);
+require("./core/benchmark-suite/benchmarkSuiteReport.test.js")(suite, test);
+require("./core/benchmark-suite/benchmarkSuite.test.js")(suite, test);
+
+// Register Final Engineering Certification Framework Tests (Phase 13E)
+require("./core/certification/certificationAggregator.test.js")(suite, test);
+require("./core/certification/certificationScore.test.js")(suite, test);
+require("./core/certification/certificationReport.test.js")(suite, test);
+require("./core/certification/engineeringCertification.test.js")(suite, test);
+
+
+
 
 
 
