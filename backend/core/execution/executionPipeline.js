@@ -60,6 +60,12 @@ function createExecutionPipeline(options = {}) {
                 throw err;
             }
 
+            let state = executionState;
+            if (executionOptions.resumeExecutionId && executionOptions.checkpointStore) {
+                const { loadCheckpoint } = require("../checkpoint/checkpointRestore");
+                state = await loadCheckpoint(executionOptions.resumeExecutionId, executionOptions.checkpointStore, taskGraph);
+            }
+
             let activeScheduler = scheduler;
             if (typeof scheduler.initialize !== "function") {
                 const { createScheduler } = require("./scheduler");
@@ -68,7 +74,7 @@ function createExecutionPipeline(options = {}) {
             }
 
             // 2. Initialize Scheduler
-            activeScheduler.initialize(executionState, workerRegistry, taskGraph);
+            activeScheduler.initialize(state, workerRegistry, taskGraph);
 
             let currentVfsState = executionOptions.vfsState || {};
             let lastResult = null;

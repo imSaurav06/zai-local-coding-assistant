@@ -289,7 +289,16 @@ function createCheckpointBridge(config = {}) {
         }),
         initializeExecutionCheckpoint,
         updateExecutionCheckpoint,
-        finalizeExecutionCheckpoint
+        finalizeExecutionCheckpoint,
+        async restoreExecutionCheckpoint(executionId, taskGraph) {
+            if (!enableCheckpointPersistence) {
+                const err = new Error("Checkpoint persistence is disabled.");
+                err.code = "CHECKPOINT_RESUME_INVALID";
+                throw err;
+            }
+            const { loadCheckpoint } = require("../checkpoint/checkpointRestore");
+            return await loadCheckpoint(executionId, checkpointStore, taskGraph);
+        }
     };
 
     return Object.freeze(bridge);
