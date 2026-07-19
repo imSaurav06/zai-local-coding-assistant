@@ -222,6 +222,13 @@ require("./core/readiness/readinessScore.test.js")(suite, test);
 require("./core/readiness/readinessReport.test.js")(suite, test);
 require("./core/readiness/readinessValidator.test.js")(suite, test);
 
+// Register Generic Benchmark Engine Tests (Phase 13C)
+require("./core/benchmark/benchmarkMetrics.test.js")(suite, test);
+require("./core/benchmark/benchmarkScoring.test.js")(suite, test);
+require("./core/benchmark/benchmarkReport.test.js")(suite, test);
+require("./core/benchmark/benchmarkEngine.test.js")(suite, test);
+
+
 
 
 
