@@ -184,6 +184,13 @@ require("./core/audit/requirementCoverage.test.js")(suite, test);
 require("./core/audit/requirementAuditReport.test.js")(suite, test);
 require("./core/audit/requirementAuditor.test.js")(suite, test);
 
+// Register Security Audit Tests (Phase 12B)
+require("./core/audit/secretScanner.test.js")(suite, test);
+require("./core/audit/dependencyAudit.test.js")(suite, test);
+require("./core/audit/securityAuditReport.test.js")(suite, test);
+require("./core/audit/securityAuditor.test.js")(suite, test);
+
+
 
 
 // ─── Test Data ────────────────────────────────────────────────────────────────
