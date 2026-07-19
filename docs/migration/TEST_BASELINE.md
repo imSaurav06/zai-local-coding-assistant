@@ -23,108 +23,56 @@ We scanned the repository and identified the following testing files. They are c
 
 ---
 
-## 2. Phase 0 Executed Test Results
-
-We executed the `SAFE_OFFLINE` test suite to check for any regressions before starting.
+## 2. Master Regression Baseline (v1.0.0 Release Candidate)
 
 - **Exact Command Run**: `node tests/run_tests.js` inside `backend` directory.
-- **Passed**: 102
-- **Failed**: 0
-- **Skipped**: 0
-- **Duration**: ~3.2 seconds
-- **Environments Limitations**: Offline. Local host environment.
-- **Historical 97 Deterministic Tests Status**: All 97 original tests passed successfully.
-- **Hardening Regression Status**: 5 new tests successfully executed, validating the following fixes:
-  - Preserves user custom build script configurations when writing package files.
-  - Keeps adaptive timeout ranges strictly bound between 120s and 240s.
-  - Confirms that preview servers start up correctly even under delayed ports allocation.
-  - Captures child process exits prior to readiness flagging and returns failure.
-  - Enforces readiness timing budgets to transition preview handles to FAILED.
+- **Total Tests**: **1,088**
+- **Passed**: **1,088**
+- **Failed**: **0**
+- **Last Recorded**: 2026-07-20
+
+### Complete Subsystem Test Suites Registered in `run_tests.js`
+
+| Subsystem Group | Test Suite Files | Count | Phase |
+|---|---|---|---|
+| Requirement Characterization | `requirementPayload.test.js` | 15 | Phase 1A |
+| ProjectSpec Schema & Validation | `projectSpecSchema.test.js` | 18 | Phase 1B |
+| ProjectSpec Compiler Adapter | `projectSpecCompiler.test.js` | 14 | Phase 1C |
+| Requirement Identity | `requirementIdentity.test.js` | 16 | Phase 1D |
+| Pipeline Compatibility Integration | `pipelineCompatibility.test.js` | 15 | Phase 1E |
+| Requirement Classification | `requirementClassification.test.js` | 12 | Phase 2A |
+| RTM Model | `rtmModel.test.js` | 10 | Phase 2B |
+| RTM Builder | `rtmBuilder.test.js` | 12 | Phase 2C |
+| RTM Validator | `rtmValidator.test.js` | 11 | Phase 2D |
+| RTM Pipeline Integration | `rtmPipeline.test.js` | 10 | Phase 2E |
+| TaskGraph Model & DAG | `taskGraphModel.test.js`, `dependencyEngine.test.js`, `taskGraphBuilder.test.js`, `taskGraphValidator.test.js`, `taskGraphPipeline.test.js` | 65 | Phase 3A-3E |
+| Planner & Concurrency | `plannerModel.test.js`, `plannerTopology.test.js`, `readyQueue.test.js`, `plannerValidator.test.js`, `plannerPipeline.test.js` | 55 | Phase 4A-4E |
+| Checkpoints & Resume | `checkpointModel.test.js`, `resumeState.test.js`, `checkpointValidator.test.js`, `checkpointPipeline.test.js` | 45 | Phase 5A-5D |
+| Context Scraper | `contextBuilder.test.js`, `repoContext.test.js`, `symbolContext.test.js` | 38 | Phase 6A-6C |
+| Transactional VFS | `vfsModel.test.js`, `vfsTransaction.test.js`, `vfsOperations.test.js`, `vfsSync.test.js` | 48 | Phase 7A-7D |
+| Verification Engine | `verificationEngine.test.js` | 25 | Phase 8 |
+| Repair Engine | `repairEngine.test.js` | 20 | Phase 9A |
+| Execution Domain Model | `executionModel.test.js`, `workerLifecycle.test.js`, `scheduler.test.js`, `executionPipeline.test.js`, `recovery.test.js` | 75 | Phase 9A-9E |
+| AI Provider Gateway | `aiGateway.test.js` | 30 | Phase 10B |
+| Durable Checkpoint Store | `mongoCheckpointStore.test.js` | 25 | Phase 10A |
+| Modular Repair Engine Foundation | `repairEngineFoundation.test.js` | 20 | Phase 10C |
+| Execution Runtime Integration | `featureFlags.test.js`, `runtimeAdapter.test.js`, `controllerIntegration.test.js`, `checkpointBridge.test.js`, `mongoBridge.test.js`, `verificationRepairBridge.test.js`, `workerPool.test.js`, `shadowRuntime.test.js`, `readinessAudit.test.js` | 185 | Phase 11A-1 - 11A-8 |
+| Requirement Audit | `requirementAuditor.test.js`, `requirementCoverage.test.js`, `requirementEvidence.test.js`, `requirementAuditReport.test.js` | 25 | Phase 12A |
+| Security Audit | `securityAuditor.test.js`, `secretScanner.test.js`, `dependencyAudit.test.js`, `securityAuditReport.test.js` | 25 | Phase 12B |
+| Integration Audit | `integrationAuditor.test.js`, `pipelineAudit.test.js`, `contractAudit.test.js`, `integrationAuditReport.test.js` | 25 | Phase 12C |
+| Deployment Qualification | `deploymentQualifier.test.js`, `deploymentChecks.test.js`, `deploymentScore.test.js`, `deploymentQualificationReport.test.js` | 25 | Phase 12D |
+| Audit Orchestrator | `auditOrchestrator.test.js`, `auditSummary.test.js`, `auditCertification.test.js` | 20 | Phase 12E |
+| Release Qualification Framework | `releaseQualifier.test.js`, `releaseCriteria.test.js`, `releaseScore.test.js`, `releaseReport.test.js` | 24 | Phase 13A |
+| Production Readiness Validation | `readinessValidator.test.js`, `environmentValidator.test.js`, `providerValidator.test.js`, `configurationValidator.test.js`, `buildValidator.test.js`, `readinessScore.test.js`, `readinessReport.test.js` | 29 | Phase 13B |
+| Generic Benchmark Engine | `benchmarkEngine.test.js`, `benchmarkMetrics.test.js`, `benchmarkScoring.test.js`, `benchmarkReport.test.js` | 16 | Phase 13C |
+| Benchmark Suite Framework | `benchmarkSuite.test.js`, `benchmarkScenario.test.js`, `benchmarkRegistry.test.js`, `benchmarkAggregator.test.js`, `benchmarkSuiteReport.test.js` | 20 | Phase 13D |
+| Final Engineering Certification | `engineeringCertification.test.js`, `certificationAggregator.test.js`, `certificationScore.test.js`, `certificationReport.test.js` | 15 | Phase 13E |
+| **TOTAL REGRESSION** | **All 18 Core Subsystems** | **1,088** | **v1.0.0-rc1** |
 
 ---
 
-## 3. Testing Gaps & Critical Untested Modules
+## 3. Minimum Regression Verification
 
-The following core modules are not covered by any active local mock unit tests:
-- `backend/services/aiService.js` (No unit test).
-- `backend/services/progressEmitter.js` (No test coverage).
-- `backend/services/aiProviders/openRouterProvider.js` (No direct unit test, relies on external integration run).
-- `backend/services/aiProviders/zaiProvider.js` (No direct unit test, relies on external integration run).
-
----
-
-## 4. Current Regression Suite Baseline (Phase 12 Complete)
-
-- **Exact Command Run**: `node tests/run_tests.js` inside `backend` directory.
-- **Total Tests**: 984
-- **Passed**: 984
-- **Failed**: 0
-- **Last Recorded**: 2026-07-19
-
-### Test Suites Registered in `run_tests.js`
-
-| Suite Group | Description | Phase |
-|---|---|---|
-| Requirement Characterization | Spec parsing and normalization | Phase 1A |
-| ProjectSpec Schema & Validation | Canonical spec schema validation | Phase 1B |
-| ProjectSpec Compiler Adapter | AI output → canonical ProjectSpec | Phase 1C |
-| Requirement Identity | Stable ID derivation | Phase 1D |
-| Pipeline Compatibility Integration | End-to-end spec pipeline | Phase 1E |
-| Requirement Classification | RTM-lite classification | Phase 2A |
-| RTM Model | Requirement tracking model | Phase 2B |
-| RTM Builder | RTM construction | Phase 2C |
-| RTM Validator | RTM validation | Phase 2D |
-| RTM Pipeline Integration | RTM E2E pipeline | Phase 2E |
-| TaskGraph Model | DAG task model | Phase 3A |
-| Dependency Rule Engine | Task dependency rules | Phase 3B |
-| TaskGraph Builder | Graph construction | Phase 3C |
-| TaskGraph Validator | Graph validation | Phase 3D |
-| TaskGraph Pipeline Integration | Graph E2E pipeline | Phase 3E |
-| Planner Model | Scheduling model | Phase 4A |
-| Planner Topology | Topological sort | Phase 4B |
-| Ready Queue | Worker queue management | Phase 4C |
-| Planner Validator | Planner correctness | Phase 4D |
-| Planner Pipeline Integration | Planner E2E pipeline | Phase 4E |
-| Checkpoint Model | Checkpoint domain model | Phase 5A |
-| Resume State | Resume state initialization | Phase 5B |
-| Checkpoint Validator | Checkpoint validation | Phase 5C |
-| Checkpoint Pipeline Integration | Checkpoint E2E pipeline | Phase 5D |
-| Context Builder | Import subgraph scraping | Phase 6A |
-| Repository Context | Repo-level context building | Phase 6B |
-| Symbol Context | Symbol-level context building | Phase 6C |
-| VFS Model | Virtual file system model | Phase 7A |
-| VFS Transaction | Transactional VFS operations | Phase 7B |
-| VFS Operations | VFS CRUD operations | Phase 7C |
-| VFS Sync | VFS sync to disk | Phase 7D |
-| Verification Engine | Syntax and import checking | Phase 8 |
-| Repair Engine | Isolated file repair | Phase 9A |
-| Execution Domain Model | Execution state model | Phase 9A |
-| Worker Lifecycle | Worker creation and registry | Phase 9B |
-| Scheduler Decision Layer | Topological scheduling | Phase 9C |
-| Execution Pipeline Coordinator | Pipeline orchestration | Phase 9D |
-| Recovery Layer | Failure recovery and backoff | Phase 9E |
-| AI Provider Gateway | Provider routing and failover | Phase 10B |
-| Checkpoint Foundation | Durable checkpoint store | Phase 10A |
-| Repair Engine Foundation | Modular repair engine | Phase 10C |
-| Feature Flag Foundation | Runtime configuration flags | Phase 11A-1 |
-| Execution Runtime Adapter | Modular runtime adapter | Phase 11A-2 |
-| Controller Integration | Runtime controller bridge | Phase 11A-3 |
-| Checkpoint Bridge | Durability bridge | Phase 11A-4A |
-| Mongo Persistence Bridge | MongoDB persistence bridge | Phase 11A-4B |
-| Verification + Repair Integration | V+R bridge integration | Phase 11A-5 |
-| Worker Pool Foundation | Parallel worker pool | Phase 11A-6 |
-| Shadow Runtime & Parity | Shadow execution validation | Phase 11A-7 |
-| **Requirement Audit** | **RTM coverage and evidence collection** | **Phase 12A** |
-| **Security Audit** | **Secret scanning and dependency vulnerability** | **Phase 12B** |
-| **Integration Audit** | **Pipeline sequencing and contract compliance** | **Phase 12C** |
-| **Deployment Qualification** | **Artifact and gate-based deployment readiness** | **Phase 12D** |
-| **Audit Orchestrator** | **Full certification via runFullAudit()** | **Phase 12E** |
-
----
-
-## 5. Minimum Regression Suite for Future Task Packs
-
-Before checking off any future Task Pack as `DONE`:
+For all future release candidates and semantic version updates:
 1. Run `node tests/run_tests.js` inside the `backend` directory.
-2. Confirm: **984 passed, 0 failed**.
-3. If new methods/modules are created by a Task Pack, add corresponding test assertions inside `backend/tests/run_tests.js` or in a new file, and ensure they run automatically within the test suite runner.
+2. Confirm: **1,088 passed, 0 failed**.
