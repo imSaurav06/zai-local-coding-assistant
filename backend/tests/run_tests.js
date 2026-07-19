@@ -103,6 +103,9 @@ require("./core/runtime/runtimeConfig.test.js")(suite, test);
 // Register Execution Runtime Adapter Tests (Phase 11A-2)
 require("./core/runtime/executionRuntimeAdapter.test.js")(suite, test);
 
+// Register Modular Runtime Adapter Tests (Phase 11B-2)
+require("./core/runtime/modularRuntimeAdapter.test.js")(suite, test);
+
 // Register Checkpoint Bridge Tests (Phase 11A-4A)
 require("./core/runtime/checkpointBridge.test.js")(suite, test);
 

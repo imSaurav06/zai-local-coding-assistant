@@ -176,73 +176,71 @@ async function execute(request) {
 
         const rawResult = await selectedAdapter.execute(request);
 
-        // STUB bypass: if modular stub was returned, return directly
-        if (rawResult && rawResult.runtime === "MODULAR" && rawResult.status === "NOT_IMPLEMENTED") {
-            return rawResult;
-        }
+        const isResponseShape = rawResult && typeof rawResult === "object" && rawResult.hasOwnProperty("runtime");
+        const generationResult = isResponseShape ? rawResult.result : rawResult;
 
-        const enableCheckpoint = this.config.enableCheckpointPersistence;
-        let initialExecutionState = null;
-        if (enableCheckpoint) {
-            initialExecutionState = Object.freeze({
-                version: "1.0",
-                metadata: {
-                    status: "READY",
-                    executionId: `exec_${Date.now()}`,
-                    createdAt: new Date().toISOString()
-                },
-                queues: Object.freeze({
-                    pending: ["task_01"],
-                    running: [],
-                    completed: [],
-                    failed: []
-                }),
-                statistics: Object.freeze({
-                    totalTasks: 1,
-                    pending: 1,
-                    running: 0,
-                    completed: 0,
-                    failed: 0
-                })
-            });
+        const initialExecutionState = Object.freeze({
+            version: "1.0",
+            metadata: {
+                status: "READY",
+                executionId: `exec_${Date.now()}`,
+                createdAt: new Date().toISOString()
+            },
+            queues: Object.freeze({
+                pending: ["task_01"],
+                running: [],
+                completed: [],
+                failed: []
+            }),
+            statistics: Object.freeze({
+                totalTasks: 1,
+                pending: 1,
+                running: 0,
+                completed: 0,
+                failed: 0
+            })
+        });
 
-            await this.checkpointBridge.initializeExecutionCheckpoint(initialExecutionState);
-        }
+        await this.checkpointBridge.initializeExecutionCheckpoint(initialExecutionState);
 
-        if (enableCheckpoint) {
-            const finalExecutionState = Object.freeze({
-                version: "1.0",
-                metadata: {
-                    status: "SUCCESS",
-                    executionId: initialExecutionState.metadata.executionId,
-                    createdAt: initialExecutionState.metadata.createdAt
-                },
-                queues: Object.freeze({
-                    pending: [],
-                    running: [],
-                    completed: ["task_01"],
-                    failed: []
-                }),
-                statistics: Object.freeze({
-                    totalTasks: 1,
-                    pending: 0,
-                    running: 0,
-                    completed: 1,
-                    failed: 0
-                })
-            });
+        const finalExecutionState = Object.freeze({
+            version: "1.0",
+            metadata: {
+                status: "SUCCESS",
+                executionId: initialExecutionState.metadata.executionId,
+                createdAt: initialExecutionState.metadata.createdAt
+            },
+            queues: Object.freeze({
+                pending: [],
+                running: [],
+                completed: ["task_01"],
+                failed: []
+            }),
+            statistics: Object.freeze({
+                totalTasks: 1,
+                pending: 0,
+                running: 0,
+                completed: 1,
+                failed: 0
+            })
+        });
 
-            await this.checkpointBridge.finalizeExecutionCheckpoint(finalExecutionState);
-        }
+        await this.checkpointBridge.finalizeExecutionCheckpoint(finalExecutionState);
 
-        const verifyRepairRes = await this.verificationRepairBridge.verifyAndRepair(rawResult);
+        const verifyRepairRes = await this.verificationRepairBridge.verifyAndRepair(generationResult);
+
+        const reqIdentity = isResponseShape
+            ? (rawResult.metadata && rawResult.metadata.requirementIdentity) || (rawResult.result && rawResult.result.requirementIdentity)
+            : rawResult.requirementIdentity;
 
         const response = {
             success: verifyRepairRes.success,
-            runtime: this.config.runtimeMode === "SHADOW" ? "LEGACY" : this.config.runtimeMode,
+            runtime: isResponseShape
+                ? rawResult.runtime
+                : (this.config.runtimeMode === "SHADOW" ? "LEGACY" : this.config.runtimeMode),
             result: verifyRepairRes.result,
             metadata: {
-                requirementIdentity: rawResult.requirementIdentity,
+                requirementIdentity: reqIdentity,
                 verificationResult: verifyRepairRes.verificationResult,
                 repaired: verifyRepairRes.repaired
             }

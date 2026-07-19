@@ -75,7 +75,7 @@ const {
 } = require("./runtimeRouter");
 
 const { createLegacyRuntimeAdapter, LEGACY_RUNTIME_ADAPTER_VERSION } = require("./legacyRuntimeAdapter");
-const { createModularRuntimeAdapter, MODULAR_RUNTIME_ADAPTER_VERSION } = require("./modularRuntimeAdapter");
+const { createModularRuntimeAdapter, MODULAR_RUNTIME_ADAPTER_VERSION, modularRuntimeAdapterErrorCodes } = require("./modularRuntimeAdapter");
 
 module.exports = {
     createRuntimeConfig,
@@ -129,5 +129,6 @@ module.exports = {
     createLegacyRuntimeAdapter,
     LEGACY_RUNTIME_ADAPTER_VERSION,
     createModularRuntimeAdapter,
-    MODULAR_RUNTIME_ADAPTER_VERSION
+    MODULAR_RUNTIME_ADAPTER_VERSION,
+    modularRuntimeAdapterErrorCodes
 };

@@ -88,20 +88,13 @@ module.exports = function registerRuntimeRouterTests(suite, test) {
         });
 
         // ── 6. Modular Stub isolated ──
-        test("10. Modular adapter execute returns NOT_IMPLEMENTED stub without triggering any compiler/scheduler/pools", async () => {
+        test("10. Modular adapter is successfully selected and instantiated for MODULAR mode", () => {
             const config = Object.freeze({ runtimeMode: "MODULAR" });
             const adapterInstance = selectRuntime(config);
-            
-            const req = { projectSpec: {} };
-            const res = await adapterInstance.execute(req);
-
-            assert.deepStrictEqual(res, {
-                success: false,
-                runtime: "MODULAR",
-                status: "NOT_IMPLEMENTED",
-                message: "ExecutionPipeline activation is scheduled for Phase 11B-2."
-            });
-            assert.ok(Object.isFrozen(res));
+            assert.ok(adapterInstance);
+            assert.strictEqual(adapterInstance.version, "1.0");
+            assert.strictEqual(typeof adapterInstance.execute, "function");
+            assert.ok(Object.isFrozen(adapterInstance));
         });
 
         // ── 7. Public API exports ──
