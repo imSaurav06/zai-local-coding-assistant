@@ -176,5 +176,9 @@ module.exports = function registerRepairPipelineTests(suite, test) {
 
             assert.deepStrictEqual(res1, res2);
         });
+
+        test("z. Restore verification runVerification", () => {
+            verification.runVerification = originalRun;
+        });
     });
 };

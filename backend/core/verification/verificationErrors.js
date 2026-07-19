@@ -33,8 +33,16 @@ const verificationCategory = Object.freeze({
     INTERNAL: "INTERNAL"
 });
 
+const verificationErrorCodes = Object.freeze({
+    VERIFICATION_ENGINE_FAILED: "VERIFICATION_ENGINE_FAILED",
+    VERIFICATION_REPORT_INVALID: "VERIFICATION_REPORT_INVALID",
+    VERIFICATION_CONFIGURATION_INVALID: "VERIFICATION_CONFIGURATION_INVALID",
+    ...verificationErrors
+});
+
 module.exports = {
     verificationErrors,
     verificationSeverity,
-    verificationCategory
+    verificationCategory,
+    verificationErrorCodes
 };

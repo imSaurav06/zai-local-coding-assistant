@@ -175,5 +175,9 @@ module.exports = function registerSessionTests(suite, test) {
                 Date.now = originalNow;
             }
         });
+
+        test("z. Restore verification runVerification", () => {
+            verification.runVerification = originalRun;
+        });
     });
 };

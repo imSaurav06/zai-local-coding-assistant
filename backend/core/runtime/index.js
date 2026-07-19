@@ -39,6 +39,12 @@ const {
 } = require("./verificationRepairBridge");
 
 const {
+    createVerificationBridge,
+    verificationErrorCodes,
+    VERIFICATION_BRIDGE_VERSION
+} = require("./verificationBridge");
+
+const {
     createWorkerPool,
     allocateWorker,
     releaseWorker,
@@ -104,6 +110,9 @@ module.exports = {
     validateVerificationRepairRequest,
     verificationRepairBridgeErrorCodes,
     VERIFICATION_REPAIR_BRIDGE_VERSION,
+    createVerificationBridge,
+    verificationErrorCodes,
+    VERIFICATION_BRIDGE_VERSION,
     createWorkerPool,
     allocateWorker,
     releaseWorker,

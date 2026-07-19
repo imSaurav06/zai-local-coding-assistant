@@ -70,6 +70,50 @@ function buildReport(verificationResult, durationMs) {
     return lines.join("\n");
 }
 
+function buildVerificationReport(verificationResult, durationMs, files = []) {
+    if (!verificationResult || typeof verificationResult !== "object") {
+        const err = new Error("Invalid verificationResult: must be a non-null object.");
+        err.code = "VERIFICATION_REPORT_INVALID";
+        throw err;
+    }
+
+    const errors = Array.isArray(verificationResult.errors) ? verificationResult.errors : [];
+    const warnings = Array.isArray(verificationResult.warnings) ? verificationResult.warnings : [];
+
+    const report = {
+        status: verificationResult.success ? "PASSED" : "FAILED",
+        errors,
+        warnings,
+        statistics: {
+            totalErrors: errors.length,
+            totalWarnings: warnings.length
+        },
+        duration: typeof durationMs === "number" ? durationMs : 0,
+        verifiedFiles: files.map(f => f.path || f.name || "")
+    };
+
+    function deepFreeze(obj) {
+        if (obj === null || typeof obj !== "object") {
+            return obj;
+        }
+        Object.freeze(obj);
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+            if (
+                obj.hasOwnProperty(prop) &&
+                obj[prop] !== null &&
+                (typeof obj[prop] === "object" || typeof obj[prop] === "function") &&
+                !Object.isFrozen(obj[prop])
+            ) {
+                deepFreeze(obj[prop]);
+            }
+        });
+        return obj;
+    }
+
+    return deepFreeze(report);
+}
+
 module.exports = {
-    buildReport
+    buildReport,
+    buildVerificationReport
 };

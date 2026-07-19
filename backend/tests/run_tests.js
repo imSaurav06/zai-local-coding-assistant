@@ -142,6 +142,12 @@ require("./core/execution/scheduler.resume.test.js")(suite, test);
 // Register Execution Pipeline Resume Tests (Phase 11B-4B)
 require("./core/execution/executionPipeline.resume.test.js")(suite, test);
 
+// Register Verification Integration Tests (Phase 11B-5A)
+require("./core/verification/verification.integration.test.js")(suite, test);
+
+// Register Execution Pipeline Verification Tests (Phase 11B-5A)
+require("./core/execution/executionPipeline.verification.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

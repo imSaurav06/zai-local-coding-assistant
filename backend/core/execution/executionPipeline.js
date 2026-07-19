@@ -33,6 +33,7 @@ function deepFreeze(obj) {
 function createExecutionPipeline(options = {}) {
     const scheduler = options.scheduler || require("./scheduler");
     const workerPool = options.workerPool || require("../runtime/workerPool");
+    const verificationBridge = options.verificationBridge || require("../runtime/verificationBridge");
     const contextBuilder = options.contextBuilder || { buildContext };
     const aiProviderGateway = options.aiProviderGateway || {
         generateResponse: async (context) => ({ success: true, text: "default-ai-stub" })
@@ -89,6 +90,15 @@ function createExecutionPipeline(options = {}) {
                 activeWorkerPool = workerPool.createWorkerPool(poolConfig);
             }
 
+            let activeVerificationBridge = verificationBridge;
+            if (typeof verificationBridge.verifyResult !== "function") {
+                const { createVerificationBridge } = require("../runtime/verificationBridge");
+                activeVerificationBridge = createVerificationBridge({
+                    enableVerification: !!executionOptions.enableVerification,
+                    verificationEngine: verification
+                });
+            }
+
             while (activeScheduler.hasReadyWorkers()) {
                 const assignment = activeScheduler.nextWorker();
                 executedAny = true;
@@ -128,6 +138,11 @@ function createExecutionPipeline(options = {}) {
                         projectSpec: executionOptions.projectSpec
                     });
 
+                    // 2.5 Invoke Verification Bridge
+                    const verifiedResult = await activeVerificationBridge.verifyResult(executeResult, {
+                        projectSpec: executionOptions.projectSpec
+                    });
+
                     // 3. Release worker
                     let releaseRes;
                     try {
@@ -146,10 +161,10 @@ function createExecutionPipeline(options = {}) {
                     }
                     activeWorkerPool = releaseRes.pool || activeWorkerPool;
 
-                    lastResult = executeResult;
+                    lastResult = verifiedResult;
 
-                    if (!executeResult.success) {
-                        return deepFreeze(executeResult);
+                    if (!verifiedResult.success) {
+                        return deepFreeze(verifiedResult);
                     }
 
                     // Mark completed in Scheduler
@@ -160,7 +175,10 @@ function createExecutionPipeline(options = {}) {
                         error.code === "WORKERPOOL_ALLOCATION_FAILED" ||
                         error.code === "WORKERPOOL_RELEASE_FAILED" ||
                         error.code === "WORKERPOOL_INVALID_STATE" ||
-                        error.code === "WORKERPOOL_EXECUTION_FAILED"
+                        error.code === "WORKERPOOL_EXECUTION_FAILED" ||
+                        error.code === "VERIFICATION_ENGINE_FAILED" ||
+                        error.code === "VERIFICATION_REPORT_INVALID" ||
+                        error.code === "VERIFICATION_CONFIGURATION_INVALID"
                     ) {
                         throw error;
                     }
