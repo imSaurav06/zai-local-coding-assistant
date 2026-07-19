@@ -59,6 +59,8 @@ const {
     REPAIR_SESSION_VERSION
 } = require("./repairSession");
 
+const { repair } = require("./repairEngine");
+
 module.exports = {
     createRepairRequest,
     validateRepairRequest,
@@ -98,5 +100,6 @@ module.exports = {
     isRepairSession,
     deepFreezeRepairSession,
     repairSessionErrorCodes,
-    REPAIR_SESSION_VERSION
+    REPAIR_SESSION_VERSION,
+    repair
 };

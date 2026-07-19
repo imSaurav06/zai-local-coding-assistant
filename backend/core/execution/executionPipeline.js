@@ -34,6 +34,7 @@ function createExecutionPipeline(options = {}) {
     const scheduler = options.scheduler || require("./scheduler");
     const workerPool = options.workerPool || require("../runtime/workerPool");
     const verificationBridge = options.verificationBridge || require("../runtime/verificationBridge");
+    const repairBridge = options.repairBridge || require("../runtime/repairBridge");
     const contextBuilder = options.contextBuilder || { buildContext };
     const aiProviderGateway = options.aiProviderGateway || {
         generateResponse: async (context) => ({ success: true, text: "default-ai-stub" })
@@ -99,6 +100,16 @@ function createExecutionPipeline(options = {}) {
                 });
             }
 
+            let activeRepairBridge = repairBridge;
+            if (typeof repairBridge.repairResult !== "function") {
+                const { createRepairBridge } = require("../runtime/repairBridge");
+                activeRepairBridge = createRepairBridge({
+                    enableRepair: !!executionOptions.enableRepair,
+                    maxRepairAttempts: typeof executionOptions.maxRepairAttempts === "number" ? executionOptions.maxRepairAttempts : 2,
+                    verificationEngine: verification
+                });
+            }
+
             while (activeScheduler.hasReadyWorkers()) {
                 const assignment = activeScheduler.nextWorker();
                 executedAny = true;
@@ -139,9 +150,16 @@ function createExecutionPipeline(options = {}) {
                     });
 
                     // 2.5 Invoke Verification Bridge
-                    const verifiedResult = await activeVerificationBridge.verifyResult(executeResult, {
+                    let verifiedResult = await activeVerificationBridge.verifyResult(executeResult, {
                         projectSpec: executionOptions.projectSpec
                     });
+
+                    // 2.6 Run Repair Bridge if verification fails and repair is enabled
+                    if (!verifiedResult.success && executionOptions.enableRepair) {
+                        verifiedResult = await activeRepairBridge.repairResult(verifiedResult, {
+                            projectSpec: executionOptions.projectSpec
+                        });
+                    }
 
                     // 3. Release worker
                     let releaseRes;
@@ -178,7 +196,11 @@ function createExecutionPipeline(options = {}) {
                         error.code === "WORKERPOOL_EXECUTION_FAILED" ||
                         error.code === "VERIFICATION_ENGINE_FAILED" ||
                         error.code === "VERIFICATION_REPORT_INVALID" ||
-                        error.code === "VERIFICATION_CONFIGURATION_INVALID"
+                        error.code === "VERIFICATION_CONFIGURATION_INVALID" ||
+                        error.code === "REPAIR_ENGINE_FAILED" ||
+                        error.code === "REPAIR_SESSION_INVALID" ||
+                        error.code === "REPAIR_MAX_ATTEMPTS_EXCEEDED" ||
+                        error.code === "REPAIR_RESULT_INVALID"
                     ) {
                         throw error;
                     }

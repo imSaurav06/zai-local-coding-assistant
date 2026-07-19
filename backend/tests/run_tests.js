@@ -148,6 +148,16 @@ require("./core/verification/verification.integration.test.js")(suite, test);
 // Register Execution Pipeline Verification Tests (Phase 11B-5A)
 require("./core/execution/executionPipeline.verification.test.js")(suite, test);
 
+// Register Repair Integration Tests (Phase 11B-5B)
+require("./core/repair/repair.integration.test.js")(suite, test);
+
+// Register Execution Pipeline Repair Tests (Phase 11B-5B)
+require("./core/execution/executionPipeline.repair.test.js")(suite, test);
+
+// Register Verification & Repair Modular Integration (Phase 11B-5B)
+require("./core/runtime/verificationRepair.integration.test.js")(suite, test);
+
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

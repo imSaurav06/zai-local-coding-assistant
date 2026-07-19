@@ -12,7 +12,13 @@ const CANONICAL_SESSION_FIELDS = new Set([
     "finalPatch",
     "finalVerification",
     "status",
-    "metadata"
+    "metadata",
+    "attemptNumber",
+    "repairedFiles",
+    "verificationHistory",
+    "executionId",
+    "startTime",
+    "endTime"
 ]);
 
 const ALLOWED_SESSION_STATUSES = new Set([
@@ -174,6 +180,25 @@ function validateRepairSession(session) {
             path: "metadata",
             message: "Property 'metadata' must be an object or null."
         });
+    }
+
+    if (session.hasOwnProperty("executionId") && typeof session.executionId !== "string") {
+        errors.push({ code: repairSessionErrorCodes.REPAIR_SESSION_INVALID_RESULT, path: "executionId", message: "executionId must be a string" });
+    }
+    if (session.hasOwnProperty("attemptNumber") && (typeof session.attemptNumber !== "number" || session.attemptNumber < 0)) {
+        errors.push({ code: repairSessionErrorCodes.REPAIR_SESSION_INVALID_RESULT, path: "attemptNumber", message: "attemptNumber must be a non-negative number" });
+    }
+    if (session.hasOwnProperty("repairedFiles") && !Array.isArray(session.repairedFiles)) {
+        errors.push({ code: repairSessionErrorCodes.REPAIR_SESSION_INVALID_RESULT, path: "repairedFiles", message: "repairedFiles must be an array" });
+    }
+    if (session.hasOwnProperty("verificationHistory") && !Array.isArray(session.verificationHistory)) {
+        errors.push({ code: repairSessionErrorCodes.REPAIR_SESSION_INVALID_RESULT, path: "verificationHistory", message: "verificationHistory must be an array" });
+    }
+    if (session.hasOwnProperty("startTime") && typeof session.startTime !== "number") {
+        errors.push({ code: repairSessionErrorCodes.REPAIR_SESSION_INVALID_RESULT, path: "startTime", message: "startTime must be a number" });
+    }
+    if (session.hasOwnProperty("endTime") && session.endTime !== null && typeof session.endTime !== "number") {
+        errors.push({ code: repairSessionErrorCodes.REPAIR_SESSION_INVALID_RESULT, path: "endTime", message: "endTime must be a number or null" });
     }
 
     return {

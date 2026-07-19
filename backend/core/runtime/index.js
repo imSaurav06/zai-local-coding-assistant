@@ -45,6 +45,11 @@ const {
 } = require("./verificationBridge");
 
 const {
+    createRepairBridge,
+    REPAIR_BRIDGE_VERSION
+} = require("./repairBridge");
+
+const {
     createWorkerPool,
     allocateWorker,
     releaseWorker,
@@ -113,6 +118,8 @@ module.exports = {
     createVerificationBridge,
     verificationErrorCodes,
     VERIFICATION_BRIDGE_VERSION,
+    createRepairBridge,
+    REPAIR_BRIDGE_VERSION,
     createWorkerPool,
     allocateWorker,
     releaseWorker,
