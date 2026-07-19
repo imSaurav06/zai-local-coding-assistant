@@ -178,6 +178,12 @@ require("./stress/stressVerification.test.js")(suite, test);
 require("./stress/stressRepair.test.js")(suite, test);
 require("./stress/edgeCases.test.js")(suite, test);
 
+// Register Requirement Compliance Audit Tests (Phase 12A)
+require("./core/audit/requirementEvidence.test.js")(suite, test);
+require("./core/audit/requirementCoverage.test.js")(suite, test);
+require("./core/audit/requirementAuditReport.test.js")(suite, test);
+require("./core/audit/requirementAuditor.test.js")(suite, test);
+
 
 
 // ─── Test Data ────────────────────────────────────────────────────────────────

@@ -1,0 +1,12 @@
+"use strict";
+
+const auditErrorCodes = Object.freeze({
+    AUDIT_INVALID_INPUT: "AUDIT_INVALID_INPUT",
+    AUDIT_MUTABLE_INPUT: "AUDIT_MUTABLE_INPUT",
+    AUDIT_INVALID_PROJECT_SPEC: "AUDIT_INVALID_PROJECT_SPEC",
+    AUDIT_INTERNAL_ERROR: "AUDIT_INTERNAL_ERROR"
+});
+
+module.exports = {
+    auditErrorCodes
+};
