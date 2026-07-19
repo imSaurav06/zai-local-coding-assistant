@@ -169,6 +169,16 @@ require("./core/runtime/runtimeMetrics.test.js")(suite, test);
 // Register Execution Pipeline Metrics Tests (Phase 11B-6)
 require("./core/execution/executionPipeline.metrics.test.js")(suite, test);
 
+// Register Stress & Edge Case Tests (Phase 11B-7B)
+require("./stress/stressExecution.test.js")(suite, test);
+require("./stress/stressScheduler.test.js")(suite, test);
+require("./stress/stressWorkerPool.test.js")(suite, test);
+require("./stress/stressCheckpoint.test.js")(suite, test);
+require("./stress/stressVerification.test.js")(suite, test);
+require("./stress/stressRepair.test.js")(suite, test);
+require("./stress/edgeCases.test.js")(suite, test);
+
+
 
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
