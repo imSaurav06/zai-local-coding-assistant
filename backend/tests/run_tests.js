@@ -202,6 +202,12 @@ require("./core/audit/deploymentScore.test.js")(suite, test);
 require("./core/audit/deploymentQualificationReport.test.js")(suite, test);
 require("./core/audit/deploymentQualifier.test.js")(suite, test);
 
+// Register Audit Orchestrator & Certification Tests (Phase 12E)
+require("./core/audit/auditSummary.test.js")(suite, test);
+require("./core/audit/auditCertification.test.js")(suite, test);
+require("./core/audit/auditOrchestrator.test.js")(suite, test);
+
+
 
 
 

@@ -24,6 +24,11 @@ const { checkArtifactCompleteness, checkPriorAuditResults, checkSpecDeploymentRe
 const { calculateDeploymentScore } = require("./deploymentScore");
 const { buildDeploymentQualificationReport } = require("./deploymentQualificationReport");
 
+const { runFullAudit } = require("./auditOrchestrator");
+const { auditOrchestratorErrorCodes } = require("./auditOrchestratorErrors");
+const { buildAuditSummary } = require("./auditSummary");
+const { buildAuditCertification, resolveCertificationTier } = require("./auditCertification");
+
 module.exports = {
     // 12A Requirement Compliance Audit
     auditRequirements,
@@ -53,5 +58,13 @@ module.exports = {
     checkSpecDeploymentReadiness,
     calculateDeploymentScore,
     buildDeploymentQualificationReport,
-    deploymentQualificationErrorCodes
+    deploymentQualificationErrorCodes,
+
+    // 12E Audit Orchestrator & Final Certification
+    runFullAudit,
+    buildAuditSummary,
+    buildAuditCertification,
+    resolveCertificationTier,
+    auditOrchestratorErrorCodes
 };
+
