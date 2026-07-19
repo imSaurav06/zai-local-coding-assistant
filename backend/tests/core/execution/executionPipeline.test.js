@@ -167,7 +167,7 @@ module.exports = function registerExecutionPipelineTests(suite, test) {
             assert.strictEqual(result.metadata.error.code, pipelineErrorCodes.PIPELINE_VERIFICATION_ERROR);
         });
 
-        test("3. Throws SCHEDULER_EXECUTION_FAILED on unexpected exception", async () => {
+        test("3. Throws WORKERPOOL_EXECUTION_FAILED on unexpected exception", async () => {
             const scheduler = createScheduler();
             const pipeline = createExecutionPipeline({
                 scheduler,
@@ -187,8 +187,46 @@ module.exports = function registerExecutionPipelineTests(suite, test) {
                     vfsState: { files: [] }
                 });
             }, (err) => {
-                return err.code === "SCHEDULER_EXECUTION_FAILED";
+                return err.code === "WORKERPOOL_EXECUTION_FAILED";
             });
+        });
+
+        test("4. Integrates with workerPool to allocate, execute, and release worker", async () => {
+            const scheduler = createScheduler();
+            let allocated = false;
+            let executed = false;
+            let released = false;
+            const mockWorkerPoolInstance = {
+                allocateWorker: (task) => {
+                    allocated = true;
+                    return { success: true, worker: { workerId: "w_01", status: "ALLOCATED", currentTask: task.stableId } };
+                },
+                executeWorker: async (worker, deps, opts) => {
+                    executed = true;
+                    return { success: true, success: true, metadata: { taskId: worker.currentTask } };
+                },
+                releaseWorker: (workerId) => {
+                    released = true;
+                    return { success: true };
+                }
+            };
+            const pipeline = createExecutionPipeline({
+                scheduler,
+                workerPool: mockWorkerPoolInstance
+            });
+
+            const state = getSampleExecutionState();
+            const registry = getSampleWorkerRegistry();
+            const graph = getSampleTaskGraph();
+
+            const result = await pipeline.executePipeline(state, registry, graph, {
+                vfsState: { files: [] }
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(allocated, true);
+            assert.strictEqual(executed, true);
+            assert.strictEqual(released, true);
         });
     });
 };

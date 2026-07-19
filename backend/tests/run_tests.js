@@ -130,6 +130,9 @@ require("./core/execution/scheduler.integration.test.js")(suite, test);
 // Register Execution Pipeline Coordinator Tests (Phase 11B-3A)
 require("./core/execution/executionPipeline.test.js")(suite, test);
 
+// Register WorkerPool Integration Tests (Phase 11B-3B)
+require("./core/runtime/workerPool.integration.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",

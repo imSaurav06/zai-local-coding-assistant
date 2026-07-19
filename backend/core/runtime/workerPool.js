@@ -62,7 +62,7 @@ function validateWorkerPool(pool) {
         };
     }
 
-    const allowedPoolKeys = new Set(["config", "workers", "allocateWorker", "releaseWorker", "getAvailableWorkers", "getActiveWorkers"]);
+    const allowedPoolKeys = new Set(["config", "workers", "allocateWorker", "releaseWorker", "executeWorker", "getAvailableWorkers", "getActiveWorkers"]);
     const errors = [];
 
     for (const key of Object.keys(pool)) {
@@ -253,9 +253,9 @@ function allocateWorker(pool, task) {
         throw err;
     }
 
-    const taskId = targetTask.stableId || targetTask.id;
+    const taskId = targetTask.stableId || targetTask.id || targetTask.taskId;
     if (typeof taskId !== "string" || !taskId.trim()) {
-        const err = new Error("Task must have a non-empty stableId or id string.");
+        const err = new Error("Task must have a non-empty stableId, id, or taskId string.");
         err.code = workerPoolErrorCodes.WORKER_POOL_INVALID_INPUT;
         throw err;
     }
@@ -354,6 +354,263 @@ function releaseWorker(pool, workerId) {
 }
 
 /**
+ * Coordinates and executes target task generation phases serial step-by-step.
+ */
+async function executeWorker(worker, dependencies = {}, executionOptions = {}) {
+    if (!worker || typeof worker !== "object") {
+        const err = new Error("Invalid worker: must be a non-null object.");
+        err.code = "WORKERPOOL_INVALID_STATE";
+        throw err;
+    }
+
+    const { contextBuilder, aiProviderGateway, codingWorker, vfs, verification } = dependencies;
+    const { pipelineErrorCodes } = require("../execution/pipelineErrors");
+    const taskId = worker.currentTask;
+
+    if (!taskId) {
+        const err = new Error("Worker is not currently allocated to any task.");
+        err.code = "WORKERPOOL_INVALID_STATE";
+        throw err;
+    }
+
+    try {
+        // 3. Build context
+        const contextResult = contextBuilder.buildContext(taskId);
+        if (!contextResult || !contextResult.success) {
+            return deepFreeze({
+                success: false,
+                execution: {
+                    schedule: {
+                        readyTasks: [taskId],
+                        assignments: [{ workerId: worker.workerId, taskId }],
+                        blockedTasks: [],
+                        metadata: {
+                            availableWorkers: 1,
+                            blockedCount: 0,
+                            readyCount: 1
+                        }
+                    }
+                },
+                verification: null,
+                diagnostics: null,
+                metadata: {
+                    error: {
+                        code: pipelineErrorCodes.PIPELINE_CONTEXT_ERROR,
+                        message: "ContextBuilder failed to generate context."
+                    }
+                }
+            });
+        }
+
+        // 4. Call AIProviderGateway
+        const providerResult = await aiProviderGateway.generateResponse(contextResult.context);
+        if (!providerResult || !providerResult.success) {
+            return deepFreeze({
+                success: false,
+                execution: {
+                    schedule: {
+                        readyTasks: [taskId],
+                        assignments: [{ workerId: worker.workerId, taskId }],
+                        blockedTasks: [],
+                        metadata: {
+                            availableWorkers: 1,
+                            blockedCount: 0,
+                            readyCount: 1
+                        }
+                    }
+                },
+                verification: null,
+                diagnostics: null,
+                metadata: {
+                    error: {
+                        code: pipelineErrorCodes.PIPELINE_PROVIDER_ERROR,
+                        message: "AIProviderGateway call failed."
+                    }
+                }
+            });
+        }
+
+        // 5. Invoke CodingWorker
+        const workerResult = codingWorker.generateFile(providerResult.text, taskId);
+        if (!workerResult || !workerResult.success) {
+            return deepFreeze({
+                success: false,
+                execution: {
+                    schedule: {
+                        readyTasks: [taskId],
+                        assignments: [{ workerId: worker.workerId, taskId }],
+                        blockedTasks: [],
+                        metadata: {
+                            availableWorkers: 1,
+                            blockedCount: 0,
+                            readyCount: 1
+                        }
+                    }
+                },
+                verification: null,
+                diagnostics: null,
+                metadata: {
+                    error: {
+                        code: pipelineErrorCodes.PIPELINE_PROVIDER_ERROR,
+                        message: "CodingWorker failed to compile code."
+                    }
+                }
+            });
+        }
+
+        // 6. Stage changes in VFS
+        const currentVfsState = executionOptions.vfsState || {};
+        const filesToStage = [];
+        if (workerResult.files && Array.isArray(workerResult.files)) {
+            for (const f of workerResult.files) {
+                const pathVal = f.path || f.name;
+                let lang = f.language;
+                if (!lang) {
+                    if (pathVal.endsWith(".js") || pathVal.endsWith(".jsx")) lang = "javascript";
+                    else if (pathVal.endsWith(".css")) lang = "css";
+                    else if (pathVal.endsWith(".html")) lang = "html";
+                    else lang = "plaintext";
+                }
+                filesToStage.push({
+                    path: pathVal,
+                    language: lang,
+                    content: f.content,
+                    metadata: f.metadata || {}
+                });
+            }
+        } else if (workerResult.file) {
+            const pathVal = workerResult.file.path || workerResult.file.name;
+            let lang = workerResult.file.language;
+            if (!lang) {
+                if (pathVal.endsWith(".js") || pathVal.endsWith(".jsx")) lang = "javascript";
+                else if (pathVal.endsWith(".css")) lang = "css";
+                else if (pathVal.endsWith(".html")) lang = "html";
+                else lang = "plaintext";
+            }
+            filesToStage.push({
+                path: pathVal,
+                language: lang,
+                content: workerResult.file.content,
+                metadata: workerResult.file.metadata || {}
+            });
+        }
+
+        let vfsResult;
+        if (vfs.createFile) {
+            let currentVfs = currentVfsState;
+            let lastRes = { success: true, vfs: currentVfs };
+            for (const f of filesToStage) {
+                const normalizedPath = (f.path || f.name).replace(/\\/g, "/");
+                const exists = currentVfs.files && currentVfs.files.some(existing => existing.path.replace(/\\/g, "/") === normalizedPath);
+                let res;
+                if (exists && vfs.updateFile) {
+                    res = vfs.updateFile(currentVfs, f.path || f.name, f.content);
+                } else {
+                    res = vfs.createFile(currentVfs, f);
+                }
+                if (!res.success) {
+                    lastRes = res;
+                    break;
+                }
+                currentVfs = res.vfs;
+            }
+            if (lastRes.success !== false) {
+                vfsResult = { success: true, vfs: currentVfs };
+            } else {
+                vfsResult = lastRes;
+            }
+        } else if (vfs.stageChanges) {
+            vfsResult = vfs.stageChanges(currentVfsState, filesToStage[0]);
+        } else {
+            vfsResult = { success: true, vfs: currentVfsState, files: filesToStage };
+        }
+
+        if (!vfsResult || vfsResult.success === false) {
+            return deepFreeze({
+                success: false,
+                execution: {
+                    schedule: {
+                        readyTasks: [taskId],
+                        assignments: [{ workerId: worker.workerId, taskId }],
+                        blockedTasks: [],
+                        metadata: {
+                            availableWorkers: 1,
+                            blockedCount: 0,
+                            readyCount: 1
+                        }
+                    },
+                    vfsState: currentVfsState
+                },
+                verification: null,
+                diagnostics: null,
+                metadata: {
+                    error: {
+                        code: pipelineErrorCodes.PIPELINE_PROVIDER_ERROR,
+                        message: "VFS staging failed."
+                    }
+                }
+            });
+        }
+
+        const nextVfsState = vfsResult.vfs;
+
+        // 7. Invoke Verification
+        const rawVerifyFiles = (vfsResult.vfs && Array.isArray(vfsResult.vfs.files)) ? vfsResult.vfs.files : (vfsResult.files || filesToStage);
+        const verifyFiles = rawVerifyFiles.map(f => {
+            const nameVal = f.name || f.path || "";
+            const pathVal = f.path || f.name || "";
+            return {
+                ...f,
+                name: nameVal,
+                path: pathVal
+            };
+        });
+        const verificationResult = verification.runVerification(verifyFiles, { projectSpec: executionOptions.projectSpec });
+        const success = !!(verificationResult && (!verificationResult.errors || verificationResult.errors.length === 0));
+
+        const diagnostics = verificationResult ? (verificationResult.diagnostics || { totalErrors: (verificationResult.errors || []).length }) : null;
+
+        const lastResult = {
+            success,
+            execution: {
+                schedule: {
+                    readyTasks: [taskId],
+                    assignments: [{ workerId: worker.workerId, taskId }],
+                    blockedTasks: [],
+                    metadata: {
+                        availableWorkers: 1,
+                        blockedCount: 0,
+                        readyCount: 1
+                    }
+                },
+                vfsState: nextVfsState
+            },
+            verification: verificationResult,
+            diagnostics,
+            metadata: {
+                taskId,
+                workerId: worker.workerId
+            }
+        };
+
+        if (!success) {
+            lastResult.metadata.error = {
+                code: pipelineErrorCodes.PIPELINE_VERIFICATION_ERROR,
+                message: "Verification failed with errors."
+            };
+        }
+
+        return deepFreeze(lastResult);
+
+    } catch (err) {
+        const error = new Error(`Worker execution failed: ${err.message}`);
+        error.code = "WORKERPOOL_EXECUTION_FAILED";
+        error.originalError = err;
+        throw error;
+    }
+}
+
+/**
  * Returns all available (IDLE) workers.
  */
 function getAvailableWorkers(pool) {
@@ -403,6 +660,9 @@ function createWorkerPoolInternal(config, workers) {
         },
         releaseWorker(workerId) {
             return releaseWorker(this, workerId);
+        },
+        executeWorker(worker, dependencies, executionOptions) {
+            return executeWorker(worker, dependencies, executionOptions);
         },
         getAvailableWorkers() {
             return getAvailableWorkers(this);
@@ -481,6 +741,7 @@ module.exports = {
     createWorkerPool,
     allocateWorker,
     releaseWorker,
+    executeWorker,
     getAvailableWorkers,
     getActiveWorkers,
     validateWorkerPool,
