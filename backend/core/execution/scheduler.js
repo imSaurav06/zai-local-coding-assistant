@@ -216,8 +216,188 @@ function computeSchedule(executionState, workerRegistry, taskGraph) {
 /**
  * Creates the scheduler instance.
  */
-function createScheduler() {
+function createScheduler(customComputeSchedule) {
+    const activeCompute = customComputeSchedule || computeSchedule;
+    let internalState = null;
+    let internalRegistry = null;
+    let internalGraph = null;
+    const runningAssignments = new Map();
+    let pendingTasks = [];
+    let completedTasks = [];
+
+    function initialize(executionState, workerRegistry, taskGraph) {
+        validateInputs(executionState, workerRegistry, taskGraph);
+
+        // Map graph nodes by stableId for fast O(1) lookup
+        const nodeMap = new Map();
+        for (const node of taskGraph.nodes) {
+            if (nodeMap.has(node.stableId)) {
+                const err = new Error(`Duplicate task ID: ${node.stableId}`);
+                err.code = schedulerErrorCodes.SCHEDULER_INVALID_GRAPH;
+                throw err;
+            }
+            nodeMap.set(node.stableId, node);
+        }
+
+        // Build adjacency list and validate dependencies existence
+        const adj = new Map();
+        for (const node of taskGraph.nodes) {
+            adj.set(node.stableId, []);
+            for (const depId of node.dependencies) {
+                if (!nodeMap.has(depId)) {
+                    const err = new Error(`Task '${node.stableId}' depends on non-existent task '${depId}'.`);
+                    err.code = schedulerErrorCodes.SCHEDULER_INVALID_GRAPH;
+                    throw err;
+                }
+                adj.get(node.stableId).push(depId);
+            }
+        }
+
+        // Circular dependency check (DFS cycle detection)
+        const visited = new Map();
+        for (const node of taskGraph.nodes) {
+            visited.set(node.stableId, 0); // 0 = unvisited
+        }
+
+        function hasCycle(u) {
+            visited.set(u, 1); // 1 = visiting
+            for (const v of adj.get(u)) {
+                if (visited.get(v) === 1) {
+                    return true;
+                }
+                if (visited.get(v) === 0) {
+                    if (hasCycle(v)) return true;
+                }
+            }
+            visited.set(u, 2); // 2 = visited
+            return false;
+        }
+
+        for (const node of taskGraph.nodes) {
+            if (visited.get(node.stableId) === 0) {
+                if (hasCycle(node.stableId)) {
+                    const err = new Error("Circular dependency detected in task graph.");
+                    err.code = schedulerErrorCodes.SCHEDULER_CIRCULAR_DEPENDENCY;
+                    throw err;
+                }
+            }
+        }
+
+        // Validate duplicate worker IDs in registry
+        const seenWorkers = new Set();
+        for (const w of Object.values(workerRegistry.workers)) {
+            if (seenWorkers.has(w.workerId)) {
+                const err = new Error(`Duplicate worker ID detected: ${w.workerId}`);
+                err.code = schedulerErrorCodes.SCHEDULER_INVALID_WORKER;
+                throw err;
+            }
+            seenWorkers.add(w.workerId);
+        }
+
+        // Initialize state variables
+        internalState = executionState;
+        internalRegistry = workerRegistry;
+        internalGraph = taskGraph;
+        runningAssignments.clear();
+        pendingTasks = [...executionState.queues.pending];
+        completedTasks = [...executionState.queues.completed];
+    }
+
+    function buildTempExecutionState() {
+        const running = Array.from(runningAssignments.values());
+        const pending = pendingTasks.filter(id => !running.includes(id));
+        return Object.freeze({
+            version: internalState.version || "1.0",
+            metadata: internalState.metadata,
+            queues: Object.freeze({
+                pending: Object.freeze(pending),
+                running: Object.freeze(running),
+                completed: Object.freeze([...completedTasks]),
+                failed: Object.freeze([])
+            }),
+            statistics: Object.freeze({
+                totalTasks: internalState.statistics.totalTasks,
+                pending: pending.length,
+                running: running.length,
+                completed: completedTasks.length,
+                failed: 0
+            })
+        });
+    }
+
+    function buildTempWorkerRegistry() {
+        const workers = {};
+        for (const [wId, w] of Object.entries(internalRegistry.workers)) {
+            const status = runningAssignments.has(wId) ? "RUNNING" : "IDLE";
+            workers[wId] = Object.freeze({
+                ...w,
+                status
+            });
+        }
+        return Object.freeze({
+            workers: Object.freeze(workers)
+        });
+    }
+
+    let cachedSchedule = null;
+
+    function hasReadyWorkers() {
+        if (!internalState) return false;
+        const tempState = buildTempExecutionState();
+        const tempRegistry = buildTempWorkerRegistry();
+        cachedSchedule = activeCompute(tempState, tempRegistry, internalGraph);
+        return cachedSchedule.assignments && cachedSchedule.assignments.length > 0;
+    }
+
+    function nextWorker() {
+        if (!internalState) {
+            const err = new Error("Scheduler not initialized.");
+            err.code = schedulerErrorCodes.SCHEDULER_INVALID_STATE;
+            throw err;
+        }
+        let schedule = cachedSchedule;
+        if (!schedule) {
+            const tempState = buildTempExecutionState();
+            const tempRegistry = buildTempWorkerRegistry();
+            schedule = activeCompute(tempState, tempRegistry, internalGraph);
+        }
+        cachedSchedule = null; // Clear cache for next cycle
+        if (!schedule.assignments || schedule.assignments.length === 0) {
+            const err = new Error("No ready workers available.");
+            err.code = schedulerErrorCodes.SCHEDULER_INVALID_ORDER;
+            throw err;
+        }
+        const assignment = schedule.assignments[0];
+        runningAssignments.set(assignment.workerId, assignment.taskId);
+        return assignment;
+    }
+
+    function markCompleted(workerId) {
+        if (!internalState) {
+            const err = new Error("Scheduler not initialized.");
+            err.code = schedulerErrorCodes.SCHEDULER_INVALID_STATE;
+            throw err;
+        }
+        if (!runningAssignments.has(workerId)) {
+            const err = new Error(`Worker '${workerId}' is not currently executing any task.`);
+            err.code = schedulerErrorCodes.SCHEDULER_INVALID_ORDER;
+            throw err;
+        }
+        const taskId = runningAssignments.get(workerId);
+        runningAssignments.delete(workerId);
+
+        const idx = pendingTasks.indexOf(taskId);
+        if (idx !== -1) {
+            pendingTasks.splice(idx, 1);
+        }
+        completedTasks.push(taskId);
+    }
+
     return deepFreeze({
+        initialize,
+        hasReadyWorkers,
+        nextWorker,
+        markCompleted,
         computeSchedule
     });
 }

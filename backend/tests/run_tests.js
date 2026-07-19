@@ -124,6 +124,12 @@ require("./core/runtime/shadowRuntime.test.js")(suite, test);
 // Register Runtime Router Tests (Phase 11B-1)
 require("./core/runtime/runtimeRouter.test.js")(suite, test);
 
+// Register Scheduler Integration Tests (Phase 11B-3A)
+require("./core/execution/scheduler.integration.test.js")(suite, test);
+
+// Register Execution Pipeline Coordinator Tests (Phase 11B-3A)
+require("./core/execution/executionPipeline.test.js")(suite, test);
+
 // ─── Test Data ────────────────────────────────────────────────────────────────
 const SAMPLE_REACT_SPEC = {
     projectName: "FitZone",
